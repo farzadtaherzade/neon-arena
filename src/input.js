@@ -23,6 +23,10 @@ export class Input {
         if (!e.repeat) hooks.onJump();
       }
       if (e.code === 'KeyR') hooks.onReload();
+      if (e.code === 'KeyC') hooks.onToggleSettings();
+      // Esc never reaches keydown while pointer-locked (the browser eats it to
+      // exit the lock), so it only closes the settings panel.
+      if (e.code === 'Escape') hooks.onCloseSettings();
     });
 
     addEventListener('keyup', e => { this.keys[e.code] = false; });

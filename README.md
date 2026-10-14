@@ -22,6 +22,7 @@ Survive escalating waves of hostile robots in a neon-lit arena.
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
 - **HUD** — score, wave, hostile count, integrity bar, ammo counter, reload progress
+- **Crosshair settings** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still. Opens from any screen with `C`, and your choices are saved to `localStorage`
 - **Pause / game over / restart** flow
 
 ---
@@ -64,7 +65,8 @@ when Three.js arrives from the CDN (a few seconds). Clicks before then are ignor
 | `R` | Reload |
 | `Shift` | Sprint |
 | `Space` | Jump |
-| `Esc` | Pause / release cursor |
+| `C` | Crosshair settings (any time) |
+| `Esc` | Pause / release cursor — or close the settings panel |
 
 ---
 
@@ -92,6 +94,7 @@ shooter-3d/
 │   ├── fx.js             particle pool + tracer pool
 │   ├── audio.js          Web Audio synth
 │   ├── hud.js            all DOM reads/writes
+│   ├── settings.js       crosshair presets, live tuning, localStorage
 │   └── input.js          keyboard, mouse, pointer lock
 └── tools/
     └── smoke_test.py     headless browser regression test
@@ -171,6 +174,8 @@ __NEON.aim(yaw, pitch)
 __NEON.enemyPos()         // positions / state / hp of all enemies
 __NEON.camState()         // player position and camera angles
 __NEON.renderInfo()       // draw calls, geometry/texture counts — leak checks
+__NEON.crosshair()        // current crosshair settings
+__NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', color: '#ff0000' }
 ```
 
 ---

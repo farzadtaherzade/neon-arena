@@ -8,6 +8,7 @@ import { Fx } from './fx.js';
 import { Sfx } from './audio.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
+import { Settings } from './settings.js';
 import { Player } from './player.js';
 import { WaveDirector } from './waves.js';
 import { Weapon } from './weapon.js';
@@ -50,6 +51,7 @@ export class Game {
     this.fx = new Fx(this.scene);
     this.sfx = new Sfx();
     this.hud = new Hud();
+    this.settings = new Settings(this);
 
     this.player = new Player(this.yawObj, this.pitchObj);
     this.gun = buildGun();
@@ -64,6 +66,8 @@ export class Game {
       onLockRequest: () => this.input.lock(),
       onLockChange: locked => this.onLockChange(locked),
       onResume: () => this.input.lock(),
+      onToggleSettings: () => this.settings.toggle(),
+      onCloseSettings: () => this.settings.close(),
     });
 
     this.hud.screens.start.addEventListener('click', () => this.start(false));
