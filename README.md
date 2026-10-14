@@ -3,7 +3,7 @@
 A browser-based first-person 3D arena shooter built with [Three.js](https://threejs.org/).
 Survive escalating waves of hostile robots in a neon-lit arena.
 
-**No build step, no npm install, no bundler.** Plain ES modules served over HTTP.
+Built with **Vite + TypeScript**.
 
 ---
 
@@ -29,29 +29,52 @@ Survive escalating waves of hostile robots in a neon-lit arena.
 
 ## Requirements
 
+- **Node 20+** (developed on Node 24)
 - A modern browser with **WebGL**: Chrome, Edge, Firefox, or Safari (2019+)
-- **Internet on first load** — Three.js comes from a CDN (`jsdelivr`, falling back to `unpkg`)
-- Any static file server. The game will **not** run from a `file://` URL, because
-  browsers block ES modules there.
+
+There are no sound files, no textures on disk and no API keys — everything is
+procedural, and Three.js is bundled from npm at build time. Nothing is fetched
+from a CDN at runtime.
 
 ---
 
 ## Setup & Running
 
-Nothing to install. Clone or download, then serve the folder:
-
 ```bash
+git clone https://github.com/farzadtaherzade/shooter-3d-treejs.git
 cd shooter-3d
-python3 -m http.server 8000     # or: npx serve .
+npm install
+npm run dev
 ```
 
-Open <http://localhost:8000>.
+Vite prints a URL (default <http://localhost:5173>) and hot-reloads on save.
 
 > Click **CLICK TO DEPLOY** to start. The game requests mouse pointer lock —
 > accept it, or aiming won't work. `Esc` pauses and releases the cursor.
 
-**Note:** the title screen appears immediately, but the engine finishes loading
-when Three.js arrives from the CDN (a few seconds). Clicks before then are ignored.
+### Production build
+
+```bash
+npm run build      # type-checks nothing, emits dist/
+npm run preview    # serves dist/ exactly as deployed
+```
+
+### All the checks
+
+```bash
+npm run check      # tsc --noEmit + biome + vitest
+```
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with HMR |
+| `npm run build` | Production bundle into `dist/` |
+| `npm run preview` | Serve `dist/` locally |
+| `npm run typecheck` | `tsc --noEmit`, strict |
+| `npm run lint` | Biome lint + format check |
+| `npm run format` | Biome, write fixes |
+| `npm test` | Vitest unit suites (Node, no browser) |
+| `npm run test:e2e` | Playwright against the production build |
 
 ---
 
@@ -74,92 +97,135 @@ when Three.js arrives from the CDN (a few seconds). Clicks before then are ignor
 
 ```
 shooter-3d/
-├── index.html            markup only — no inline CSS or JS
-├── styles.css            all styling
-├── README.md
+├── index.html                markup only — no inline CSS or JS
+├── vite.config.ts            dev server, build, and the Vitest config
+├── playwright.config.ts      E2E against `vite preview`
+├── biome.json                lint + format rules
+├── tsconfig.json             strict TypeScript
 ├── src/
-│   ├── main.js           bootstrap, frame loop, window.__NEON
-│   ├── game.js           Game class — owns state, wires subsystems, update order
-│   ├── config.js         every gameplay tunable; imports nothing
-│   ├── three.js          CDN loader with fallback
-│   ├── materials.js      shared geometry/material cache
-│   ├── textures.js       procedural floor texture
-│   ├── collision.js      walls, cover, circle-vs-box resolution
-│   ├── arena.js          floor, walls, cover, starfield
-│   ├── gunmodel.js       first-person weapon viewmodel
-│   ├── player.js         movement, gravity, camera rig
-│   ├── enemy.js          Enemy class: mesh, AI, health, death
-│   ├── waves.js          wave composition, spawn pacing
-│   ├── weapon.js         hitscan, ammo, reload, recoil/bloom
-│   ├── fx.js             particle pool + tracer pool
-│   ├── audio.js          Web Audio synth
-│   ├── hud.js            all DOM reads/writes
-│   ├── settings.js       crosshair presets, live tuning, localStorage
-│   └── input.js          keyboard, mouse, pointer lock
-└── tools/
-    └── smoke_test.py     headless browser regression test
+│   ├── main.ts               bootstrap, fixed-timestep loop, window.__NEON
+│   ├── styles.css            all styling
+│   ├── app/
+│   │   └── Game.ts           composition root + game state machine
+│   ├── core/                 pure, no three, no DOM
+│   │   ├── rng.ts            seeded PRNG (mulberry32)
+│   │   ├── math.ts           clamp + frame-rate-independent damping
+│   │   └── loop.ts           fixed-timestep accumulator
+│   ├── game/                 pure simulation — no three, no DOM
+│   │   ├── config.ts         every gameplay tunable; imports nothing
+│   │   ├── player.ts         movement, gravity, look angles, bob
+│   │   ├── weapon.ts         magazine, reload, recoil/bloom/spread
+│   │   ├── enemy.ts          one hostile: steering, health, death clock
+│   │   ├── enemies.ts        spatial hash for enemy separation
+│   │   ├── waves.ts          wave composition, spawn pacing, intermission
+│   │   ├── fx.ts             particle pool + tracer ring
+│   │   └── world/
+│   │       ├── collision.ts  circle-vs-box push-out
+│   │       └── layout.ts     obstacle table + starfield generation
+│   ├── render/               the Three.js adapter — the only place that imports it
+│   │   ├── Arena.ts          renderer, scene, camera rig, world meshes
+│   │   ├── Pick.ts           one raycast per shot
+│   │   ├── Gun.ts            first-person viewmodel
+│   │   ├── EnemyView.ts      one enemy's meshes
+│   │   ├── Fx.ts             points + lines wrapping the pure pools
+│   │   ├── Materials.ts      shared geometry/material cache
+│   │   └── Textures.ts       procedural floor texture
+│   ├── audio/Sfx.ts          Web Audio synth
+│   └── ui/
+│       ├── Hud.ts            all DOM reads/writes
+│       ├── Settings.ts       crosshair presets, live tuning, localStorage
+│       └── Input.ts          keyboard, mouse, pointer lock
+└── tests/
+    ├── unit/                 Vitest — pure logic, runs in Node
+    └── e2e/smoke.spec.ts     Playwright — the built game in a real browser
 ```
 
 ### Architecture
 
-- **`config.js` is a leaf** — it imports nothing, so any module may depend on it.
-  Import direction is acyclic: `config` → `three`/`materials` → `collision` →
-  world/entity modules → `game` → `main`.
-- **`Game` is the shared context.** Subsystems receive the `Game` instance rather
-  than importing each other, so `Game.update()` is the single place where
-  cross-system behaviour and ordering are decided.
+- **Layers, not a god object.** `core/` and `game/` are pure: no Three.js, no
+  DOM, no `window`. They take numbers and return numbers, which is why the
+  interesting logic is unit-testable in Node. `render/` is the only layer that
+  knows Three.js exists; `app/Game.ts` is the only file that knows about all of
+  them.
+- **Pure code never calls back up.** `Enemy.update(dt, world)` receives the
+  handful of things it needs (`playerPos`, `neighbours`, `collide`,
+  `damagePlayer`) instead of the whole `Game`, so the dependency is explicit
+  and testable. The same idea carries `Weapon`'s hooks and `Input`'s hooks.
 - **State lives with its owner.** Player position is on `Player`, ammo and recoil
-  on `Weapon`, the enemy population on `WaveDirector`; only true game state
-  (`hp`, `score`, `wave`, `state`, feedback timers) lives on `Game`.
-- **Shared GPU resources are cached in `materials.js`** and must never be mutated
-  or disposed — per-instance state (health-bar fill, hit flash) is expressed as an
-  Object3D transform instead. The one exception is an enemy's body/head/leg
-  materials, which stay per-enemy because the hit-flash writes `emissive` on them.
+  on `Weapon`, the wave on `WaveDirector`; only true game state (`hp`, `score`,
+  `wave`, `state`, feedback timers) lives on `Game`.
+- **Fixed timestep.** The simulation advances in whole 1/60 s slices regardless
+  of frame rate, capped at 5 steps per frame so a backgrounded tab cannot spiral.
+  Rendering happens once per animation frame.
+- **Seeded RNG.** One `Rng` drives every random decision — spawn ring, spread
+  roll, starfield, floor grain — so a seed replays the same run and tests can
+  assert on it. There is no `Math.random()` in game logic.
+- **Hot paths are pooled.** Particles and tracers are pre-allocated typed arrays;
+  the wave director reuses its output array; enemy separation uses a spatial
+  hash instead of the old all-pairs scan.
+- **Shared GPU resources are cached in `render/Materials.ts`** and must never be
+  mutated or disposed. The exception is an enemy's body/head/leg materials,
+  which stay per-enemy because the hit flash writes `emissive` on them.
 
 ---
 
 ## Tuning the Game
 
-Everything a designer is likely to change is in `src/config.js`, grouped by
+Everything a designer is likely to change is in `src/game/config.ts`, grouped by
 concern — `WORLD`, `WEAPON`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`, `ENEMY`,
-`WAVES`, `FX`. Mesh-local dimensions (a wall's thickness, a barrel's length) stay
-in the module that owns that mesh.
+`WAVES`, `FX`. Each group is `as const`, so a typo is a compile error rather
+than an `undefined` at 3 a.m. Mesh-local dimensions (a wall's thickness, a
+barrel's length) stay in the module that owns that mesh.
 
-```js
+```ts
 export const WEAPON = {
   MAG: 12, RELOAD_T: 1.25, FIRE_T: 0.12,
   DMG: 34, HEAD_MULT: 2.5, HEADSHOT_BONUS: 25, SENS: 0.0023,
-  ...
-};
+  // ...
+} as const;
 ```
 
 ---
 
 ## Testing
 
-Append `?test` to the URL (e.g. `http://localhost:8000/?test`) to boot straight
+Append `?test` to the URL (e.g. `http://localhost:5173/?test`) to boot straight
 into a run without clicking and without requesting pointer lock.
 
-### Automated smoke test
+### Unit tests (Vitest)
 
-`tools/smoke_test.py` drives the game in headless Chromium and asserts boot,
-movement, shooting, reloading, damage, game over, and that GPU resources do not
-leak. It needs Playwright and a local server:
+Pure logic only, so they run in Node in about a second:
 
 ```bash
-python3 -m http.server 8000 &
-python3 tools/smoke_test.py
+npm test
 ```
 
-If Playwright is installed via pipx (as it is on some machines), run it with that
-interpreter:
+- `core` — the RNG is deterministic and uniform, damping is frame-rate
+  independent, and the fixed loop survives jittery frames and long stalls
+- `collision` — walls clamp, obstacles push out, embedded circles escape by the
+  nearest face; the arena layout fits inside the arena and leaves the spawn clear
+- `player` — gravity, jumping, damping, diagonal normalisation, no tunnelling
+- `weapon` — fire rate, auto-reload, dry fire, bloom clamp and decay, headshot damage
+- `enemy` / `enemies` — damage, death clock, attack cooldown, separation. The
+  spatial hash is run against the all-pairs loop it replaced: two identical
+  populations stepped side by side must end up in the same places
+- `waves` — composition, the scaling curve, spawn spacing, intermission
+- `fx` — pool wrap-around, gravity, floor bounce, fade, tracer ring reuse
+- `settings` — clamping, colour validation, persistence, corrupt storage
+- `config` — the tuning table is present, ordered and in range
+
+### End-to-end test (Playwright)
 
 ```bash
-~/.local/share/pipx/venvs/playwright/bin/python tools/smoke_test.py
+npx playwright install chromium   # first time only
+npm run test:e2e
 ```
 
-The test uses the system Chrome at `/usr/bin/google-chrome` when present, so it
-works without a separate `playwright install`.
+It builds the app, serves `dist/` with `vite preview`, and drives the real
+browser: boot with no console errors, wave spawn, look, shoot, reload, GPU
+resource convergence (the old code leaked two geometries per enemy), damage,
+death, and the crosshair panel. Waits are condition-based, so it works on
+software rendering as well as a GPU.
 
 ### Manual / automation hooks
 
@@ -182,38 +248,30 @@ __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', col
 
 ## Deployment
 
-The project is fully static. Any static host works, and because Three.js is loaded
-from a CDN at runtime there is no build config and no secrets. **Upload the whole
-folder** — the game is now multi-file.
+`npm run build` produces a fully static `dist/`. Upload **that folder** to any
+static host.
 
 ### GitHub Pages
 
 ```bash
-git add .
-git commit -m "..."
-git remote add origin https://github.com/<user>/<repo>.git
-git push -u origin main
+npm run build
+git add dist
+git commit -m "build"
+git push
 ```
 
-Then **Settings → Pages → Deploy from a branch → `main` / `root`**. Live at
-`https://<user>.github.io/<repo>/`.
+Then **Settings → Pages → Deploy from a branch → `main` / `dist`**.
+
+For a clean history, use a GitHub Action running `npm ci && npm run build` and
+uploading `dist/` as the Pages artifact instead of committing the build.
 
 ### Netlify / Vercel / Cloudflare Pages
 
-```bash
-npx netlify-cli deploy --prod --dir .
-npx vercel --prod
-```
-
-For Cloudflare Pages, connect the repo with an empty build command and `/` as the
-output directory.
+Build command `npm run build`, output directory `dist`.
 
 ---
 
 ## Troubleshooting
-
-**"Failed to load the Three.js CDN module"** — no internet, or a CDN is blocked.
-Reconnect and reload, or edit the URL list at the top of `src/three.js`.
 
 **Black screen** — WebGL is disabled. Enable hardware acceleration, or update
 graphics drivers.
@@ -221,7 +279,11 @@ graphics drivers.
 **Mouse doesn't move the camera** — pointer lock wasn't granted. Click the canvas
 to re-acquire it. Embedded previews and cross-origin iframes often block it.
 
-**Blank page from `file://`** — expected. Use a local server (see Setup).
+**`npm run dev` fails on install** — check `npm config get registry`; the build
+was developed against `https://registry.npmjs.org`.
 
-**Smoke test times out on boot** — the CDN fetch is slow. The test waits 90s for
-`window.__NEON`; give it a second run, or pre-warm by loading the page once.
+**E2E fails on boot** — run `npx playwright install chromium` first.
+
+**Changes to `src/game/` don't show up** — they should; the dev server is plain
+Vite with no plugin layer. If they don't, check `npm run typecheck` first — a
+type error can leave a stale bundle.
