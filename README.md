@@ -41,8 +41,8 @@ from a CDN at runtime.
 ## Setup & Running
 
 ```bash
-git clone https://github.com/farzadtaherzade/shooter-3d-treejs.git
-cd shooter-3d
+git clone https://github.com/farzadtaherzade/neon-arena.git
+cd neon-arena
 npm install
 npm run dev
 ```
@@ -96,7 +96,7 @@ npm run check      # tsc --noEmit + biome + vitest
 ## Project Structure
 
 ```
-shooter-3d/
+neon-arena/
 ├── index.html                markup only — no inline CSS or JS
 ├── vite.config.ts            dev server, build, and the Vitest config
 ├── playwright.config.ts      E2E against `vite preview`
