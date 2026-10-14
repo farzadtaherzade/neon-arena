@@ -92,5 +92,12 @@ function exposeTestApi(game) {
       textures: game.renderer.info.memory.textures,
       programs: game.renderer.info.programs?.length ?? 0,
     }),
+
+    crosshair: () => ({ ...game.settings.values }),
+
+    setCrosshair: patch => {
+      game.settings.set(patch);
+      return { ...game.settings.values };
+    },
   };
 }

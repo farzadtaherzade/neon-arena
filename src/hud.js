@@ -91,13 +91,16 @@ export class Hud {
   }
 
   /** Crosshair opens up as bloom accumulates, and steadies when standing still. */
-  setCrosshair(bloom, moving) {
-    const gap = CAMERA.CROSSHAIR_GAP_MIN + (bloom / WEAPON.BLOOM_MAX) * CAMERA.CROSSHAIR_GAP_SPAN;
+  setCrosshair(bloom, moving, settings) {
+    const gap = settings.bloom
+      ? CAMERA.CROSSHAIR_GAP_MIN + (bloom / WEAPON.BLOOM_MAX) * CAMERA.CROSSHAIR_GAP_SPAN
+      : settings.gap;
     if (this._last.gap !== gap) {
       this._last.gap = gap;
       this.crosshair.style.setProperty('--gap', gap + 'px');
     }
-    const opacity = moving || bloom > CAMERA.CROSSHAIR_BLOOM_FLOOR ? 1 : CAMERA.CROSSHAIR_STILL;
+    const still = !moving && bloom <= CAMERA.CROSSHAIR_BLOOM_FLOOR;
+    const opacity = !still || !settings.dimStill ? 1 : CAMERA.CROSSHAIR_STILL;
     if (this._last.crossOpacity !== opacity) {
       this._last.crossOpacity = opacity;
       this.crosshair.style.opacity = opacity;
@@ -146,7 +149,7 @@ export class Hud {
       this.reloadFill.style.width = weapon.reloadProgress * 100 + '%';
     }
 
-    this.setCrosshair(weapon.bloom, game.player.moving);
+    this.setCrosshair(weapon.bloom, game.player.moving, game.settings);
   }
 
   /** Red pulse plus damage vignette, with a floor that kicks in at low HP. */

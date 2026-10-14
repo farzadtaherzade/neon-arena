@@ -247,6 +247,42 @@ def main() -> int:
         dead = page.evaluate("() => window.__NEON.stats()")
         check("game over on death", dead["state"] == "gameover", dead)
 
+        # Crosshair settings: tuning, painting, persistence and input clamping.
+        # Run last — opening the panel mid-run pauses the game.
+        tuned = page.evaluate(
+            "() => window.__NEON.setCrosshair({ shape: 'circle', color: '#ff0000', lines: false })"
+        )
+        check("custom crosshair applied", tuned["shape"] == "circle" and not tuned["lines"], tuned)
+
+        painted = page.evaluate(
+            "() => ['crosshair', 'previewCross'].map("
+            "  id => getComputedStyle(document.getElementById(id)).getPropertyValue('--color').trim())"
+        )
+        check("crosshair and preview repainted", painted == ["#ff0000", "#ff0000"], painted)
+
+        stored = page.evaluate("() => localStorage.getItem('neon.crosshair')")
+        check("settings persisted to storage", '"circle"' in (stored or ""), stored)
+
+        clamped = page.evaluate(
+            "() => window.__NEON.setCrosshair({ lineLen: 9999, shape: 'nope', color: 'red' })"
+        )
+        check("out-of-range settings fall back to defaults",
+              clamped["lineLen"] == 30 and clamped["shape"] == "none"
+              and clamped["color"] == "#46e0ff", clamped)
+
+        page.keyboard.press("KeyC")
+        page.wait_for_timeout(200)
+        check(
+            "C key opens the settings panel",
+            page.evaluate("() => document.getElementById('settingsScreen').classList.contains('visible')"),
+        )
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+        check(
+            "Escape closes the settings panel",
+            not page.evaluate("() => document.getElementById('settingsScreen').classList.contains('visible')"),
+        )
+
         browser.close()
 
     print(f"\n{checks - len(failures)}/{checks} checks passed")
