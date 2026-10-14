@@ -203,6 +203,29 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForTimeout(150);
   expect((await stats(page)).hp).toBe(70);
 
+  // Clicks inside the open settings panel must not re-lock the pointer: that
+  // resumes the game underneath the panel and swallows the cursor, which is
+  // what made the panel look unclickable.
+  await page.keyboard.press('KeyC');
+  await page.waitForTimeout(200);
+  await page.locator('#presetList .preset').nth(2).click(); // CIRCLE
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+  expect(
+    await page.evaluate(() => document.getElementById('settingsScreen')?.classList.contains('visible')),
+  ).toBe(true);
+  // Opening the panel mid-game releases pointer lock, which pauses — and it must
+  // stay paused: re-locking here is what made the panel look unclickable.
+  expect((await stats(page)).state).toBe('paused');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  expect((await crosshair(page)).shape).toBe('circle'); // the preset click landed
+
+  // Resume the way a player does — a bare click re-acquires the pointer lock.
+  await page.mouse.click(640, 360);
+  await page.waitForTimeout(300);
+  expect((await stats(page)).state).toBe('playing');
+
   const info = await renderInfo(page);
   expect(info.calls).toBeGreaterThan(0);
   const shot = await page.screenshot();

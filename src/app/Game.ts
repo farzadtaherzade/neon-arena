@@ -105,6 +105,7 @@ export class Game {
     this.input = new Input(this.arena.renderer.domElement, {
       isPlaying: () => this.state === STATE.PLAYING,
       isPaused: () => this.state === STATE.PAUSED,
+      isSettingsOpen: () => this.settings.isOpen,
       onJump: () => this.player.queueJump(),
       onReload: () => this.weapon.startReload(),
       onLook: (dx, dy) => this.player.look(dx, dy),

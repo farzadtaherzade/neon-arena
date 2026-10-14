@@ -9,6 +9,7 @@
 export interface InputHooks {
   isPlaying(): boolean;
   isPaused(): boolean;
+  isSettingsOpen(): boolean;
   onJump(): void;
   onReload(): void;
   onLook(dx: number, dy: number): void;
@@ -72,8 +73,12 @@ export class Input {
     });
 
     // Any bare click re-acquires the cursor, unless an overlay is handling it.
+    // The settings panel is a full-screen overlay sitting on top of a paused
+    // game, so without this guard its first click re-locks the pointer: the game
+    // resumes under the panel and the cursor disappears, making it unusable.
     document.addEventListener('click', () => {
       if (this.locked) return;
+      if (hooks.isSettingsOpen()) return;
       if (hooks.isPlaying()) hooks.onLockRequest();
       else if (hooks.isPaused()) hooks.onLockRequest();
     });
