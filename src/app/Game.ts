@@ -63,6 +63,8 @@ export class Game {
   readonly waves = new WaveDirector();
   readonly arena: Arena;
   aliveCount = 0;
+  /** Prevents a replayed cleared update from repeating wave banners. */
+  private waveClearPending = false;
 
   private rng = new Rng(0xc0ffee);
   private collision = new CollisionWorld();
@@ -164,6 +166,7 @@ export class Game {
   start(skipLock = false): void {
     this.sfx.init();
     this.music.init();
+    this.music.setMuted(this.settings.values.mute);
     this.music.start();
     this.reset();
     this.beginWave(1);
@@ -232,6 +235,7 @@ export class Game {
 
   private beginWave(n: number): void {
     this.wave = n;
+    this.waveClearPending = false;
     this.waves.start(n);
     this.hud.showBanner(`WAVE ${n}`, n === 1 ? 'GET READY' : 'HOSTILES INCOMING');
     this.sfx.wave();
@@ -314,6 +318,7 @@ export class Game {
     }
     this.hostiles.length = 0;
     this.aliveCount = 0;
+    this.waveClearPending = false;
   }
 
   // --------------------------------------------------------------------- bombs
@@ -481,10 +486,11 @@ export class Game {
     for (const h of this.hostiles) if (h.enemy.state === 'alive') alive++;
     this.aliveCount = alive;
 
-    if (result.cleared) {
+    if (result.cleared && !this.waveClearPending) {
       this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
       this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
       this.sfx.wave();
+      this.waveClearPending = true;
     }
 
     // WaveDirector advances after the intermission; mirror that here instead of
@@ -494,6 +500,7 @@ export class Game {
       this.wave = this.waves.wave;
       this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
       this.sfx.wave();
+      this.waveClearPending = false;
     }
   }
 
