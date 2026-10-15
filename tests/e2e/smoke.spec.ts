@@ -23,6 +23,8 @@ interface EnemyPos {
   z: number;
   state: string;
   hp: number;
+  kind: string;
+  mode: string;
 }
 interface CamState {
   px: number;
@@ -140,6 +142,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(boot.hp).toBe(100);
   expect(boot.ammo).toBe(12);
   expect(boot.hostiles).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(true);
 
   const alive = await enemies(page);
   expect(alive.length).toBeGreaterThan(0);
@@ -217,6 +220,8 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // Opening the panel mid-game releases pointer lock, which pauses — and it must
   // stay paused: re-locking here is what made the panel look unclickable.
   expect((await stats(page)).state).toBe('paused');
+  // The viewmodel must survive the pause, not just the resume.
+  expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(true);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   expect((await crosshair(page)).shape).toBe('circle'); // the preset click landed
@@ -225,6 +230,77 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.mouse.click(640, 360);
   await page.waitForTimeout(300);
   expect((await stats(page)).state).toBe('playing');
+  expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(true);
+
+  // --- minimap ---------------------------------------------------------------
+  // A canvas that is wired up but never painted is the failure this catches.
+  const minimapLit = await page.evaluate(() => {
+    const c = document.getElementById('minimap') as HTMLCanvasElement | null;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return -1;
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let lit = 0;
+    for (let i = 3; i < d.length; i += 4) if ((d[i] ?? 0) > 8) lit++;
+    return lit;
+  });
+  expect(minimapLit).toBeGreaterThan(500);
+
+  // Headroom: the bomb checks below stand still on purpose.
+  await page.evaluate(() => window.__NEON.hurt(-50));
+
+  // --- the bomb warns, and can be shot out of the air -------------------------
+  const spot = await cam(page);
+  await page.evaluate((p) => window.__NEON.spawnBomb(p.x + 2, p.z), { x: spot.px, z: spot.pz });
+  await page.waitForFunction(() => (window.__NEON.bombs() as number[]).length === 1, undefined, {
+    timeout: 5000,
+  });
+  // A warning while the fuse burns: a silent bomb would be a cheap death.
+  await page.waitForFunction(
+    () => document.getElementById('bombWarn')?.classList.contains('on') === true,
+    undefined,
+    { timeout: 5000 },
+  );
+  expect(await page.evaluate(() => document.getElementById('bombWarn')?.classList.contains('on'))).toBe(true);
+
+  await page.evaluate(() => window.__NEON.teleportEnemies(24)); // clear the firing line
+  const scoreBeforeShot = (await stats(page)).score;
+  await page.evaluate(
+    (p) => {
+      const c = window.__NEON.camState() as CamState;
+      const d = Math.hypot(p.x - c.px, p.z - c.pz);
+      window.__NEON.aim(Math.atan2(-(p.x - c.px), -(p.z - c.pz)), Math.atan2(0.35 - c.py, d));
+    },
+    { x: spot.px + 2, z: spot.pz },
+  );
+  await page.mouse.down();
+  await page.waitForFunction(() => (window.__NEON.bombs() as number[]).length === 0, undefined, {
+    timeout: 20_000,
+  });
+  await page.mouse.up();
+  expect((await stats(page)).score).toBeGreaterThan(scoreBeforeShot);
+
+  // --- left alone, the fuse runs out and the blast reaches the player ---------
+  const hpBeforeFuse = (await stats(page)).hp;
+  const spot2 = await cam(page);
+  await page.evaluate((p) => window.__NEON.spawnBomb(p.x + 2, p.z), { x: spot2.px, z: spot2.pz });
+  await page.waitForFunction(
+    (hp) => (window.__NEON.bombs() as number[]).length === 0 && (window.__NEON.stats() as Stats).hp < hp,
+    hpBeforeFuse,
+    { timeout: 20_000 },
+  );
+  expect((await stats(page)).hp).toBeLessThan(hpBeforeFuse);
+  expect(await page.evaluate(() => document.getElementById('bombWarn')?.classList.contains('on'))).toBe(
+    false,
+  );
+
+  // --- the sapper joins from wave 5 ------------------------------------------
+  await page.evaluate(() => window.__NEON.forceWave(5));
+  await page.waitForFunction(
+    () => (window.__NEON.enemyPos() as EnemyPos[]).some((e) => e.kind === 'sapper'),
+    undefined,
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => window.__NEON.teleportEnemies(24));
 
   const info = await renderInfo(page);
   expect(info.calls).toBeGreaterThan(0);
@@ -234,6 +310,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.evaluate(() => window.__NEON.hurt(999));
   await page.waitForTimeout(300);
   expect((await stats(page)).state).toBe('gameover');
+  expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(false);
 
   // --- crosshair settings (last: opening the panel pauses the game) ---------
   const tuned = await setCrosshair(page, { shape: 'circle', color: '#ff0000', lines: false });

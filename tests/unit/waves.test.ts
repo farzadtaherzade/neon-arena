@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { ENEMY, WAVES } from '../../src/game/config';
+import { ENEMY, SAPPER, WAVES } from '../../src/game/config';
 import { composition, dmgBonus, speedScale, WaveDirector } from '../../src/game/waves';
 
 const count = (list: string[], kind: string) => list.filter((k) => k === kind).length;
@@ -27,7 +27,15 @@ describe('composition', () => {
 
   it('lists only real enemy kinds', () => {
     const kinds = new Set(composition(9));
-    for (const k of kinds) expect(['grunt', 'runner', 'tank']).toContain(k);
+    for (const k of kinds) expect(['grunt', 'runner', 'tank', 'sapper']).toContain(k);
+  });
+
+  it('adds sappers from wave 5, one more every five waves after', () => {
+    expect(count(composition(SAPPER.START_WAVE - 1), 'sapper')).toBe(0);
+    expect(count(composition(SAPPER.START_WAVE), 'sapper')).toBe(1);
+    expect(count(composition(9), 'sapper')).toBe(1);
+    expect(count(composition(10), 'sapper')).toBe(2);
+    expect(count(composition(15), 'sapper')).toBe(3);
   });
 });
 

@@ -1,8 +1,21 @@
 import * as THREE from 'three';
 
 import { Sfx } from '../audio/Sfx';
+import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
-import { CAMERA, FEEDBACK, type GameState, SCREEN, START_HP, STATE, WAVES, WEAPON } from '../game/config';
+import { Bomb } from '../game/bomb';
+import {
+  BOMB,
+  CAMERA,
+  FEEDBACK,
+  type GameState,
+  SCREEN,
+  START_HP,
+  STATE,
+  WAVES,
+  WEAPON,
+  WORLD,
+} from '../game/config';
 import { SpatialHash } from '../game/enemies';
 import { Enemy } from '../game/enemy';
 import { Player } from '../game/player';
@@ -10,12 +23,14 @@ import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
 import { CollisionWorld } from '../game/world/collision';
 import { Arena } from '../render/Arena';
+import { BombView } from '../render/BombView';
 import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
 import { Pick } from '../render/Pick';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
+import { Minimap } from '../ui/Minimap';
 import { Settings } from '../ui/Settings';
 
 interface Hostile {
@@ -63,6 +78,16 @@ export class Game {
   readonly hostiles: Hostile[] = [];
   private hash = new SpatialHash();
 
+  /** Live sapper bombs and the meshes backing them. */
+  private bombs: Bomb[] = [];
+  private bombViews = new Map<Bomb, BombView>();
+  private minimap: Minimap;
+
+  /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
+  get gunVisible(): boolean {
+    return this.gun.group.visible;
+  }
+
   private scratch = new THREE.Vector3();
   private tracerEnd = new THREE.Vector3();
   private camQuat = new THREE.Quaternion();
@@ -78,11 +103,14 @@ export class Game {
     reloadProgress: 0,
     bloom: 0,
     moving: false,
+    bombDist: Number.POSITIVE_INFINITY,
+    bombFuse: 0,
   };
 
   constructor(readonly test = false) {
     this.arena = new Arena(this.collision, this.rng);
     this.fx = new Fx(this.arena.scene);
+    this.minimap = new Minimap();
     this.arena.camera.add(this.gun.group);
     this.pick.add(...this.arena.solids);
 
@@ -128,7 +156,6 @@ export class Game {
     this.sfx.init();
     this.reset();
     this.beginWave(1);
-    this.gun.show(true);
     this.hud.setVisible(true);
     this.state = STATE.PLAYING;
 
@@ -144,6 +171,7 @@ export class Game {
     this.weapon.reset();
     this.player.reset();
     this.clearHostiles();
+    this.clearBombs();
 
     this.hp = START_HP;
     this.score = 0;
@@ -160,7 +188,6 @@ export class Game {
   private gameOver(): void {
     this.state = STATE.GAMEOVER;
     this.input.firing = false;
-    this.gun.show(false);
     this.hud.setVisible(false);
     this.input.release();
     this.hud.setFinalStats({ score: this.score, wave: this.wave, kills: this.kills });
@@ -212,6 +239,11 @@ export class Game {
     this.fx.tracers.fire(this.scratch, hit ? hit.point : this.missEnd());
 
     if (!hit) return;
+
+    if (hit.bomb) {
+      this.defuse(hit.bomb);
+      return;
+    }
 
     if (hit.enemy) {
       const headshot = hit.part === 'head';
@@ -272,6 +304,106 @@ export class Game {
     this.aliveCount = 0;
   }
 
+  // --------------------------------------------------------------------- bombs
+
+  /** A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc. */
+  plantBomb(from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean): void {
+    const limit = WORLD.HALF - WORLD.WALL_INSET;
+    const bomb = new Bomb(clamp(to.x, -limit, limit), clamp(to.z, -limit, limit));
+    const view = new BombView(bomb);
+    view.addTo(this.arena.scene);
+    this.pick.add(view.mesh);
+    this.bombs.push(bomb);
+    this.bombViews.set(bomb, view);
+
+    if (thrown) this.fx.fire({ x: from.x, y: 1.1, z: from.z }, { x: bomb.pos.x, y: 0.4, z: bomb.pos.z });
+
+    // Warn the player only when it lands close enough to matter.
+    const dist = Math.hypot(this.player.position.x - bomb.pos.x, this.player.position.z - bomb.pos.z);
+    if (thrown || dist <= BOMB.WARN_RADIUS) this.sfx.alarm();
+  }
+
+  private updateBombs(dt: number): void {
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      const bomb = this.bombs[i];
+      if (!bomb || !bomb.update(dt)) continue;
+      this.removeBomb(bomb);
+      this.detonate(bomb);
+    }
+  }
+
+  private removeBomb(bomb: Bomb): void {
+    const view = this.bombViews.get(bomb);
+    if (view) {
+      view.dispose(this.arena.scene);
+      this.pick.remove(view.mesh);
+      this.bombViews.delete(bomb);
+    }
+    const i = this.bombs.indexOf(bomb);
+    if (i >= 0) this.bombs.splice(i, 1);
+  }
+
+  /** Blast: hurts the player by falloff and shreds anything nearby — including other enemies. */
+  private detonate(bomb: Bomb): void {
+    const { x, z } = bomb.pos;
+    const r = bomb.radius;
+
+    this.fx.burst({ x, y: 0.7, z, color: 0xffa23a, count: 40, speed: 9, life: 0.6, gravity: 6 }, this.rng);
+    this.fx.burst({ x, y: 0.4, z, color: 0xff3a22, count: 24, speed: 6, life: 0.8, gravity: 4 }, this.rng);
+    this.sfx.explode();
+    this.feedback.shakeT = Math.max(this.feedback.shakeT, BOMB.SHAKE);
+
+    const pd = Math.hypot(this.player.position.x - x, this.player.position.z - z);
+    if (pd < r) this.damagePlayer(BOMB.PLAYER_DMG * (1 - pd / r));
+
+    for (const h of this.hostiles) {
+      const enemy = h.enemy;
+      if (enemy.state !== 'alive') continue;
+      const d = Math.hypot(enemy.pos.x - x, enemy.pos.z - z);
+      if (d >= r) continue;
+      if (enemy.takeDamage(BOMB.ENEMY_DMG)) this.killEnemy(enemy, false);
+      else {
+        const inv = 1 / (d || 1);
+        enemy.knockback((enemy.pos.x - x) * inv, (enemy.pos.z - z) * inv);
+      }
+    }
+  }
+
+  /** Shooting a live bomb pops it harmlessly for bonus points. */
+  private defuse(bomb: Bomb): void {
+    const { x, z } = bomb.pos;
+    this.removeBomb(bomb);
+    this.fx.burst({ x, y: 0.4, z, color: 0x66e0ff, count: 16, speed: 4, life: 0.45, gravity: 6 }, this.rng);
+    this.score += BOMB.DEFUSE_SCORE;
+    this.feedback.hitT = 1;
+    this.sfx.hit();
+  }
+
+  private clearBombs(): void {
+    for (const bomb of this.bombs) {
+      const view = this.bombViews.get(bomb);
+      if (!view) continue;
+      view.dispose(this.arena.scene);
+      this.pick.remove(view.mesh);
+    }
+    this.bombs.length = 0;
+    this.bombViews.clear();
+  }
+
+  // E2E hooks: plant a bomb and jump waves without a full playthrough.
+
+  spawnBomb(x: number, z: number): void {
+    this.plantBomb({ x, z }, { x, z }, false);
+  }
+
+  get bombFuses(): number[] {
+    return this.bombs.map((b) => b.fuse);
+  }
+
+  forceWave(n: number): void {
+    this.beginWave(n);
+  }
+
   // ------------------------------------------------------------------- update
 
   /** One fixed simulation step. */
@@ -282,6 +414,7 @@ export class Game {
       this.player.update(dt, this.input.move(), this.collision);
       this.weapon.update(dt, this.elapsed, this.input.firing);
       this.updateWaves(dt);
+      this.updateBombs(dt);
     } else if (this.state === STATE.MENU) {
       const pose = this.player.menuPose(this.elapsed);
       this.player.position.x = pose.x;
@@ -314,8 +447,11 @@ export class Game {
     const world = {
       playerPos: this.player.position,
       neighbours: EMPTY,
+      hostileCount: this.waves.hostileCount(this.aliveCount),
       collide: (p: { x: number; z: number }, r: number) => this.collision.resolveCircle(p, r),
       damagePlayer: (amount: number) => this.damagePlayer(amount),
+      plantBomb: (from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean) =>
+        this.plantBomb(from, to, thrown),
     };
 
     for (let i = this.hostiles.length - 1; i >= 0; i--) {
@@ -349,6 +485,11 @@ export class Game {
     const weapon = this.weapon;
     const { yawObj, pitchObj } = this.arena.rig;
 
+    // The viewmodel belongs to a live run: visible while playing and behind the
+    // pause overlay, hidden on the title and game-over screens. Driving this
+    // from state (not from a transition) is what keeps it alive across resume.
+    this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
+
     if (this.state === STATE.PLAYING) {
       yawObj.position.set(player.position.x, player.position.y, player.position.z);
       yawObj.rotation.y = player.yaw;
@@ -363,12 +504,24 @@ export class Game {
       const dip = weapon.reloading ? Math.sin(weapon.reloadProgress * Math.PI) : 0;
       this.gun.pose(player.bobPhase, weapon.kick, dip, this.input.strafe);
       this.gun.decay(dt, weapon.flashT);
-    } else {
-      this.gun.show(false);
     }
 
     this.arena.camera.getWorldQuaternion(this.camQuat);
     for (const h of this.hostiles) h.view.sync(player.position, this.camQuat);
+
+    // Bombs blink, and the closest live one drives the HUD warning.
+    let nearestD = Number.POSITIVE_INFINITY;
+    let nearestFuse = 0;
+    const px = player.position.x;
+    const pz = player.position.z;
+    for (const bomb of this.bombs) {
+      this.bombViews.get(bomb)?.sync(this.elapsed);
+      const d = Math.hypot(bomb.pos.x - px, bomb.pos.z - pz);
+      if (d < nearestD) {
+        nearestD = d;
+        nearestFuse = bomb.fuse;
+      }
+    }
 
     this.fx.update(dt);
     this.arena.render();
@@ -385,6 +538,12 @@ export class Game {
     m.reloadProgress = weapon.reloadProgress;
     m.bloom = weapon.bloom;
     m.moving = player.moving;
+    m.bombDist = nearestD;
+    m.bombFuse = nearestFuse;
+
+    if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
+      this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed);
+    }
 
     this.hud.setHitmark(this.feedback.hitT);
     this.hud.setVignette(m, this.elapsed);

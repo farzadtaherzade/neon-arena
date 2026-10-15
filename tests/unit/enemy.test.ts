@@ -1,21 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { ENEMY, ENEMY_TYPES } from '../../src/game/config';
+import { ENEMY, ENEMY_TYPES, SAPPER } from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
+import type { Vec2 } from '../../src/game/world/collision';
 
 interface TestWorld extends EnemyWorld {
   hurt: number;
+  bombs: { from: Vec2; to: Vec2; thrown: boolean }[];
 }
 
 function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []): TestWorld {
   const w: TestWorld = {
     playerPos,
     neighbours,
-    collide: () => {},
+    hostileCount: 99,
     hurt: 0,
+    bombs: [],
+    collide: () => {},
     damagePlayer(amount: number) {
       w.hurt += amount;
+    },
+    plantBomb(from: Vec2, to: Vec2, thrown: boolean) {
+      w.bombs.push({ from, to, thrown });
     },
   };
   return w;
@@ -111,6 +118,48 @@ describe('Enemy', () => {
     for (let i = 0; i < 30; i++) e.update(1 / 60, makeWorld({ x: 0, z: 50 }));
     expect(e.bounce).not.toBe(bounce0);
     expect(Math.abs(e.legSwing)).toBeLessThanOrEqual(ENEMY.LEG_SWING + 1e-9);
+  });
+});
+
+describe('Sapper', () => {
+  it('keeps its distance and never charges', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('sapper', 0, 6);
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(e.sapperMode).toBe('lurk');
+    expect(Math.hypot(e.pos.x, e.pos.z)).toBeGreaterThan(6);
+    expect(world.hurt).toBe(0);
+    expect(world.bombs).toHaveLength(0);
+  });
+
+  it('throws a bomb at the player when far away', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('sapper', 0, 20);
+    e.plantT = 0.05;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(world.bombs).toHaveLength(1);
+    expect(world.bombs[0]!.thrown).toBe(true);
+    expect(world.bombs[0]!.to).toEqual({ x: 0, z: 0 });
+  });
+
+  it('drops the bomb at its feet when the player is close', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('sapper', 0, 5);
+    e.plantT = 0.05;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(world.bombs[0]!.thrown).toBe(false);
+    expect(world.bombs[0]!.to.x).toBeCloseTo(e.pos.x, 10);
+    expect(world.bombs[0]!.to.z).toBeCloseTo(e.pos.z, 10);
+  });
+
+  it('hunts the player once the herd drops below the threshold', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.hostileCount = SAPPER.HUNT_AT - 1;
+    const e = spawn('sapper', 0, 20);
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(e.sapperMode).toBe('hunt');
+    expect(Math.hypot(e.pos.x, e.pos.z)).toBeLessThan(20);
+    expect(world.hurt).toBe(0);
   });
 });
 

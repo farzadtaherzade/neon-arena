@@ -121,4 +121,19 @@ export class Sfx {
       this.osc('sine', 784, 784, t + 0.15, 0.2, 0.2);
     });
   }
+
+  /** Bomb planted nearby — a two-tone alert, not the "took damage" sting. */
+  alarm(): void {
+    this.guard((t) => {
+      this.osc('square', 880, 880, t, 0.09, 0.22);
+      this.osc('square', 620, 620, t + 0.13, 0.11, 0.22);
+    });
+  }
+
+  explode(): void {
+    this.guard((t) => {
+      this.noise(t, 0.5, 0.65, 700);
+      this.osc('sine', 170, 28, t, 0.55, 0.5);
+    });
+  }
 }

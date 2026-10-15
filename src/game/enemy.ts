@@ -1,6 +1,6 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { ENEMY, ENEMY_TYPES, type EnemyKind } from './config';
+import { ENEMY, ENEMY_TYPES, type EnemyKind, SAPPER } from './config';
 import type { Vec3 } from './player';
 import type { Vec2 } from './world/collision';
 
@@ -9,8 +9,12 @@ export interface EnemyWorld {
   playerPos: Vec2;
   /** Live separation candidates from the population's spatial hash. */
   neighbours: readonly Enemy[];
+  /** Live + queued hostiles; drives the sapper's hunt trigger. */
+  hostileCount: number;
   collide(pos: Vec2, r: number): void;
   damagePlayer(amount: number): void;
+  /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc. */
+  plantBomb(from: Vec2, to: Vec2, thrown: boolean): void;
 }
 
 export interface EnemyStats {
@@ -42,6 +46,11 @@ export class Enemy {
   flashHex = 0xffffff;
   deathT = 0;
 
+  /** Sapper only: seconds until the next plant, wander heading, current mode. */
+  plantT = 0;
+  wanderA = 0;
+  sapperMode: 'lurk' | 'hunt' = 'lurk';
+
   /** Distance of the nearest living neighbour at the last separation pass. */
   private reachPad: number = ENEMY.REACH_PAD;
 
@@ -64,6 +73,9 @@ export class Enemy {
     this.pos.z = z;
     this.cool = rng.range(0.5, 1);
     this.phase = rng.next() * 6;
+    // Stagger the first plant so a wave of sappers doesn't fire in lockstep.
+    this.plantT = rng.range(SAPPER.PLANT_T * 0.4, SAPPER.PLANT_T);
+    this.wanderA = rng.next() * Math.PI * 2;
   }
 
   get hp(): number {
@@ -92,14 +104,9 @@ export class Enemy {
   update(dt: number, world: EnemyWorld): boolean {
     if (this.state === 'dying') return this.updateDeath(dt);
 
-    const { x, z } = this.pos;
-    const dx = world.playerPos.x - x;
-    const dz = world.playerPos.z - z;
-    const dist = Math.hypot(dx, dz);
     this.cool -= dt;
-
-    if (dist > this.reachPad) this.chase(dt, dx, dz, dist, world);
-    else this.attack(world);
+    if (this.kind === 'sapper') this.updateSapper(dt, world);
+    else this.updateChaser(dt, world);
 
     this.flashT = Math.max(0, this.flashT - dt);
     this.phase += dt * (3 + this.stats.speed * 1.6);
@@ -122,11 +129,72 @@ export class Enemy {
     return Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
   }
 
-  private chase(dt: number, dx: number, dz: number, dist: number, world: EnemyWorld): void {
-    const inv = 1 / (dist || 1);
-    const mx = dx * inv;
-    const mz = dz * inv;
+  /** Chase and melee — grunt, runner and tank. */
+  private updateChaser(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > this.reachPad) this.chase(dt, dx, dz, dist, world);
+    else this.attack(world);
+  }
 
+  /**
+   * The sapper. While the herd is healthy it keeps its distance and plants a
+   * bomb every `PLANT_T` seconds — throwing one at the player from range, or
+   * dropping one in its tracks up close. Once fewer than `HUNT_AT` hostiles
+   * remain it abandons the bombs and charges.
+   */
+  private updateSapper(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const hunting = world.hostileCount < SAPPER.HUNT_AT;
+    this.sapperMode = hunting ? 'hunt' : 'lurk';
+
+    if (hunting) {
+      if (dist > this.reachPad) this.chase(dt, dx, dz, dist, world, SAPPER.HUNT_SPEED);
+      else this.attack(world);
+      return;
+    }
+
+    const inv = 1 / (dist || 1);
+    this.plantT -= dt;
+    if (this.plantT <= 0) {
+      this.plantT = SAPPER.PLANT_T;
+      const thrown = dist > SAPPER.THROW_DIST;
+      world.plantBomb(this.pos, thrown ? world.playerPos : this.pos, thrown);
+    }
+
+    // Back away when the player is too close, otherwise wander.
+    let mx: number;
+    let mz: number;
+    if (dist < SAPPER.KEEP_DIST) {
+      mx = -dx * inv;
+      mz = -dz * inv;
+    } else {
+      mx = Math.sin(this.wanderA);
+      mz = Math.cos(this.wanderA);
+    }
+    this.steer(dt, mx, mz, this.stats.speed * SAPPER.LURK_GAIN, world);
+    this.wanderA += Math.sin(this.phase * 0.7) * SAPPER.WANDER_TURN * dt;
+
+    if (dist <= this.reachPad) this.attack(world);
+  }
+
+  private chase(
+    dt: number,
+    dx: number,
+    dz: number,
+    dist: number,
+    world: EnemyWorld,
+    speed = this.stats.speed,
+  ): void {
+    const inv = 1 / (dist || 1);
+    this.steer(dt, dx * inv, dz * inv, speed, world);
+  }
+
+  /** Steer toward a unit direction at `speed`, with neighbour separation. */
+  private steer(dt: number, mx: number, mz: number, speed: number, world: EnemyWorld): void {
     // Separation so a crowd fans out instead of stacking into one silhouette.
     let sx = 0;
     let sz = 0;
@@ -143,8 +211,8 @@ export class Enemy {
     }
 
     const k = dampFactor(ENEMY.MOVE_DAMP, dt);
-    const targetVx = (mx + sx * ENEMY.SEPARATION_FORCE) * this.stats.speed;
-    const targetVz = (mz + sz * ENEMY.SEPARATION_FORCE) * this.stats.speed;
+    const targetVx = (mx + sx * ENEMY.SEPARATION_FORCE) * speed;
+    const targetVz = (mz + sz * ENEMY.SEPARATION_FORCE) * speed;
     this.vx += (targetVx - this.vx) * k;
     this.vz += (targetVz - this.vz) * k;
     this.pos.x += this.vx * dt;

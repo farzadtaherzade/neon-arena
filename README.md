@@ -7,16 +7,29 @@ Built with **Vite + TypeScript**.
 
 ---
 
+## Screenshot
+
+![NEON ARENA — a sapper's bomb counting down with the radar in the corner](docs/screenshot-sapper.png)
+
+A **Sapper** has just planted a bomb mid-wave: the blast ring is marked on the
+floor, the `BOMB` countdown is up, and the radar (top right) shows the pack
+closing in — including the sapper's green blip.
+
+---
+
 ## Features
 
 - **FPS controls** — WASD movement, mouse look via Pointer Lock, sprint, jump
 - **Weapon system** — 12-round magazine, infinite reserve, reload, recoil kick, muzzle flash, spread bloom
-- **Three enemy types**
+- **Four enemy types**
   | Type | HP (wave 1) | Speed | Damage | Score | Behaviour |
   |---|---|---|---|---|---|
   | Grunt | 60 | 3.4 | 10 | 100 | Standard chaser |
   | Runner | 30 | 6.2 | 7 | 150 | Fast, fragile |
   | Tank | 200 | 2.2 | 22 | 300 | Slow, high HP, big damage |
+  | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; charges once fewer than 5 hostiles remain |
+- **Sapper & bombs** — from wave 5 a sapper stalks you, keeping its distance and planting a fused bomb every 6 seconds (thrown at you from afar, dropped in its tracks up close). Shoot a live bomb to defuse it for bonus points; leave it and the blast hurts you *and* nearby enemies. The tab reddens and a tone sounds when a bomb lands close
+- **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius
 - **Wave system** — enemy count, HP and speed scale per wave; clearing a wave restores 25 HP
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
@@ -117,6 +130,8 @@ neon-arena/
 │   │   ├── weapon.ts         magazine, reload, recoil/bloom/spread
 │   │   ├── enemy.ts          one hostile: steering, health, death clock
 │   │   ├── enemies.ts        spatial hash for enemy separation
+│   │   ├── bomb.ts           a planted bomb: fuse, radius, detonation
+│   │   ├── minimap.ts        player-up world→radar projection (pure)
 │   │   ├── waves.ts          wave composition, spawn pacing, intermission
 │   │   ├── fx.ts             particle pool + tracer ring
 │   │   └── world/
@@ -127,12 +142,14 @@ neon-arena/
 │   │   ├── Pick.ts           one raycast per shot
 │   │   ├── Gun.ts            first-person viewmodel
 │   │   ├── EnemyView.ts      one enemy's meshes
+│   │   ├── BombView.ts       a bomb's meshes + blink
 │   │   ├── Fx.ts             points + lines wrapping the pure pools
 │   │   ├── Materials.ts      shared geometry/material cache
 │   │   └── Textures.ts       procedural floor texture
 │   ├── audio/Sfx.ts          Web Audio synth
 │   └── ui/
 │       ├── Hud.ts            all DOM reads/writes
+│       ├── Minimap.ts        canvas radar drawing
 │       ├── Settings.ts       crosshair presets, live tuning, localStorage
 │       └── Input.ts          keyboard, mouse, pointer lock
 └── tests/
@@ -240,6 +257,10 @@ __NEON.aim(yaw, pitch)
 __NEON.enemyPos()         // positions / state / hp of all enemies
 __NEON.camState()         // player position and camera angles
 __NEON.renderInfo()       // draw calls, geometry/texture counts — leak checks
+__NEON.gunVisible()       // is the first-person weapon on screen
+__NEON.bombs()            // remaining fuse of every live bomb
+__NEON.spawnBomb(x, z)    // plant a bomb at a spot (automation)
+__NEON.forceWave(n)       // jump straight to wave n
 __NEON.crosshair()        // current crosshair settings
 __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', color: '#ff0000' }
 ```

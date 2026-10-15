@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Rng } from '../core/rng';
+import type { Bomb } from '../game/bomb';
 import type { Enemy } from '../game/enemy';
 
 export type HitPart = 'body' | 'head' | 'wall';
@@ -8,6 +9,7 @@ export type HitPart = 'body' | 'head' | 'wall';
 export interface ShotHit {
   point: THREE.Vector3;
   enemy: Enemy | null;
+  bomb: Bomb | null;
   part: HitPart;
 }
 
@@ -24,7 +26,7 @@ export class Pick {
 
   private ray = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
-  private out: ShotHit = { point: new THREE.Vector3(), enemy: null, part: 'wall' };
+  private out: ShotHit = { point: new THREE.Vector3(), enemy: null, bomb: null, part: 'wall' };
 
   add(...meshes: THREE.Object3D[]): void {
     this.objects.push(...meshes);
@@ -52,8 +54,11 @@ export class Pick {
     const first = hits[0];
     if (!first) return null;
 
-    const data = (first.object as THREE.Mesh).userData as { enemy?: Enemy; part?: HitPart } | undefined;
+    const data = (first.object as THREE.Mesh).userData as
+      | { enemy?: Enemy; bomb?: Bomb; part?: HitPart }
+      | undefined;
     this.out.point.copy(first.point);
+    this.out.bomb = data?.bomb ?? null;
     if (data?.enemy) {
       this.out.enemy = data.enemy;
       this.out.part = data.part ?? 'body';

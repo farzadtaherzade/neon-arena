@@ -499,6 +499,56 @@ input.toggle {
   color: #5d6a80;
 }
 
+/* ------------------------------------------------------------- minimap */
+#minimapWrap {
+  position: absolute;
+  right: 20px;
+  top: 18px;
+  width: 168px;
+  height: 168px;
+}
+#minimap {
+  width: 168px;
+  height: 168px;
+  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.7));
+}
+
+/* -------------------------------------------------- bomb proximity warning */
+#bombWarn {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  box-shadow: inset 0 0 140px rgba(255, 45, 40, 0.6);
+  transition: opacity 0.15s;
+}
+#bombWarn.on {
+  opacity: 1;
+  animation: bombPulse 0.5s ease-in-out infinite;
+}
+#bombWarnText {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  text-align: center;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #ff6a5a;
+  text-shadow: 0 0 18px rgba(255, 45, 40, 0.9);
+}
+
+@keyframes bombPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 @keyframes pulse {
   0%,
   100% {

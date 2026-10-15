@@ -1,4 +1,4 @@
-import { CAMERA, FEEDBACK, SCREEN, type ScreenName, WEAPON } from '../game/config';
+import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName, WEAPON } from '../game/config';
 import type { CrosshairSettings } from './Settings';
 
 /** What the HUD reads each frame. Kept structural so `Game` doesn't leak itself. */
@@ -14,6 +14,9 @@ export interface HudModel {
   reloadProgress: number;
   bloom: number;
   moving: boolean;
+  /** Distance to the nearest live bomb, and its remaining fuse. */
+  bombDist: number;
+  bombFuse: number;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -47,6 +50,8 @@ export class Hud {
   private bannerBig = $('bannerBig');
   private bannerSub = $('bannerSub');
   private finalStats = $('finalStats');
+  private bombWarn = $('bombWarn');
+  private bombWarnText = $('bombWarnText');
 
   private screens: Record<Exclude<ScreenName, 'none'>, HTMLElement> = {
     [SCREEN.START]: $('startScreen'),
@@ -90,6 +95,7 @@ export class Hud {
     this.hitmark.classList.remove('kill');
     this.vignette.style.opacity = '0';
     this.reloadBar.style.opacity = '0';
+    this.bombWarn.classList.remove('on');
     this.last = {};
   }
 
@@ -177,6 +183,22 @@ export class Hud {
     }
 
     this.setCrosshair(model.bloom, model.moving, settings);
+    this.setThreat(model.bombDist, model.bombFuse);
+  }
+
+  /** Red screen pulse plus a countdown while a live bomb is close. */
+  setThreat(dist: number, fuse: number): void {
+    const on = dist <= BOMB.WARN_RADIUS;
+    if (this.last.threatOn !== on) {
+      this.last.threatOn = on;
+      this.bombWarn.classList.toggle('on', on);
+    }
+    if (!on) return;
+    const label = `⚠ BOMB ${fuse.toFixed(1)}s`;
+    if (this.last.threatText !== label) {
+      this.last.threatText = label;
+      this.bombWarnText.textContent = label;
+    }
   }
 
   setFinalStats(stats: { score: number; wave: number; kills: number }): void {

@@ -97,6 +97,8 @@ export const ENEMY_TYPES = {
   grunt: { hp: 60, speed: 3.4, scale: 1.0, dmg: 10, score: 100, body: 0xa83a3a },
   runner: { hp: 30, speed: 6.2, scale: 0.78, dmg: 7, score: 150, body: 0xd07a28 },
   tank: { hp: 200, speed: 2.2, scale: 1.35, dmg: 22, score: 300, body: 0x5e3a8a },
+  /** The sapper: skulks, plants bombs, and only charges once the herd thins. */
+  sapper: { hp: 90, speed: 4.2, scale: 0.95, dmg: 12, score: 250, body: 0x2fbf6f },
 } as const;
 
 export const ENEMY = {
@@ -140,8 +142,46 @@ export const WAVES = {
   INTERMISSION: 3,
   WAVE_HEAL: 25,
 
-  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25 },
+  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12 },
   DMG_PER_2_WAVES: 2,
+} as const;
+
+/**
+ * Sapper behaviour. It never charges while the pack is healthy — instead it
+ * keeps its distance and drops bombs on a timer. Only when the herd thins below
+ * `HUNT_AT` does it switch to a fast, direct pursuit.
+ */
+export const SAPPER = {
+  START_WAVE: 5,
+  /** One more sapper joins the wave every this many waves past `START_WAVE`. */
+  EVERY_WAVES: 5,
+  /** Fewer hostiles than this left alive (or queued) flips it to hunt mode. */
+  HUNT_AT: 5,
+  /** Seconds between bomb plants while lurking. */
+  PLANT_T: 6,
+  /** Back away when closer than this; otherwise wander. */
+  KEEP_DIST: 15,
+  /** Farther than this and it throws a bomb at the player instead of dropping one. */
+  THROW_DIST: 10,
+  LURK_GAIN: 0.7,
+  /** Wander heading wobble, radians per second of its animation phase. */
+  WANDER_TURN: 1.2,
+  HUNT_SPEED: 8.5,
+} as const;
+
+/** The sapper's bomb: a shootable object with a fuse and a blast radius. */
+export const BOMB = {
+  FUSE: 3,
+  RADIUS: 4.5,
+  PLAYER_DMG: 34,
+  ENEMY_DMG: 140,
+  /** Points for shooting a live bomb out of the air before it detonates. */
+  DEFUSE_SCORE: 40,
+  /** Within this range of the player a live bomb raises the HUD warning. */
+  WARN_RADIUS: 14,
+  BODY_R: 0.32,
+  KNOCKBACK: 0.6,
+  SHAKE: 1.6,
 } as const;
 
 export const FX = {

@@ -1,5 +1,5 @@
 import { Rng } from '../core/rng';
-import { ENEMY, type EnemyKind, WAVES } from './config';
+import { ENEMY, type EnemyKind, SAPPER, WAVES } from './config';
 import type { Vec2 } from './world/collision';
 
 export interface SpawnRequest {
@@ -32,6 +32,11 @@ export function composition(n: number): EnemyKind[] {
   if (n >= WAVES.TANK_FROM) {
     const count = Math.min(1 + Math.floor((n - 2) / 2), WAVES.MAX_TANKS);
     for (let i = 0; i < count; i++) list.push('tank');
+  }
+  // Sappers arrive late and one extra joins every `EVERY_WAVES` waves after.
+  if (n >= SAPPER.START_WAVE) {
+    const count = 1 + Math.floor((n - SAPPER.START_WAVE) / SAPPER.EVERY_WAVES);
+    for (let i = 0; i < count; i++) list.push('sapper');
   }
   return list;
 }

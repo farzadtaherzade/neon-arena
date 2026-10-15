@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BOMB } from '../game/config';
 
 /**
  * Lazily-created, shared geometry and materials.
@@ -22,6 +23,8 @@ let gEye: THREE.BoxGeometry | undefined;
 let gLeg: THREE.BoxGeometry | undefined;
 let gBarBg: THREE.BoxGeometry | undefined;
 let gBarFg: THREE.BoxGeometry | undefined;
+let gBomb: THREE.SphereGeometry | undefined;
+let gBombRing: THREE.RingGeometry | undefined;
 
 export const GEO = {
   body: () => (gBody ??= new THREE.BoxGeometry(0.66, 0.85, 0.4)),
@@ -30,6 +33,8 @@ export const GEO = {
   leg: () => (gLeg ??= new THREE.BoxGeometry(0.2, 0.5, 0.24)),
   barBg: () => (gBarBg ??= new THREE.BoxGeometry(0.92, 0.1, 0.02)),
   barFg: () => (gBarFg ??= new THREE.BoxGeometry(0.86, 0.06, 0.02)),
+  bombBody: () => (gBomb ??= new THREE.SphereGeometry(BOMB.BODY_R, 14, 10)),
+  bombRing: () => (gBombRing ??= new THREE.RingGeometry(BOMB.RADIUS - 0.15, BOMB.RADIUS, 48)),
 };
 
 let mEye: THREE.MeshBasicMaterial | undefined;
@@ -42,6 +47,7 @@ let mGlow: THREE.MeshBasicMaterial | undefined;
 let mGunMetal: THREE.MeshStandardMaterial | undefined;
 let mGunDark: THREE.MeshStandardMaterial | undefined;
 let mMuzzleFlash: THREE.MeshBasicMaterial | undefined;
+let mBombRing: THREE.MeshBasicMaterial | undefined;
 
 export const MAT = {
   eye: () => (mEye ??= new THREE.MeshBasicMaterial({ color: 0xffe08a })),
@@ -65,6 +71,14 @@ export const MAT = {
       transparent: true,
       opacity: 0.95,
       blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })),
+  bombRing: () =>
+    (mBombRing ??= new THREE.MeshBasicMaterial({
+      color: 0xff3b30,
+      transparent: true,
+      opacity: 0.35,
       side: THREE.DoubleSide,
       depthWrite: false,
     })),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOMB,
   CAMERA,
   ENEMY,
   ENEMY_TYPES,
@@ -7,6 +8,7 @@ import {
   FIXED_STEP,
   FX,
   MAX_DT,
+  SAPPER,
   SCREEN,
   START_HP,
   STATE,
@@ -90,6 +92,20 @@ describe('config', () => {
     expect(FEEDBACK.BANNER_MS).toBeGreaterThan(0);
     expect(FEEDBACK.LOW_HP).toBeLessThan(START_HP);
     expect(START_HP).toBeGreaterThan(0);
+  });
+
+  it('keeps the sapper and bomb tuning sane', () => {
+    expect(SAPPER.START_WAVE).toBeGreaterThan(1);
+    expect(SAPPER.PLANT_T).toBeGreaterThan(0);
+    expect(SAPPER.HUNT_AT).toBeGreaterThan(0);
+    expect(SAPPER.KEEP_DIST).toBeGreaterThan(SAPPER.THROW_DIST);
+    expect(SAPPER.HUNT_SPEED).toBeGreaterThan(ENEMY_TYPES.sapper.speed);
+
+    expect(BOMB.FUSE).toBeGreaterThan(0);
+    expect(BOMB.RADIUS).toBeGreaterThan(0);
+    expect(BOMB.PLAYER_DMG).toBeGreaterThan(0);
+    expect(BOMB.ENEMY_DMG).toBeGreaterThan(BOMB.PLAYER_DMG);
+    expect(BOMB.DEFUSE_SCORE).toBeGreaterThan(0);
   });
 
   it('caps a frame at a sane step', () => {

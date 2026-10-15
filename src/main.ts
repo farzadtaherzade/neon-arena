@@ -83,6 +83,8 @@ function exposeTestApi(game: Game) {
         z: round(h.enemy.pos.z),
         state: h.enemy.state,
         hp: h.enemy.hp,
+        kind: h.enemy.kind,
+        mode: h.enemy.sapperMode,
       })),
 
     camState: () => ({
@@ -101,6 +103,18 @@ function exposeTestApi(game: Game) {
       textures: game.arena.renderer.info.memory.textures,
       programs: game.arena.renderer.info.programs?.length ?? 0,
     }),
+
+    /** Is the first-person viewmodel drawn? Catches the pause/resume bug. */
+    gunVisible: () => game.gunVisible,
+
+    /** Remaining fuses of every live sapper bomb. */
+    bombs: () => game.bombFuses,
+
+    /** Plant a bomb at a world position without waiting for a sapper to walk there. */
+    spawnBomb: (x: number, z: number) => game.spawnBomb(x, z),
+
+    /** Jump straight to a wave, to exercise the sapper without a long run. */
+    forceWave: (n: number) => game.forceWave(n),
 
     crosshair: () => ({ ...game.settings.values }),
 
