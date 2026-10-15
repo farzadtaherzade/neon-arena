@@ -124,9 +124,13 @@ export class Game {
       },
       onChange: (values) => {
         this.player.sens = values.sensitivity;
+        this.sfx.setMuted(values.mute);
+        this.music.setMuted(values.mute);
       },
     });
     this.player.sens = this.settings.values.sensitivity;
+    this.sfx.setMuted(this.settings.values.mute);
+    this.music.setMuted(this.settings.values.mute);
 
     this.weapon = new Weapon({
       onShot: () => this.resolveShot(),

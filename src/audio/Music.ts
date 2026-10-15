@@ -6,8 +6,10 @@
 export class Music {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private baseGain = 0.06;
   private timer: number | null = null;
   private step = 0;
+  muted = false;
   private readonly notes = [220, 261.63, 329.63, 440, 329.63, 261.63, 196, 220];
 
   init(): void {
@@ -18,8 +20,13 @@ export class Music {
     if (!globalThis.AudioContext) return;
     this.ctx = new AudioContext();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.06;
+    this.master.gain.value = this.muted ? 0 : this.baseGain;
     this.master.connect(this.ctx.destination);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.master) this.master.gain.value = muted ? 0 : this.baseGain;
   }
 
   start(): void {
