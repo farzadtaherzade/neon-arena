@@ -124,3 +124,19 @@ so the spec re-declares the shapes it uses.
   and the `Object.entries(ENEMY_TYPES)` assertions in `config.test.ts`.
 - The E2E takes ~2 minutes and has a 15-minute ceiling. Budget new waits
   deliberately rather than raising the timeout.
+
+## Trackpads
+
+- Re-lock taps no longer fire the gun: `pointerlockchange` resets
+  `Input.firing = false` whenever pointer lock is gained, so a carried-over
+  trigger pull from a tap can't enter play.
+- Re-lock requests now only come from clicks on the game canvas / its
+  descendant elements, not arbitrary HUD or overlay clicks — this stops buttons
+  from juggling the lock and being mistaken for shots. `mousedown` still starts
+  firing while already locked (so unrestricted `?test` shooting works).
+- Runtime behaviour of the game/state machine unchanged: movement and firing
+  remain independent, which is what makes simultaneous WASD + aim possible at all.
+- OS limitation (unchanged): many trackpads have "disable touchpad while typing"
+  or palm-rejection settings enabled, which literally suspend the pad while keys
+  are held. Those must be turned off in Windows/macOS settings; no browser code
+  can override them. The pause screen points this out.

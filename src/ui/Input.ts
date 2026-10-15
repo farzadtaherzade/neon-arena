@@ -69,6 +69,8 @@ export class Input {
 
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
+      // A tap-to-relock must not carry a carried-over trigger pull into play.
+      if (this.locked) this.firing = false;
       hooks.onLockChange(this.locked);
     });
 
@@ -76,9 +78,14 @@ export class Input {
     // The settings panel is a full-screen overlay sitting on top of a paused
     // game, so without this guard its first click re-locks the pointer: the game
     // resumes under the panel and the cursor disappears, making it unusable.
-    document.addEventListener('click', () => {
+    document.addEventListener('click', (event) => {
       if (this.locked) return;
       if (hooks.isSettingsOpen()) return;
+      // Only a click on the actual game canvas counts as a re-lock request:
+      // a tap or stray click on the HUD never toggles pointer lock, and it
+      // definitely shouldn't be mistaken for a shot.
+      const target = event.target;
+      if (target !== this.canvas && !(target instanceof Node && this.canvas.contains(target))) return;
       if (hooks.isPlaying()) hooks.onLockRequest();
       else if (hooks.isPaused()) hooks.onLockRequest();
     });
