@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import { Music } from '../audio/Music';
 import { Sfx } from '../audio/Sfx';
 import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
@@ -68,6 +69,7 @@ export class Game {
   private pick = new Pick();
   private fx: Fx;
   private sfx = new Sfx();
+  private music = new Music();
   private hud = new Hud();
   private input: Input;
   private gun = new GunView();
@@ -120,8 +122,11 @@ export class Game {
         // closing the panel lands the player back on the pause screen.
         if (this.state === STATE.PLAYING) this.input.release();
       },
-      onChange: () => {},
+      onChange: (values) => {
+        this.player.sens = values.sensitivity;
+      },
     });
+    this.player.sens = this.settings.values.sensitivity;
 
     this.weapon = new Weapon({
       onShot: () => this.resolveShot(),
@@ -136,7 +141,7 @@ export class Game {
       isSettingsOpen: () => this.settings.isOpen,
       onJump: () => this.player.queueJump(),
       onReload: () => this.weapon.startReload(),
-      onLook: (dx, dy) => this.player.look(dx, dy),
+      onLook: (dx, dy) => this.player.look(dx, dy, this.settings.values.sensitivity),
       onLockRequest: () => this.input.lock(),
       onLockChange: (locked) => this.onLockChange(locked),
       onToggleSettings: () => this.settings.toggle(),
@@ -154,6 +159,8 @@ export class Game {
 
   start(skipLock = false): void {
     this.sfx.init();
+    this.music.init();
+    this.music.start();
     this.reset();
     this.beginWave(1);
     this.hud.setVisible(true);
@@ -193,6 +200,7 @@ export class Game {
     this.hud.setFinalStats({ score: this.score, wave: this.wave, kills: this.kills });
     if (!this.test) this.hud.showScreen(SCREEN.GAMEOVER);
     this.sfx.kill();
+    this.music.stop();
   }
 
   damagePlayer(amount: number): void {
@@ -428,6 +436,7 @@ export class Game {
   }
 
   private updateWaves(dt: number): void {
+    const waveBefore = this.waves.wave;
     const result = this.waves.update(dt, this.player.position, this.aliveCount);
     for (const req of result.spawned) {
       const enemy = new Enemy(req.kind, req.x, req.z, this.rng);
@@ -464,10 +473,22 @@ export class Game {
         this.hostiles.splice(i, 1);
       }
     }
+    let alive = 0;
+    for (const h of this.hostiles) if (h.enemy.state === 'alive') alive++;
+    this.aliveCount = alive;
 
     if (result.cleared) {
       this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
       this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
+      this.sfx.wave();
+    }
+
+    // WaveDirector advances after the intermission; mirror that here instead of
+    // relying on Game.wave, which otherwise stays stale and makes every later
+    // wave look (and announce) like "wave 1 complete" forever.
+    if (this.waves.wave > waveBefore) {
+      this.wave = this.waves.wave;
+      this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
       this.sfx.wave();
     }
   }

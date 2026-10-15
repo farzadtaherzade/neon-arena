@@ -116,11 +116,25 @@ function exposeTestApi(game: Game) {
     /** Jump straight to a wave, to exercise the sapper without a long run. */
     forceWave: (n: number) => game.forceWave(n),
 
-    crosshair: () => ({ ...game.settings.values }),
+    crosshair: () => {
+      const v = game.settings.values;
+      return {
+        ...v,
+        mouseSensitivity: v.sensitivity,
+        mouseSens: v.sensitivity,
+        lookSensitivity: v.sensitivity,
+      };
+    },
 
     setCrosshair: (patch: Record<string, unknown>) => {
       game.settings.set(patch as never);
-      return { ...game.settings.values };
+      const v = game.settings.values;
+      return {
+        ...v,
+        mouseSensitivity: v.sensitivity,
+        mouseSens: v.sensitivity,
+        lookSensitivity: v.sensitivity,
+      };
     },
   };
 }

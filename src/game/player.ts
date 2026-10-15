@@ -1,4 +1,4 @@
-import { dampFactor } from '../core/math';
+import { clamp, dampFactor } from '../core/math';
 import { CAMERA, WEAPON, WORLD } from './config';
 import type { CollisionWorld } from './world/collision';
 
@@ -29,6 +29,8 @@ export class Player {
   yaw = 0;
   pitch = 0;
   bobPhase = 0;
+  /** Multiplier for mouse look; 1 = default WEAPON.SENS. */
+  sens = 1;
 
   reset(): void {
     this.position.x = 0;
@@ -45,9 +47,12 @@ export class Player {
   }
 
   /** Apply mouse delta. Input only routes here while the pointer is locked. */
-  look(dx: number, dy: number): void {
-    this.yaw -= dx * WEAPON.SENS;
-    this.pitch -= dy * WEAPON.SENS;
+  look(dx: number, dy: number, sens = this.sens): void {
+    const lx = clamp(dx, -2048, 2048);
+    const ly = clamp(dy, -2048, 2048);
+    const s = WEAPON.SENS * sens;
+    this.yaw -= lx * s;
+    this.pitch -= ly * s;
     this.pitch = Math.max(-WORLD.PITCH_LIMIT, Math.min(WORLD.PITCH_LIMIT, this.pitch));
   }
 

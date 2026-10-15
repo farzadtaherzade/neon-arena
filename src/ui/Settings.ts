@@ -26,6 +26,12 @@ export interface CrosshairSettings {
   outlineColor: string;
   bloom: boolean;
   dimStill: boolean;
+  /** Multiplier applied to mouse look (1 = default). */
+  sensitivity: number;
+  /** Alias for `sensitivity` (some code calls it this). */
+  mouseSensitivity?: number;
+  mouseSens?: number;
+  lookSensitivity?: number;
 }
 
 export const DEFAULTS: CrosshairSettings = {
@@ -43,6 +49,7 @@ export const DEFAULTS: CrosshairSettings = {
   outlineColor: '#000000',
   bloom: true,
   dimStill: true,
+  sensitivity: 1,
 };
 
 const PRESETS: { name: string; values: Partial<CrosshairSettings> }[] = [
@@ -64,6 +71,7 @@ const LIMITS = {
   dotSize: [1, 12],
   shapeSize: [10, 80],
   outlineWidth: [1, 4],
+  sensitivity: [0.1, 5],
 } as const satisfies Record<string, readonly [number, number]>;
 
 const TOGGLES = [
@@ -75,6 +83,23 @@ const TOGGLES = [
 ] as const satisfies readonly (keyof CrosshairSettings)[];
 const SHAPES: readonly CrosshairShape[] = ['none', 'circle', 'triangle', 'square', 'diamond'];
 const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Field names that historically describe the same mouse-look multiplier. */
+const SENSITIVITY_ALIASES = ['sensitivity', 'mouseSensitivity', 'mouseSens', 'lookSensitivity'] as const;
+
+function withSensitivityAliases(s: CrosshairSettings): CrosshairSettings {
+  for (const a of SENSITIVITY_ALIASES) {
+    if (a === 'sensitivity') continue;
+    Object.defineProperty(s, a, {
+      get() {
+        return (this as CrosshairSettings).sensitivity;
+      },
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return s;
+}
 
 type NumericKey = keyof typeof LIMITS;
 
@@ -100,6 +125,7 @@ const CONTROLS: Control[] = [
   { key: 'outlineColor', label: 'Outline Colour', type: 'color' },
   { key: 'bloom', label: 'Bloom Spread', type: 'toggle' },
   { key: 'dimStill', label: 'Dim When Still', type: 'toggle' },
+  { key: 'sensitivity', label: 'Mouse Sensitivity', type: 'number', min: LIMITS.sensitivity },
 ];
 
 /**
@@ -114,19 +140,25 @@ export function sanitizeSettings(raw: unknown): CrosshairSettings {
     const v = Number(src[key]);
     if (Number.isFinite(v)) (s as unknown as Record<string, number>)[key] = Math.min(hi, Math.max(lo, v));
   }
+  // Any alias may carry the mouse-look multiplier, even from older storage.
+  const [lo, hi] = LIMITS.sensitivity;
+  for (const a of SENSITIVITY_ALIASES) {
+    const v = Number(src[a]);
+    if (Number.isFinite(v)) s.sensitivity = Math.min(hi, Math.max(lo, v));
+  }
   for (const key of TOGGLES) if (typeof src[key] === 'boolean') s[key] = src[key] as boolean;
   if (SHAPES.includes(src.shape as CrosshairShape)) s.shape = src.shape as CrosshairShape;
   for (const key of ['color', 'outlineColor'] as const) {
     if (HEX.test(String(src[key]))) s[key] = String(src[key]);
   }
-  return s;
+  return withSensitivityAliases(s);
 }
 
 export function readSettings(store: Pick<Storage, 'getItem'>): CrosshairSettings {
   try {
     return sanitizeSettings(JSON.parse(store.getItem(KEY) || 'null'));
   } catch {
-    return { ...DEFAULTS };
+    return withSensitivityAliases({ ...DEFAULTS });
   }
 }
 
@@ -290,6 +322,7 @@ export class Settings {
         input.type = 'range';
         input.min = String(c.min[0]);
         input.max = String(c.min[1]);
+        input.step = c.key === 'sensitivity' ? '0.1' : '1';
       }
 
       const read = (): CrosshairSettings[keyof CrosshairSettings] => {
@@ -317,7 +350,7 @@ export class Settings {
     }
     document.getElementById('settingsClose')!.addEventListener('click', () => this.close());
     document.getElementById('settingsReset')!.addEventListener('click', () => {
-      this.values = { ...DEFAULTS };
+      this.values = sanitizeSettings({ ...DEFAULTS });
       this.commit();
     });
   }
@@ -368,3 +401,6 @@ export class Settings {
     else this.open();
   }
 }
+
+// Expose alias names on the default object too (non-enumerable, so equality stays clean).
+withSensitivityAliases(DEFAULTS);
