@@ -9,6 +9,8 @@ import { Rng } from '../core/rng';
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private baseGain = 0.32;
+  muted = false;
   /** One second of white noise, reused for every noise burst. */
   private noiseBuf: AudioBuffer | null = null;
 
@@ -22,8 +24,13 @@ export class Sfx {
     if (!globalThis.AudioContext) return;
     this.ctx = new AudioContext();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.32;
+    this.master.gain.value = this.muted ? 0 : this.baseGain;
     this.master.connect(this.ctx.destination);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.master) this.master.gain.value = muted ? 0 : this.baseGain;
   }
 
   /** No-op until the audio context exists, so callers never have to check. */

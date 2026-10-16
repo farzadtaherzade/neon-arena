@@ -26,6 +26,8 @@ export interface CrosshairSettings {
   outlineColor: string;
   bloom: boolean;
   dimStill: boolean;
+  /** Stop all game audio. */
+  mute: boolean;
   /** Multiplier applied to mouse look (1 = default). */
   sensitivity: number;
   /** Alias for `sensitivity` (some code calls it this). */
@@ -49,6 +51,7 @@ export const DEFAULTS: CrosshairSettings = {
   outlineColor: '#000000',
   bloom: true,
   dimStill: true,
+  mute: false,
   sensitivity: 1,
 };
 
@@ -80,6 +83,7 @@ const TOGGLES = [
   'outline',
   'bloom',
   'dimStill',
+  'mute',
 ] as const satisfies readonly (keyof CrosshairSettings)[];
 const SHAPES: readonly CrosshairShape[] = ['none', 'circle', 'triangle', 'square', 'diamond'];
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -125,6 +129,7 @@ const CONTROLS: Control[] = [
   { key: 'outlineColor', label: 'Outline Colour', type: 'color' },
   { key: 'bloom', label: 'Bloom Spread', type: 'toggle' },
   { key: 'dimStill', label: 'Dim When Still', type: 'toggle' },
+  { key: 'mute', label: 'Mute Audio', type: 'toggle' },
   { key: 'sensitivity', label: 'Mouse Sensitivity', type: 'number', min: LIMITS.sensitivity },
 ];
 

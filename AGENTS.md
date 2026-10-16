@@ -140,3 +140,12 @@ so the spec re-declares the shapes it uses.
   or palm-rejection settings enabled, which literally suspend the pad while keys
   are held. Those must be turned off in Windows/macOS settings; no browser code
   can override them. The pause screen points this out.
+
+## Freeze / pause recovery notes
+
+- `Input` now holds a short delay on `pointerlockchange` failure before pausing,
+  so a brief lock drop during fast movement or trackpad gestures no longer
+  immediately freezes and then resumes the run.
+- `Game` keeps a `waveClearPending` guard so a repeated/stale `WaveDirector`
+  "cleared" update cannot spam the wave-complete banner or repeated start
+  announcements.
