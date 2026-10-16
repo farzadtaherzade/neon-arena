@@ -9,7 +9,7 @@ export function makeFloorTexture(rng: Rng): THREE.CanvasTexture {
   const g = c.getContext('2d');
   if (!g) throw new Error('2d context unavailable');
 
-  g.fillStyle = '#161b26';
+  g.fillStyle = '#14171d';
   g.fillRect(0, 0, 512, 512);
 
   for (let i = 0; i < 2600; i++) {

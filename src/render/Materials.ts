@@ -58,10 +58,11 @@ export const MAT = {
     (mBarBg ??= new THREE.MeshBasicMaterial({ color: 0x0a0d13, transparent: true, opacity: 0.75 })),
   barFg: () => (mBarFg ??= new THREE.MeshBasicMaterial({ color: 0xff3344 })),
 
-  wall: () => (mWall ??= new THREE.MeshStandardMaterial({ color: 0x2a3448, roughness: 0.8, metalness: 0.2 })),
+  wall: () =>
+    (mWall ??= new THREE.MeshStandardMaterial({ color: 0x232a3a, roughness: 0.85, metalness: 0.18 })),
   trim: () => (mTrim ??= new THREE.MeshBasicMaterial({ color: 0x2aa5c4 })),
   obstacle: () =>
-    (mObstacle ??= new THREE.MeshStandardMaterial({ color: 0x2b3550, roughness: 0.7, metalness: 0.12 })),
+    (mObstacle ??= new THREE.MeshStandardMaterial({ color: 0x242c44, roughness: 0.75, metalness: 0.12 })),
   glow: () => (mGlow ??= new THREE.MeshBasicMaterial({ color: 0x46e0ff })),
 
   gunMetal: () =>

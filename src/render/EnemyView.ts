@@ -23,6 +23,33 @@ const ACCENTS: Record<
   sapper: { scale: [0.16, 0.16, 0.16], pos: [0, 0.26, 0] },
 };
 
+/**
+ * One extra wearable prop per kind, on top of the silhouette accent above.
+ * Everything stays a unit box scaled into place: tie, belt, strap, hat. Small
+ * enough to read at medium range without becoming clutter.
+ */
+const EXTRAS: Record<
+  EnemyKind,
+  Array<{ scale: [number, number, number]; pos: [number, number, number]; onBody?: boolean }>
+> = {
+  grunt: [
+    { scale: [0.08, 0.24, 0.03], pos: [0, 0.2, 0.22], onBody: true },
+    { scale: [0.6, 0.08, 0.42], pos: [0, -0.28, 0], onBody: true },
+  ],
+  runner: [
+    { scale: [0.4, 0.06, 0.04], pos: [0, 0.3, 0.22], onBody: true },
+    { scale: [0.56, 0.06, 0.4], pos: [0, -0.3, 0], onBody: true },
+  ],
+  tank: [
+    { scale: [0.5, 0.08, 0.06], pos: [0, 0.32, 0.02], onBody: true },
+    { scale: [0.66, 0.1, 0.44], pos: [0, -0.3, 0], onBody: true },
+  ],
+  sapper: [
+    { scale: [0.3, 0.08, 0.3], pos: [0, 0.24, 0] },
+    { scale: [0.54, 0.08, 0.4], pos: [0, -0.3, 0], onBody: true },
+  ],
+};
+
 export class EnemyView {
   readonly body: THREE.Mesh;
   readonly head: THREE.Mesh;
@@ -69,6 +96,15 @@ export class EnemyView {
     accent.scale.set(...A.scale);
     accent.position.set(...A.pos);
     (A.onBody ? this.body : this.head).add(accent);
+
+    // Wearable extras (tie, cap, belt, strap) share the accent material so they
+    // pick up the variant colour. Also cosmetic-only: never pick targets.
+    for (const E of EXTRAS[enemy.kind] ?? []) {
+      const prop = new THREE.Mesh(GEO.accent(), accentMat);
+      prop.scale.set(...E.scale);
+      prop.position.set(...E.pos);
+      (E.onBody ? this.body : this.head).add(prop);
+    }
 
     this.legL.position.set(-0.17, 0.55, 0);
     this.legR.position.set(0.17, 0.55, 0);

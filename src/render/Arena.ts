@@ -32,11 +32,11 @@ export class Arena {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.35;
+    this.renderer.toneMappingExposure = 1.2;
     document.body.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0x05070c);
-    this.scene.fog = new THREE.Fog(0x05070c, 30, 110);
+    this.scene.background = new THREE.Color(0x07090f);
+    this.scene.fog = new THREE.Fog(0x07090f, 22, 90);
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.FOV, innerWidth / innerHeight, CAMERA.NEAR, CAMERA.FAR);
     this.yawObj.add(this.pitchObj);
@@ -67,10 +67,11 @@ export class Arena {
   }
 
   private lights(): void {
-    this.scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x2a3242, 1.5));
-    this.scene.add(new THREE.AmbientLight(0x404a60, 0.6));
+    // Dark warehouse: cold dim shell, one warm work lamp raking the floor.
+    this.scene.add(new THREE.HemisphereLight(0x32405a, 0x14171f, 0.7));
+    this.scene.add(new THREE.AmbientLight(0x22283a, 0.55));
 
-    const sun = new THREE.DirectionalLight(0xffe0b3, 2.4);
+    const sun = new THREE.DirectionalLight(0xffd9a0, 1.5);
     sun.position.set(25, 42, 15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
