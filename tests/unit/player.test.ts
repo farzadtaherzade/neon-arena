@@ -140,3 +140,24 @@ describe('Player movement', () => {
     expect(a).not.toEqual(b);
   });
 });
+
+describe('Player stamina', () => {
+  it('drains while sprinting and regenerates while idle', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    run(p, c, { forward: 1, right: 0, sprint: true }, 120);
+    const drained = p.stamina;
+    expect(drained).toBeLessThan(WORLD.STAMINA_MAX);
+    run(p, c, IDLE, 120);
+    expect(p.stamina).toBeGreaterThan(drained);
+  });
+
+  it('locks sprint out once the bar empties', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    p.stamina = 0;
+    run(p, c, { forward: 1, right: 0, sprint: true }, 30);
+    expect(p.stamina).toBeGreaterThan(0);
+    expect(Math.hypot(p.velocity.x, p.velocity.z)).toBeLessThan(WORLD.SPRINT * 0.9);
+  });
+});

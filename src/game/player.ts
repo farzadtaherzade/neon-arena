@@ -32,6 +32,10 @@ export class Player {
   /** Multiplier for mouse look; 1 = default WEAPON.SENS. */
   sens = 1;
 
+  /** Sprint fuel; when it hits zero sprint is locked off until it refills. */
+  stamina: number = WORLD.STAMINA_MAX;
+  private sprintLocked = false;
+
   reset(): void {
     this.position.x = 0;
     this.position.y = WORLD.PLAYER_H;
@@ -44,6 +48,8 @@ export class Player {
     this.yaw = 0;
     this.pitch = 0;
     this.bobPhase = 0;
+    this.stamina = WORLD.STAMINA_MAX;
+    this.sprintLocked = false;
   }
 
   /** Apply mouse delta. Input only routes here while the pointer is locked. */
@@ -61,7 +67,17 @@ export class Player {
   }
 
   update(dt: number, input: MoveInput, collision: CollisionWorld): void {
-    const speed = input.sprint ? WORLD.SPRINT : WORLD.WALK;
+    // Sprint only while there's stamina left, and lock it out once it empties.
+    const movingNow = this.moving;
+    if (input.sprint && movingNow && !this.sprintLocked) {
+      this.stamina = Math.max(0, this.stamina - WORLD.STAMINA_DRAIN * dt);
+    } else {
+      this.stamina = Math.min(WORLD.STAMINA_MAX, this.stamina + WORLD.STAMINA_REGEN * dt);
+    }
+    if (this.stamina <= 0) this.sprintLocked = true;
+    else if (this.stamina >= WORLD.STAMINA_UNLOCK) this.sprintLocked = false;
+    const sprinting = input.sprint && movingNow && !this.sprintLocked;
+    const speed = sprinting ? WORLD.SPRINT : WORLD.WALK;
 
     const fx = -Math.sin(this.yaw);
     const fz = -Math.cos(this.yaw);

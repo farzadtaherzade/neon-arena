@@ -22,6 +22,7 @@
       <div class="panel" id="healthWrap">
         <div id="healthLabel">INTEGRITY <span id="healthText">100</span></div>
         <div id="healthBar"><div id="healthFill"></div></div>
+        <div id="staminaBar"><div id="staminaFill"></div></div>
       </div>
       <div class="panel" id="ammoWrap">
         <div id="ammo">12 <small>/ ∞</small></div>
@@ -36,10 +37,13 @@
     <div class="screen visible" id="startScreen">
       <h1>NEON <span>ARENA</span></h1>
       <h2>3D ARENA SHOOTER</h2>
-      <div class="controls">
-        <div><b>W A S D</b> MOVE</div><div><b>MOUSE</b> LOOK / AIM</div>
-        <div><b>LMB</b> SHOOT</div><div><b>R</b> RELOAD</div>
-        <div><b>SHIFT</b> SPRINT</div><div><b>SPACE</b> JUMP</div>
+      <div class="keys">
+        <div class="pair"><span class="cap">W</span><span class="cap">A</span><span class="cap">S</span><span class="cap">D</span><span class="lbl">MOVE</span></div>
+        <div class="pair"><span class="cap">Mouse1</span><span class="lbl">SHOOT</span></div>
+        <div class="pair"><span class="cap">Mouse2</span><span class="lbl">AIM</span></div>
+        <div class="pair"><span class="cap">R</span><span class="lbl">RELOAD</span></div>
+        <div class="pair"><span class="cap">Shift</span><span class="lbl">SPRINT</span></div>
+        <div class="pair"><span class="cap">Space</span><span class="lbl">JUMP</span></div>
       </div>
       <div class="tip">SURVIVE THE WAVES — HEADSHOTS DEAL 2.5× DAMAGE — CLEARING A WAVE RESTORES 25 HP</div>
       <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>

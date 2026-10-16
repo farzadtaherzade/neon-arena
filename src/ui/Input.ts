@@ -31,6 +31,8 @@ const LOOK_MAX = 1500;
 export class Input {
   readonly keys: Record<string, boolean> = {};
   firing = false;
+  /** Right-mouse aim: ADS. Shared through `MoveInput` so gameplay stays pure. */
+  aiming = false;
   locked = false;
   /** Debounces tiny pointer-lock drops so fast movement does not hard-pause. */
   private lockLossTimer: number | null = null;
@@ -67,10 +69,12 @@ export class Input {
 
     addEventListener('mousedown', (e) => {
       if (e.button === 0) this.firing = true;
+      if (e.button === 2) this.aiming = true;
     });
 
     addEventListener('mouseup', (e) => {
       if (e.button === 0) this.firing = false;
+      if (e.button === 2) this.aiming = false;
     });
 
     addEventListener('contextmenu', (e) => e.preventDefault());
@@ -78,6 +82,7 @@ export class Input {
     addEventListener('blur', () => {
       for (const key in this.keys) this.keys[key] = false;
       this.firing = false;
+      this.aiming = false;
     });
 
     document.addEventListener('pointerlockchange', () => {

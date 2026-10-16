@@ -20,6 +20,8 @@ export interface WeaponHooks {
 export class Weapon {
   ammo: number = WEAPON.MAG;
   reloading = false;
+  /** Right-mouse ADS. Set from outside so the view and shot cone stay in sync. */
+  aiming = false;
   reloadT = 0;
   lastShot = -9;
   recoil = 0;
@@ -40,9 +42,10 @@ export class Weapon {
     this.flashT = 0;
   }
 
-  /** Half-angle of the shot cone, radians. */
+  /** Half-angle of the shot cone, radians. Tighter while aiming down sights. */
   get spread(): number {
-    return WEAPON.BASE_SPREAD + this.bloom;
+    const base = this.aiming ? WEAPON.BASE_SPREAD * WEAPON.AIM_SPREAD : WEAPON.BASE_SPREAD;
+    return base + this.bloom;
   }
 
   /** Reload progress 0..1, for the HUD bar. */

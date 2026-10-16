@@ -14,6 +14,8 @@ export interface HudModel {
   reloadProgress: number;
   bloom: number;
   moving: boolean;
+  /** Remaining sprint stamina, 0..100. */
+  stamina: number;
   /** Distance to the nearest live bomb, and its remaining fuse. */
   bombDist: number;
   bombFuse: number;
@@ -46,6 +48,7 @@ export class Hud {
   private enemyVal = $('enemyVal');
   private reloadBar = $('reloadBar');
   private reloadFill = $('reloadFill');
+  private staminaFill = $('staminaFill');
   private banner = $('banner');
   private bannerBig = $('bannerBig');
   private bannerSub = $('bannerSub');
@@ -180,6 +183,13 @@ export class Hud {
     }
     if (model.reloading) {
       this.reloadFill.style.width = `${model.reloadProgress * 100}%`;
+    }
+
+    const stamina = Math.round(model.stamina);
+    if (this.last.stamina !== stamina) {
+      this.last.stamina = stamina;
+      this.staminaFill.style.width = `${stamina}%`;
+      this.staminaFill.classList.toggle('low', stamina < 25);
     }
 
     this.setCrosshair(model.bloom, model.moving, settings);

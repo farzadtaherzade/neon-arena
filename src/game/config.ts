@@ -24,6 +24,13 @@ export const WORLD = {
   JUMP_V: 8.5,
   MOVE_DAMP: 10,
   PITCH_LIMIT: 1.45,
+
+  /** Sprint can't be held forever: drain while running, regen otherwise. */
+  STAMINA_MAX: 100,
+  STAMINA_DRAIN: 22,
+  STAMINA_REGEN: 15,
+  /** Sprint is locked out until the bar climbs back above this. */
+  STAMINA_UNLOCK: 25,
 } as const;
 
 export const WEAPON = {
@@ -41,6 +48,8 @@ export const WEAPON = {
   BLOOM_PER_SHOT: 0.0045,
   BLOOM_MAX: 0.03,
   BLOOM_DECAY: 5,
+  /** Aim multiplier applied to the base spread while ADS is held. */
+  AIM_SPREAD: 0.45,
 
   RECOIL_PER_SHOT: 0.011,
   RECOIL_MAX: 0.09,
@@ -79,6 +88,9 @@ export const CAMERA = {
   CROSSHAIR_GAP_SPAN: 15,
   CROSSHAIR_BLOOM_FLOOR: 0.004,
   CROSSHAIR_STILL: 0.85,
+
+  /** FOV multiplier while aiming down sights, lerped toward so it never pops. */
+  AIM_FOV_SCALE: 0.82,
 } as const;
 
 export const FEEDBACK = {

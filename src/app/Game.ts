@@ -23,12 +23,14 @@ import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
 import { CollisionWorld } from '../game/world/collision';
+import { XP, Xp } from '../game/xp';
 import { Arena } from '../render/Arena';
 import { BombView } from '../render/BombView';
 import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
 import { Pick } from '../render/Pick';
+import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { Minimap } from '../ui/Minimap';
@@ -87,6 +89,12 @@ export class Game {
   private bombViews = new Map<Bomb, BombView>();
   private minimap: Minimap;
 
+  /** XP orbs on the floor and the meshes backing them. */
+  private xps: Xp[] = [];
+  private xpViews = new Map<Xp, XpView>();
+  /** Current camera FOV, lerped toward the ADS target so it never pops. */
+  private fov = CAMERA.FOV;
+
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
     return this.gun.group.visible;
@@ -107,6 +115,7 @@ export class Game {
     reloadProgress: 0,
     bloom: 0,
     moving: false,
+    stamina: WORLD.STAMINA_MAX,
     bombDist: Number.POSITIVE_INFINITY,
     bombFuse: 0,
   };
@@ -186,6 +195,7 @@ export class Game {
     this.player.reset();
     this.clearHostiles();
     this.clearBombs();
+    this.clearXps();
 
     this.hp = START_HP;
     this.score = 0;
@@ -302,6 +312,8 @@ export class Game {
     this.fx.burst({ ...origin, color: 0xff4455, count: 26, speed: 5, life: 0.7, gravity: 9 }, this.rng);
     this.fx.burst({ ...origin, color: 0xff8866, count: 10, speed: 3, life: 0.5, gravity: 9 }, this.rng);
 
+    this.spawnXp(enemy.pos.x, enemy.pos.z);
+
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
     this.feedback.hitT = 1;
@@ -407,6 +419,46 @@ export class Game {
     this.bombViews.clear();
   }
 
+  // ------------------------------------------------------------------------ XP
+
+  /** An enemy dies; it drops one orb on the floor for the player to gather. */
+  private spawnXp(x: number, z: number): void {
+    const xp = new Xp(x, z, XP.VALUE);
+    const view = new XpView(xp);
+    view.addTo(this.arena.scene);
+    this.xps.push(xp);
+    this.xpViews.set(xp, view);
+  }
+
+  /** Magnet orbs toward the player, collecting them at `XP.COLLECT`. */
+  private updateXps(dt: number): void {
+    for (let i = this.xps.length - 1; i >= 0; i--) {
+      const xp = this.xps[i];
+      if (!xp) continue;
+      if (!xp.update(dt, this.player.position)) continue;
+
+      const view = this.xpViews.get(xp);
+      if (view) {
+        view.dispose(this.arena.scene);
+        this.xpViews.delete(xp);
+      }
+      this.xps.splice(i, 1);
+      this.score += xp.value;
+      this.feedback.hitT = 1;
+      this.sfx.hit();
+    }
+  }
+
+  private clearXps(): void {
+    for (const xp of this.xps) {
+      const view = this.xpViews.get(xp);
+      if (!view) continue;
+      view.dispose(this.arena.scene);
+      this.xpViews.delete(xp);
+    }
+    this.xps.length = 0;
+  }
+
   // E2E hooks: plant a bomb and jump waves without a full playthrough.
 
   spawnBomb(x: number, z: number): void {
@@ -429,9 +481,11 @@ export class Game {
 
     if (this.state === STATE.PLAYING) {
       this.player.update(dt, this.input.move(), this.collision);
+      this.weapon.aiming = this.input.aiming;
       this.weapon.update(dt, this.elapsed, this.input.firing);
       this.updateWaves(dt);
       this.updateBombs(dt);
+      this.updateXps(dt);
     } else if (this.state === STATE.MENU) {
       const pose = this.player.menuPose(this.elapsed);
       this.player.position.x = pose.x;
@@ -555,7 +609,18 @@ export class Game {
       }
     }
 
+    for (const xp of this.xps) this.xpViews.get(xp)?.sync();
+
     this.fx.update(dt);
+
+    // ADS zoom: ease the camera FOV to its target instead of popping.
+    const fovTarget = this.weapon.aiming ? CAMERA.FOV * CAMERA.AIM_FOV_SCALE : CAMERA.FOV;
+    if (Math.abs(this.fov - fovTarget) > 0.05) {
+      this.fov += (fovTarget - this.fov) * Math.min(1, dt * 9);
+      this.arena.camera.fov = this.fov;
+      this.arena.camera.updateProjectionMatrix();
+    }
+
     this.arena.render();
 
     const m = this.model;
@@ -570,6 +635,7 @@ export class Game {
     m.reloadProgress = weapon.reloadProgress;
     m.bloom = weapon.bloom;
     m.moving = player.moving;
+    m.stamina = player.stamina;
     m.bombDist = nearestD;
     m.bombFuse = nearestFuse;
 

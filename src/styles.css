@@ -199,6 +199,21 @@ canvas {
   background: linear-gradient(90deg, #1fd67a, #7dffb8);
   transition: width 0.15s;
 }
+#staminaBar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 5px;
+}
+#staminaFill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #46e0ff, #7ce4ff);
+  transition: width 0.15s;
+}
+#staminaFill.low {
+  background: linear-gradient(90deg, #d61f3a, #ff7a7a);
+}
 
 #ammoWrap {
   right: 28px;
@@ -305,20 +320,32 @@ canvas {
   color: #fff;
   animation: pulse 1.4s ease-in-out infinite;
 }
-.screen .controls {
+.screen .keys {
   margin-top: 34px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(170px, 220px));
-  gap: 8px 40px;
+  grid-template-columns: repeat(2, minmax(170px, 240px));
+  gap: 10px 40px;
   font-family: Consolas, Menlo, monospace;
   font-size: 13px;
   color: #9aa7bd;
   text-align: left;
 }
-.screen .controls b {
-  color: var(--accent);
+.screen .keys .pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.screen .keys .cap {
+  padding: 3px 7px;
+  font-size: 12px;
   font-weight: 700;
-  margin-right: 8px;
+  color: #0e1116;
+  background: var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.screen .keys .lbl {
+  letter-spacing: 2px;
 }
 .screen .tip {
   margin-top: 26px;
