@@ -1,7 +1,7 @@
 # NEON ARENA — 3D Arena Shooter
 
 A browser-based first-person 3D arena shooter built with [Three.js](https://threejs.org/).
-Survive escalating waves of hostile robots in a neon-lit arena.
+Survive escalating waves of hostile robots in a dark industrial arena.
 
 Built with **Vite + TypeScript**.
 
