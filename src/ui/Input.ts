@@ -26,6 +26,7 @@ export interface MoveInput {
 }
 
 const held = (keys: Record<string, boolean>, code: string): boolean => keys[code] === true;
+const LOOK_MAX = 1500;
 
 export class Input {
   readonly keys: Record<string, boolean> = {};
@@ -56,7 +57,12 @@ export class Input {
     });
 
     addEventListener('mousemove', (e) => {
-      if (this.locked) hooks.onLook(e.movementX, e.movementY);
+      if (!this.locked) return;
+      // A single browser glitch can report a few-thousand-pixel delta and snap
+      // the view by a full 90° or more. Those outliers are never a deliberate
+      // flick, so ignore them instead of feeding them into the look math.
+      if (Math.abs(e.movementX) > LOOK_MAX || Math.abs(e.movementY) > LOOK_MAX) return;
+      hooks.onLook(e.movementX, e.movementY);
     });
 
     addEventListener('mousedown', (e) => {
