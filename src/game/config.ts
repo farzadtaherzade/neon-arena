@@ -212,4 +212,33 @@ export const SCREEN = {
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-export type EnemyKind = keyof typeof ENEMY_TYPES;
+const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper'] as const;
+export type EnemyKind = (typeof ENEMY_KINDS)[number];
+
+/**
+ * Cosmetic variants per enemy kind.Purely visual: a look tells `EnemyView`
+ * which body colour and accent colour to draw. No stats change, so combat is
+ * unaffected. Each entry is a distinct skin; the enemy picks one at spawn.
+ */
+export const ENEMY_LOOKS: Record<EnemyKind, { readonly body: number; readonly accent: number }[]> = {
+  grunt: [
+    { body: 0xa83a3a, accent: 0xffe08a },
+    { body: 0xff5e57, accent: 0xffd166 },
+    { body: 0x8f2a3f, accent: 0xffb4a2 },
+  ],
+  runner: [
+    { body: 0xd07a28, accent: 0xfff2a8 },
+    { body: 0xffb347, accent: 0xffe08a },
+    { body: 0xc2410c, accent: 0xfde68a },
+  ],
+  tank: [
+    { body: 0x5e3a8a, accent: 0x7ee7ff },
+    { body: 0x4338ca, accent: 0xc4b5fd },
+    { body: 0x3b1f63, accent: 0x8b5cf6 },
+  ],
+  sapper: [
+    { body: 0x2fbf6f, accent: 0xffe08a },
+    { body: 0x17805b, accent: 0xa7f3d0 },
+    { body: 0x0f5132, accent: 0x6ee7b7 },
+  ],
+};

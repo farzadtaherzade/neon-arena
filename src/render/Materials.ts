@@ -23,6 +23,7 @@ let gEye: THREE.BoxGeometry | undefined;
 let gLeg: THREE.BoxGeometry | undefined;
 let gBarBg: THREE.BoxGeometry | undefined;
 let gBarFg: THREE.BoxGeometry | undefined;
+let gAccent: THREE.BoxGeometry | undefined;
 let gBomb: THREE.SphereGeometry | undefined;
 let gBombRing: THREE.RingGeometry | undefined;
 
@@ -30,6 +31,8 @@ export const GEO = {
   body: () => (gBody ??= new THREE.BoxGeometry(0.66, 0.85, 0.4)),
   head: () => (gHead ??= new THREE.BoxGeometry(0.4, 0.36, 0.4)),
   eye: () => (gEye ??= new THREE.BoxGeometry(0.09, 0.09, 0.05)),
+  /** A unit box the cosmetic accents scale into shape, so only one geometry exists. */
+  accent: () => (gAccent ??= new THREE.BoxGeometry(1, 1, 1)),
   leg: () => (gLeg ??= new THREE.BoxGeometry(0.2, 0.5, 0.24)),
   barBg: () => (gBarBg ??= new THREE.BoxGeometry(0.92, 0.1, 0.02)),
   barFg: () => (gBarFg ??= new THREE.BoxGeometry(0.86, 0.06, 0.02)),

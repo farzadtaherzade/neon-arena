@@ -1,15 +1,28 @@
 import * as THREE from 'three';
-import { ENEMY, ENEMY_TYPES } from '../game/config';
+import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind } from '../game/config';
 import type { Enemy } from '../game/enemy';
 import { GEO, MAT } from './Materials';
 
 /**
  * The meshes for one enemy: body, head, eyes, legs and a billboarded health bar.
  *
- * Owns its three body/head/leg materials (the hit flash writes `emissive` on
- * them, so they cannot be shared) and disposes exactly those. Geometry, eyes and
- * bar materials are shared and never disposed.
+ * Owns its four body/head/accent/leg materials (the hit flash writes `emissive`
+ * on them, so they cannot be shared) and disposes exactly those. Geometry, eyes
+ * and bar materials are shared and never disposed.
+ *
+ * Cosmetic silhouettes: each kind mounts one accent prop (a unit box scaled into
+ * shape), positioned on the head except the tank's shoulder/back plate.
  */
+const ACCENTS: Record<
+  EnemyKind,
+  { scale: [number, number, number]; pos: [number, number, number]; onBody?: boolean }
+> = {
+  grunt: { scale: [0.42, 0.08, 0.05], pos: [0, 0.02, 0.21] },
+  runner: { scale: [0.06, 0.2, 0.06], pos: [0, 0.26, 0] },
+  tank: { scale: [0.72, 0.16, 0.08], pos: [0, -0.08, -0.22], onBody: true },
+  sapper: { scale: [0.16, 0.16, 0.16], pos: [0, 0.26, 0] },
+};
+
 export class EnemyView {
   readonly body: THREE.Mesh;
   readonly head: THREE.Mesh;
@@ -22,16 +35,19 @@ export class EnemyView {
   private mats: THREE.MeshStandardMaterial[];
 
   constructor(readonly enemy: Enemy) {
-    const spec = ENEMY_TYPES[enemy.kind];
+    const looks = ENEMY_LOOKS[enemy.kind];
+    let look = looks[enemy.look] ?? looks[enemy.look % looks.length];
+    if (!look) look = { body: ENEMY_TYPES[enemy.kind].body, accent: 0xffe08a };
 
-    const bodyMat = new THREE.MeshStandardMaterial({ color: spec.body, roughness: 0.6, metalness: 0.08 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.6, metalness: 0.08 });
     const headMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(spec.body).multiplyScalar(1.25),
+      color: new THREE.Color(look.body).multiplyScalar(1.25),
       roughness: 0.55,
       metalness: 0.08,
     });
+    const accentMat = new THREE.MeshStandardMaterial({ color: look.accent, roughness: 0.5, metalness: 0.12 });
     const legMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.7, metalness: 0.1 });
-    this.mats = [bodyMat, headMat, legMat];
+    this.mats = [bodyMat, headMat, accentMat, legMat];
 
     this.body = new THREE.Mesh(GEO.body(), bodyMat);
     this.body.position.y = 0.85;
@@ -45,6 +61,14 @@ export class EnemyView {
     eyeL.position.set(-0.1, 1.55, 0.21);
     const eyeR = new THREE.Mesh(GEO.eye(), MAT.eye());
     eyeR.position.set(0.1, 1.55, 0.21);
+
+    // One kind-specific accent prop, added to head/body so the silhouette reads
+    // from range. It is never a pick target and gets disposed with the rest.
+    const accent = new THREE.Mesh(GEO.accent(), accentMat);
+    const A = ACCENTS[enemy.kind] ?? { scale: [0, 0, 0], pos: [0, 0, 0] as [number, number, number] };
+    accent.scale.set(...A.scale);
+    accent.position.set(...A.pos);
+    (A.onBody ? this.body : this.head).add(accent);
 
     this.legL.position.set(-0.17, 0.55, 0);
     this.legR.position.set(0.17, 0.55, 0);

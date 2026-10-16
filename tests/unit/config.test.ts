@@ -3,6 +3,7 @@ import {
   BOMB,
   CAMERA,
   ENEMY,
+  ENEMY_LOOKS,
   ENEMY_TYPES,
   FEEDBACK,
   FIXED_STEP,
@@ -106,6 +107,18 @@ describe('config', () => {
     expect(BOMB.PLAYER_DMG).toBeGreaterThan(0);
     expect(BOMB.ENEMY_DMG).toBeGreaterThan(BOMB.PLAYER_DMG);
     expect(BOMB.DEFUSE_SCORE).toBeGreaterThan(0);
+  });
+
+  it('gives every enemy kind at least two cosmetic looks', () => {
+    for (const kind of Object.keys(ENEMY_LOOKS) as (keyof typeof ENEMY_LOOKS)[]) {
+      const looks = ENEMY_LOOKS[kind];
+      expect(looks.length).toBeGreaterThan(1);
+      for (const look of looks) {
+        expect(look.body).toBeGreaterThan(0);
+        expect(look.accent).toBeGreaterThan(0);
+        expect(look.body).not.toBe(look.accent);
+      }
+    }
   });
 
   it('caps a frame at a sane step', () => {

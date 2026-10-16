@@ -1,6 +1,6 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { ENEMY, ENEMY_TYPES, type EnemyKind, SAPPER } from './config';
+import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, SAPPER } from './config';
 import type { Vec3 } from './player';
 import type { Vec2 } from './world/collision';
 
@@ -54,6 +54,9 @@ export class Enemy {
   /** Distance of the nearest living neighbour at the last separation pass. */
   private reachPad: number = ENEMY.REACH_PAD;
 
+  /** Which cosmetic skin this individual uses (index into its kind's looks). */
+  readonly look: number;
+
   constructor(
     readonly kind: EnemyKind,
     x: number,
@@ -61,6 +64,7 @@ export class Enemy {
     rng: Rng,
   ) {
     const spec = ENEMY_TYPES[kind];
+    const looks = ENEMY_LOOKS[kind];
     this.stats = {
       maxHp: spec.hp,
       hp: spec.hp,
@@ -76,6 +80,7 @@ export class Enemy {
     // Stagger the first plant so a wave of sappers doesn't fire in lockstep.
     this.plantT = rng.range(SAPPER.PLANT_T * 0.4, SAPPER.PLANT_T);
     this.wanderA = rng.next() * Math.PI * 2;
+    this.look = rng.next() % looks.length;
   }
 
   get hp(): number {
