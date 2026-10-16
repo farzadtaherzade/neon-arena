@@ -32,7 +32,7 @@ export class Arena {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.3;
     document.body.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(0x07090f);
@@ -67,11 +67,12 @@ export class Arena {
   }
 
   private lights(): void {
-    // Dark warehouse: cold dim shell, one warm work lamp raking the floor.
-    this.scene.add(new THREE.HemisphereLight(0x32405a, 0x14171f, 0.7));
-    this.scene.add(new THREE.AmbientLight(0x22283a, 0.55));
+    // Dark warehouse mood, but the floor and props stay lit enough that the
+    // enemies keep their body colours instead of reading as black silhouettes.
+    this.scene.add(new THREE.HemisphereLight(0x6f86b0, 0x2a3040, 1.15));
+    this.scene.add(new THREE.AmbientLight(0x2e3448, 0.7));
 
-    const sun = new THREE.DirectionalLight(0xffd9a0, 1.5);
+    const sun = new THREE.DirectionalLight(0xffd9a0, 2.2);
     sun.position.set(25, 42, 15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -83,6 +84,12 @@ export class Arena {
     sun.shadow.camera.far = 110;
     sun.shadow.bias = -0.0006;
     this.scene.add(sun);
+
+    // Cool fill from the opposite side so enemies facing away from the key
+    // light still show their body colours rather than going black.
+    const fill = new THREE.DirectionalLight(0x8fb4ff, 0.7);
+    fill.position.set(-22, 26, -18);
+    this.scene.add(fill);
   }
 
   private floor(rng: Rng): void {
