@@ -45,6 +45,8 @@ let mBarBg: THREE.MeshBasicMaterial | undefined;
 let mBarFg: THREE.MeshBasicMaterial | undefined;
 let mWall: THREE.MeshStandardMaterial | undefined;
 let mTrim: THREE.MeshBasicMaterial | undefined;
+let mHazard: THREE.MeshBasicMaterial | undefined;
+let mPanel: THREE.MeshStandardMaterial | undefined;
 let mObstacle: THREE.MeshStandardMaterial | undefined;
 let mGlow: THREE.MeshBasicMaterial | undefined;
 let mGunMetal: THREE.MeshStandardMaterial | undefined;
@@ -61,6 +63,11 @@ export const MAT = {
   wall: () =>
     (mWall ??= new THREE.MeshStandardMaterial({ color: 0x232a3a, roughness: 0.85, metalness: 0.18 })),
   trim: () => (mTrim ??= new THREE.MeshBasicMaterial({ color: 0x2aa5c4 })),
+  /** Hazard yellow used on floor paint, crate caps and wall bands. */
+  hazard: () => (mHazard ??= new THREE.MeshBasicMaterial({ color: 0xf2b21e })),
+  /** Painted metal panel on crates: warm industrial colour, not glowing. */
+  panel: () =>
+    (mPanel ??= new THREE.MeshStandardMaterial({ color: 0xa8741b, roughness: 0.7, metalness: 0.15 })),
   obstacle: () =>
     (mObstacle ??= new THREE.MeshStandardMaterial({ color: 0x242c44, roughness: 0.75, metalness: 0.12 })),
   glow: () => (mGlow ??= new THREE.MeshBasicMaterial({ color: 0x46e0ff })),

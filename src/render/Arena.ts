@@ -118,6 +118,12 @@ export class Arena {
       trim.position.set(x, WALL_H + 0.06, z);
       trim.rotation.y = ry;
       this.scene.add(trim);
+
+      // Painted hazard band across the middle of the wall.
+      const band = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, 1.06), MAT.hazard());
+      band.position.set(x, WALL_H * 0.5, z);
+      band.rotation.y = ry;
+      this.scene.add(band);
     };
 
     mkWall(ARENA + 2, 0, -HALF - 0.5, 0);
@@ -135,9 +141,14 @@ export class Arena {
       this.scene.add(m);
       this.block(m);
 
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), MAT.glow());
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), MAT.hazard());
       strip.position.set(x, h + 0.04, z);
       this.scene.add(strip);
+
+      // Painted panel band around the middle of each crate.
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h * 0.34, d + 0.03), MAT.panel());
+      panel.position.set(x, h * 0.5, z);
+      this.scene.add(panel);
     }
   }
 
