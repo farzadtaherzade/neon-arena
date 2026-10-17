@@ -143,4 +143,11 @@ export class Sfx {
       this.osc('sine', 170, 28, t, 0.55, 0.5);
     });
   }
+
+  /** Soft rising chime on collecting an XP orb. */
+  xpCollect(): void {
+    this.guard((t) => {
+      this.osc('sine', 1100, 1400, t, 0.07, 0.12);
+    });
+  }
 }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Rng } from '../core/rng';
 import { CAMERA, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
-import { OBSTACLES, starfieldPositions } from '../game/world/layout';
+import { OBSTACLES, PLATFORMS, RAMPS, starfieldPositions } from '../game/world/layout';
 import { MAT } from './Materials';
 import { makeFloorTexture } from './Textures';
 
@@ -47,6 +47,8 @@ export class Arena {
     this.floor(rng);
     this.walls();
     this.cover();
+    this.platforms();
+    this.ramps();
     this.stars(rng);
 
     addEventListener('resize', () => this.resize());
@@ -149,6 +151,41 @@ export class Arena {
       const panel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h * 0.34, d + 0.03), MAT.panel());
       panel.position.set(x, h * 0.5, z);
       this.scene.add(panel);
+    }
+  }
+
+  private platforms(): void {
+    for (const [x, z, w, h, d] of PLATFORMS) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.obstacle());
+      m.position.set(x, h / 2, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.scene.add(m);
+      this.block(m);
+
+      // Glowing trim around the platform top edge
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), MAT.trim());
+      trim.position.set(x, h + 0.04, z);
+      this.scene.add(trim);
+
+      // Hazard band on the platform sides
+      const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.18, d + 0.03), MAT.hazard());
+      band.position.set(x, h * 0.5, z);
+      this.scene.add(band);
+    }
+  }
+
+  private ramps(): void {
+    for (const [x, z, w, h, d, ry] of RAMPS) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.wall());
+      m.position.set(x, h / 2, z);
+      m.rotation.y = ry;
+      // Slight pitch slope angle
+      m.rotation.z = ry === 0 ? 0.12 : -0.12;
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.scene.add(m);
+      this.solids.push(m);
     }
   }
 

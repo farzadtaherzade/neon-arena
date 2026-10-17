@@ -30,6 +30,8 @@ describe('config', () => {
     expect(WORLD.PLAYER_R * 2).toBeLessThan(WORLD.ARENA);
     expect(WORLD.SPRINT).toBeGreaterThan(WORLD.WALK);
     expect(WORLD.PITCH_LIMIT).toBeLessThan(Math.PI / 2);
+    expect(WORLD.STEP_HEIGHT).toBeGreaterThan(0);
+    expect(WORLD.STEP_HEIGHT).toBeLessThan(WORLD.PLAYER_H);
   });
 
   it('keeps the weapon self-consistent', () => {

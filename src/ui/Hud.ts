@@ -1,4 +1,5 @@
 import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName, WEAPON } from '../game/config';
+import { readRecord, updateRecord } from './Records';
 import type { CrosshairSettings } from './Settings';
 
 /** What the HUD reads each frame. Kept structural so `Game` doesn't leak itself. */
@@ -39,10 +40,13 @@ export class Hud {
   readonly crosshair = $('crosshair');
 
   private hitmark = $('hitmark');
+  private scopeRing = $('scopeRing');
+  private killFeed = $('killFeed');
   private vignette = $('vignette');
   private healthFill = $('healthFill');
   private healthText = $('healthText');
   private ammo = $('ammo');
+  private ammoPips = $('ammoPips');
   private scoreVal = $('scoreVal');
   private waveVal = $('waveVal');
   private enemyVal = $('enemyVal');
@@ -55,6 +59,11 @@ export class Hud {
   private finalStats = $('finalStats');
   private bombWarn = $('bombWarn');
   private bombWarnText = $('bombWarnText');
+  private newBestBadge = $('newBestBadge');
+  private bestRecord = $('bestRecord');
+
+  private pips: HTMLElement[] = [];
+  private static MAX_FEED = 3;
 
   private screens: Record<Exclude<ScreenName, 'none'>, HTMLElement> = {
     [SCREEN.START]: $('startScreen'),
@@ -64,6 +73,26 @@ export class Hud {
 
   private last: Record<string, unknown> = {};
   private bannerTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor() {
+    this.refreshBestRecord();
+    this.initPips();
+  }
+
+  private refreshBestRecord(): void {
+    const rec = readRecord();
+    this.bestRecord.textContent = rec.score > 0 ? `BEST  SCORE ${rec.score}  ·  WAVE ${rec.wave}` : '';
+  }
+
+  private initPips(): void {
+    this.ammoPips.replaceChildren();
+    this.pips = Array.from({ length: WEAPON.MAG }, () => {
+      const pip = document.createElement('span');
+      pip.className = 'pip';
+      this.ammoPips.appendChild(pip);
+      return pip;
+    });
+  }
 
   setVisible(on: boolean): void {
     this.root.classList.toggle('on', on);
@@ -94,11 +123,41 @@ export class Hud {
     this.hitmark.classList.add('kill');
   }
 
+  pushKill(kind: string, headshot: boolean): void {
+    const el = document.createElement('div');
+    el.className = headshot ? 'kf-entry headshot' : 'kf-entry';
+    el.textContent = headshot ? `✦ ${kind.toUpperCase()}` : kind.toUpperCase();
+    this.killFeed.appendChild(el);
+    while (this.killFeed.children.length > Hud.MAX_FEED) {
+      this.killFeed.firstElementChild?.remove();
+    }
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+
+  xpPop(value: number): void {
+    const el = document.createElement('div');
+    el.className = 'xp-pop';
+    el.textContent = `+${value}`;
+    const x = 50 + (Math.random() - 0.5) * 12;
+    el.style.left = `${x}vw`;
+    el.style.top = '56vh';
+    this.root.appendChild(el);
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+
+  setADS(aiming: boolean): void {
+    if (this.last.aiming !== aiming) {
+      this.last.aiming = aiming;
+      this.scopeRing.classList.toggle('on', aiming);
+    }
+  }
+
   reset(): void {
     this.hitmark.classList.remove('kill');
     this.vignette.style.opacity = '0';
     this.reloadBar.style.opacity = '0';
     this.bombWarn.classList.remove('on');
+    this.scopeRing.classList.remove('on');
     this.last = {};
   }
 
@@ -147,7 +206,7 @@ export class Hud {
     if (this.last.hp !== hp) {
       this.last.hp = hp;
       this.healthFill.style.width = `${hp}%`;
-      this.healthText.textContent = String(Math.ceil(hp));
+      this.healthText.textContent = String(Math.min(100, Math.ceil(hp)));
       this.healthFill.style.background =
         hp > 50
           ? 'linear-gradient(90deg,#1fd67a,#7dffb8)'
@@ -159,6 +218,9 @@ export class Hud {
     if (this.last.ammo !== model.ammo) {
       this.last.ammo = model.ammo;
       this.ammo.innerHTML = `${model.ammo} <small>/ ∞</small>`;
+      this.pips.forEach((p, i) => {
+        p.classList.toggle('empty', i >= model.ammo);
+      });
     }
 
     if (this.last.score !== score) {
@@ -213,5 +275,8 @@ export class Hud {
 
   setFinalStats(stats: { score: number; wave: number; kills: number }): void {
     this.finalStats.innerHTML = `SCORE <b>${stats.score}</b> &nbsp;·&nbsp; WAVE <b>${stats.wave}</b> &nbsp;·&nbsp; KILLS <b>${stats.kills}</b>`;
+    const { isNew } = updateRecord({ score: stats.score, wave: stats.wave });
+    this.newBestBadge.style.display = isNew ? 'block' : 'none';
+    this.refreshBestRecord();
   }
 }

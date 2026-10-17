@@ -331,6 +331,7 @@ export class Game {
     this.kills++;
     this.feedback.hitT = 1;
     this.hud.markKill();
+    this.hud.pushKill(enemy.kind, headshot);
     this.sfx.kill();
     this.aliveCount--;
   }
@@ -458,7 +459,8 @@ export class Game {
       this.xps.splice(i, 1);
       this.score += xp.value;
       this.feedback.hitT = 1;
-      this.sfx.hit();
+      this.sfx.xpCollect();
+      this.hud.xpPop(xp.value);
     }
   }
 
@@ -655,6 +657,7 @@ export class Game {
 
     this.hud.setHitmark(this.feedback.hitT);
     this.hud.setVignette(m, this.elapsed);
+    this.hud.setADS(this.weapon.aiming);
     if (this.state === STATE.PLAYING) this.hud.update(m, this.settings.values);
   }
 }

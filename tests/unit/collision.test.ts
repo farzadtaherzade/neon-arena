@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
 import { WORLD } from '../../src/game/config';
 import { type Aabb, CollisionWorld } from '../../src/game/world/collision';
-import { OBSTACLES, starfieldPositions } from '../../src/game/world/layout';
+import { OBSTACLES, PLATFORMS, starfieldPositions } from '../../src/game/world/layout';
 
 const BOX: Aabb = { minX: -2, maxX: 2, minZ: -2, maxZ: 2 };
 
@@ -62,8 +62,8 @@ describe('CollisionWorld.resolveCircle', () => {
 });
 
 describe('layout', () => {
-  // Same conversion `render/Arena.ts` does when it builds each cover mesh.
-  const boxes: Aabb[] = OBSTACLES.map(([x, z, w, , d]) => ({
+  // Same conversion `render/Arena.ts` does when it builds each cover and platform mesh.
+  const boxes: Aabb[] = [...OBSTACLES, ...PLATFORMS].map(([x, z, w, , d]) => ({
     minX: x - w / 2,
     maxX: x + w / 2,
     minZ: z - d / 2,

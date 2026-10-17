@@ -20,6 +20,22 @@ export const OBSTACLES: readonly (readonly [number, number, number, number, numb
   [-4, 20, 5, 2.5, 3],
 ];
 
+/** Four raised corner platforms as `[x, z, width, height, depth]`. */
+export const PLATFORMS: readonly (readonly [number, number, number, number, number])[] = [
+  [-22, -22, 7, 1.0, 7], // NW
+  [22, -22, 7, 1.0, 7], // NE
+  [22, 22, 7, 1.0, 7], // SE
+  [-22, 22, 7, 1.0, 7], // SW
+];
+
+/** Ramps leading up to platforms as `[x, z, width, height, depth, rotY]`. */
+export const RAMPS: readonly (readonly [number, number, number, number, number, number])[] = [
+  [-17.2, -22, 2.8, 0.9, 3.5, 0], // NW ramp facing East
+  [17.2, -22, 2.8, 0.9, 3.5, Math.PI], // NE ramp facing West
+  [17.2, 22, 2.8, 0.9, 3.5, Math.PI], // SE ramp facing West
+  [-17.2, 22, 2.8, 0.9, 3.5, 0], // SW ramp facing East
+];
+
 export const STAR_COUNT = 420;
 export const STAR_RADIUS = 130;
 

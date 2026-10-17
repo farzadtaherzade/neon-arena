@@ -11,6 +11,8 @@
     <div id="hud">
       <div id="vignette"></div>
       <div id="crosshair" class="ch"></div>
+      <div id="scopeRing"></div>
+      <div id="killFeed"></div>
       <div id="hitmark">
         <div class="x x1"></div><div class="x x2"></div><div class="x x3"></div><div class="x x4"></div>
       </div>
@@ -22,11 +24,15 @@
       <div class="panel" id="healthWrap">
         <div id="healthLabel">INTEGRITY <span id="healthText">100</span></div>
         <div id="healthBar"><div id="healthFill"></div></div>
-        <div id="staminaBar"><div id="staminaFill"></div></div>
+        <div id="staminaRow">
+          <span id="staminaLabel">SPRINT</span>
+          <div id="staminaBar"><div id="staminaFill"></div></div>
+        </div>
       </div>
       <div class="panel" id="ammoWrap">
         <div id="ammo">12 <small>/ ∞</small></div>
         <div id="reloadBar"><div id="reloadFill"></div></div>
+        <div id="ammoPips"></div>
         <div id="reloadHint">R — RELOAD</div>
       </div>
       <div id="banner"><div class="big" id="bannerBig"></div><div class="sub" id="bannerSub"></div></div>
@@ -46,6 +52,7 @@
         <div class="pair"><span class="cap">Space</span><span class="lbl">JUMP</span></div>
       </div>
       <div class="tip">SURVIVE THE WAVES — HEADSHOTS DEAL 2.5× DAMAGE — CLEARING A WAVE RESTORES 25 HP</div>
+      <div id="bestRecord" class="best-record"></div>
       <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>
       <div class="go">CLICK TO DEPLOY</div>
     </div>
@@ -61,6 +68,7 @@
     <div class="screen" id="gameOverScreen">
       <h1>MISSION FAILED</h1>
       <div id="finalStats"></div>
+      <div id="newBestBadge" class="new-best" style="display:none">★ NEW BEST SCORE</div>
       <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>
       <div class="go">CLICK TO RETRY</div>
     </div>

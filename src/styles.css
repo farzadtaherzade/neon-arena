@@ -145,6 +145,26 @@ canvas {
   box-shadow: 0 0 8px var(--danger);
 }
 
+#scopeRing {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 180px;
+  height: 180px;
+  margin: -90px 0 0 -90px;
+  border-radius: 50%;
+  border: 1px solid rgba(70, 224, 255, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(70, 224, 255, 0.08),
+    inset 0 0 0 1px rgba(70, 224, 255, 0.08);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+#scopeRing.on {
+  opacity: 1;
+}
+
 #vignette {
   position: absolute;
   inset: 0;
@@ -155,6 +175,11 @@ canvas {
 .panel {
   position: absolute;
   font-family: Consolas, Menlo, monospace;
+  background: rgba(6, 10, 20, 0.55);
+  border: 1px solid rgba(70, 224, 255, 0.18);
+  backdrop-filter: blur(4px);
+  padding: 10px 14px;
+  border-radius: 2px;
 }
 #stats {
   left: 24px;
@@ -176,10 +201,70 @@ canvas {
   color: var(--danger);
 }
 
+#killFeed {
+  position: absolute;
+  right: 204px;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+.kf-entry {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  padding: 4px 8px;
+  background: rgba(6, 10, 20, 0.65);
+  border-left: 2px solid var(--accent);
+  backdrop-filter: blur(4px);
+  animation: kfFade 1.8s ease-out forwards;
+}
+.kf-entry.headshot {
+  border-left-color: #ffd27a;
+  color: #ffd27a;
+  text-shadow: 0 0 6px rgba(255, 210, 122, 0.4);
+}
+@keyframes kfFade {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.xp-pop {
+  position: absolute;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: #7ce4ff;
+  text-shadow: 0 0 10px rgba(124, 228, 255, 0.8);
+  pointer-events: none;
+  animation: xpFloat 0.7s ease-out forwards;
+}
+@keyframes xpFloat {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-34px);
+  }
+}
+
 #healthWrap {
   left: 24px;
   bottom: 26px;
-  width: 240px;
+  width: 250px;
 }
 #healthLabel {
   font-family: Consolas, Menlo, monospace;
@@ -199,11 +284,24 @@ canvas {
   background: linear-gradient(90deg, #1fd67a, #7dffb8);
   transition: width 0.15s;
 }
+#staminaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+#staminaLabel {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #46e0ff;
+  opacity: 0.75;
+  white-space: nowrap;
+}
 #staminaBar {
-  height: 5px;
+  flex: 1;
+  height: 8px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  margin-top: 5px;
 }
 #staminaFill {
   height: 100%;
@@ -213,11 +311,22 @@ canvas {
 }
 #staminaFill.low {
   background: linear-gradient(90deg, #d61f3a, #ff7a7a);
+  animation: staminaPulse 0.6s ease-in-out infinite;
+}
+@keyframes staminaPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 #ammoWrap {
-  right: 28px;
+  right: 24px;
   bottom: 22px;
+  padding: 10px 16px 12px;
   text-align: right;
   font-family: Consolas, Menlo, monospace;
 }
@@ -243,6 +352,26 @@ canvas {
   height: 100%;
   width: 0;
   background: var(--accent);
+}
+#ammoPips {
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 4px rgba(70, 224, 255, 0.5);
+  transition:
+    background 0.1s,
+    box-shadow 0.1s;
+}
+.pip.empty {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
 }
 #reloadHint {
   font-size: 11px;
@@ -354,9 +483,26 @@ canvas {
   letter-spacing: 2px;
   color: #5d6a80;
 }
+.best-record {
+  margin-top: 10px;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: rgba(70, 224, 255, 0.65);
+  text-shadow: 0 0 10px rgba(70, 224, 255, 0.4);
+}
 #gameOverScreen h1 {
   color: var(--danger);
   text-shadow: 0 0 40px rgba(255, 59, 78, 0.5);
+}
+.new-best {
+  margin-top: 14px;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 4px;
+  color: #ffd27a;
+  text-shadow: 0 0 16px rgba(255, 210, 122, 0.6);
+  animation: pulse 1.2s ease-in-out infinite;
 }
 #finalStats {
   margin-top: 26px;
