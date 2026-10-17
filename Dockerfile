@@ -2,7 +2,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# gentle fetching: jittery npm mirrors reset concurrent bulk streams (ECONNRESET)
+RUN npm ci --maxsockets=2 --fetch-retries=10 --fetch-retry-maxtimeout=120000
 COPY . .
 RUN npm run build
 
