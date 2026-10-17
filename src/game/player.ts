@@ -102,18 +102,38 @@ export class Player {
     }
     this.jumpQueued = false;
 
+    // Feet height before this step's vertical move, so a falling player is
+    // caught by a platform top they cross during the frame rather than phasing
+    // through it.
+    const feetBefore = this.position.y - WORLD.PLAYER_H;
+
     this.velocity.y -= WORLD.GRAVITY * dt;
     this.position.x += this.velocity.x * dt;
     this.position.z += this.velocity.z * dt;
     this.position.y += this.velocity.y * dt;
 
-    if (this.position.y <= WORLD.PLAYER_H) {
-      this.position.y = WORLD.PLAYER_H;
+    // Vertical support: stand on the highest surface underfoot reachable from
+    // here — the arena floor (0) or a platform stepped/jumped/fallen onto. The
+    // ceiling allows a `STEP_HEIGHT` walk-up while grounded, and always covers
+    // the feet's travel this step so descent can't tunnel through.
+    const feet = this.position.y - WORLD.PLAYER_H;
+    const ceiling = Math.max(feet + (this.grounded ? WORLD.STEP_HEIGHT : 0), feetBefore);
+    const support = collision.groundHeight(this.position, WORLD.PLAYER_R, ceiling);
+    const supportEye = support + WORLD.PLAYER_H;
+    if (this.velocity.y <= 0 && this.position.y <= supportEye + 1e-4) {
+      this.position.y = supportEye;
       this.velocity.y = 0;
       this.grounded = true;
+    } else {
+      this.grounded = false;
     }
 
-    collision.resolveCircle(this.position, WORLD.PLAYER_R);
+    // Horizontal collide, step-aware now that the feet are resolved: a low
+    // enough top is walked onto rather than blocked.
+    collision.resolveCircle(this.position, WORLD.PLAYER_R, {
+      feetY: feet,
+      step: this.grounded ? WORLD.STEP_HEIGHT : 0,
+    });
 
     if (this.moving) {
       const sp = Math.hypot(this.velocity.x, this.velocity.z);

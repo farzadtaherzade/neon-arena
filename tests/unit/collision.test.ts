@@ -59,6 +59,59 @@ describe('CollisionWorld.resolveCircle', () => {
     w.resolveCircle(p, 0.45);
     expect(p.x).toBeCloseTo(-10 - 0.45, 10);
   });
+
+  it('lets a low step be walked onto when a step context is supplied', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(BOX, 0.4);
+    const p = { x: 0, z: 2.2 };
+    w.resolveCircle(p, 0.45, { feetY: 0, step: 0.4 });
+    expect(p).toEqual({ x: 0, z: 2.2 });
+  });
+
+  it('still blocks a collider taller than the step allowance', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(BOX, 3);
+    const p = { x: 0, z: 2.2 };
+    w.resolveCircle(p, 0.45, { feetY: 0, step: 0.4 });
+    expect(p.z).toBeCloseTo(2 + 0.45, 10);
+  });
+
+  it('treats a finite-top collider as a full wall without a step context', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(BOX, 1);
+    const p = { x: 0, z: 2.2 };
+    w.resolveCircle(p, 0.45);
+    expect(p.z).toBeCloseTo(2 + 0.45, 10);
+  });
+});
+
+describe('CollisionWorld.groundHeight', () => {
+  const PLATFORM: Aabb = { minX: -3, maxX: 3, minZ: -3, maxZ: 3 };
+
+  it('returns the platform top underfoot when reachable', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(PLATFORM, 1);
+    expect(w.groundHeight({ x: 0, z: 0 }, 0.45, 1)).toBeCloseTo(1, 10);
+  });
+
+  it('ignores a top above the reach ceiling', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(PLATFORM, 1);
+    expect(w.groundHeight({ x: 0, z: 0 }, 0.45, 0.4)).toBe(0);
+  });
+
+  it('returns 0 outside every footprint', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(PLATFORM, 1);
+    expect(w.groundHeight({ x: 20, z: 20 }, 0.45, 5)).toBe(0);
+  });
+
+  it('picks the highest reachable surface', () => {
+    const w = new CollisionWorld();
+    w.addObstacle(PLATFORM, 0.4);
+    w.addObstacle({ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }, 1);
+    expect(w.groundHeight({ x: 0, z: 0 }, 0.45, 1.5)).toBeCloseTo(1, 10);
+  });
 });
 
 describe('layout', () => {

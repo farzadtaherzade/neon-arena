@@ -163,6 +163,7 @@ export class Hud {
 
   setHitmark(hitT: number): void {
     const opacity = Math.max(hitT, 0);
+    if (hitT <= 0) this.hitmark.classList.remove('kill');
     if (this.last.hitmark !== opacity) {
       this.last.hitmark = opacity;
       this.hitmark.style.opacity = String(opacity);

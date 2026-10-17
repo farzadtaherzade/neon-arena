@@ -496,6 +496,10 @@ export class Game {
 
     if (this.state === STATE.PLAYING) {
       this.player.update(dt, this.input.move(), this.collision);
+      // Sync the rig to the current view before firing, so a shot's ray matches
+      // the crosshair this frame rather than the camera left by the last render.
+      this.applyCameraPose();
+      this.arena.camera.updateWorldMatrix(true, false);
       this.weapon.aiming = this.input.aiming;
       this.weapon.update(dt, this.elapsed, this.input.firing);
       this.updateWaves(dt);
@@ -577,11 +581,21 @@ export class Game {
     f.shakeT *= Math.exp(-CAMERA.SHAKE_DECAY * dt);
   }
 
+  /** Put the camera rig where the player is looking (base pose, no recoil/bob). */
+  private applyCameraPose(): void {
+    const player = this.player;
+    const { yawObj, pitchObj } = this.arena.rig;
+    yawObj.position.set(player.position.x, player.position.y, player.position.z);
+    yawObj.rotation.y = player.yaw;
+    pitchObj.rotation.x = player.pitch;
+    pitchObj.rotation.y = 0;
+  }
+
   /** Draw the current simulation state. Runs once per animation frame. */
   render(dt: number): void {
     const player = this.player;
     const weapon = this.weapon;
-    const { yawObj, pitchObj } = this.arena.rig;
+    const { pitchObj } = this.arena.rig;
 
     // The viewmodel belongs to a live run: visible while playing and behind the
     // pause overlay, hidden on the title and game-over screens. Driving this
@@ -589,10 +603,8 @@ export class Game {
     this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
 
     if (this.state === STATE.PLAYING) {
-      yawObj.position.set(player.position.x, player.position.y, player.position.z);
-      yawObj.rotation.y = player.yaw;
-      pitchObj.rotation.x =
-        player.pitch +
+      this.applyCameraPose();
+      pitchObj.rotation.x +=
         weapon.recoil +
         (this.feedback.shakeT > 0 ? (this.rng.next() - 0.5) * this.feedback.shakeT * CAMERA.SHAKE_PITCH : 0);
       pitchObj.rotation.y =

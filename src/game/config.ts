@@ -32,7 +32,7 @@ export const WORLD = {
   /** Sprint is locked out until the bar climbs back above this. */
   STAMINA_UNLOCK: 25,
   /** Maximum step height for walking up slopes/ramps onto platforms. */
-  STEP_HEIGHT: 0.4,
+  STEP_HEIGHT: 1,
 } as const;
 
 export const WEAPON = {

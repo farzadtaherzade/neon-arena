@@ -15,6 +15,27 @@ export interface Vec2 {
 }
 
 /**
+ * A registered collider: the XZ footprint plus the world-Y of its top surface.
+ * `top` is `Infinity` for a full-height wall (nothing can be stepped or stood
+ * on), the real mesh height for platforms and cover.
+ */
+export interface Collider extends Aabb {
+  top: number;
+}
+
+/**
+ * The player's vertical stance, supplied only when a caller wants step-up.
+ * Absent it, `resolveCircle` treats every collider as a full wall — the legacy
+ * behaviour the enemies and the tests rely on.
+ */
+export interface StepContext {
+  /** Feet world-Y (eye height minus `WORLD.PLAYER_H`). */
+  feetY: number;
+  /** How far above the feet a top may be and still be walked onto. */
+  step: number;
+}
+
+/**
  * Static arena collision.
  *
  * Pure arithmetic on plain numbers — no three, no DOM — so `resolveCircle` is
@@ -22,25 +43,37 @@ export interface Vec2 {
  * via `addObstacle`.
  */
 export class CollisionWorld {
-  readonly obstacles: Aabb[] = [];
+  readonly obstacles: Collider[] = [];
 
   constructor(private readonly half: number = WORLD.HALF) {}
 
-  addObstacle(box: Aabb): void {
-    this.obstacles.push(box);
+  addObstacle(box: Aabb, top: number = Number.POSITIVE_INFINITY): void {
+    this.obstacles.push({
+      minX: box.minX,
+      maxX: box.maxX,
+      minZ: box.minZ,
+      maxZ: box.maxZ,
+      top,
+    });
   }
 
   /**
    * Push `p` out of the arena walls and any obstacle it overlaps, mutating it
    * in place. Circles that end up inside a box are ejected along the shallowest
    * axis rather than getting stuck.
+   *
+   * With a `StepContext`, a collider whose top sits at or below `feetY + step`
+   * is stepped over instead of blocked (its `top` is low enough to walk onto).
+   * Without one, every collider blocks — the enemy/default path.
    */
-  resolveCircle(p: Vec2, r: number): void {
+  resolveCircle(p: Vec2, r: number, ctx?: StepContext): void {
+    const reach = ctx ? ctx.feetY + ctx.step : 0;
     const b = this.half - WORLD.WALL_INSET - r;
     p.x = Math.max(-b, Math.min(b, p.x));
     p.z = Math.max(-b, Math.min(b, p.z));
 
     for (const o of this.obstacles) {
+      if (o.top <= reach) continue;
       const cx = Math.max(o.minX, Math.min(o.maxX, p.x));
       const cz = Math.max(o.minZ, Math.min(o.maxZ, p.z));
       const dx = p.x - cx;
@@ -66,5 +99,23 @@ export class CollisionWorld {
         else p.z = o.maxZ + r;
       }
     }
+  }
+
+  /**
+   * World-Y of the highest walkable surface under `p` (its XZ footprint,
+   * inflated by `r`), among colliders whose top is at or below `ceiling`.
+   * Returns 0 for the arena floor. Allocation-free, called once per player step.
+   */
+  groundHeight(p: Vec2, r: number, ceiling: number): number {
+    let best = 0;
+    for (const o of this.obstacles) {
+      if (o.top > ceiling || o.top <= best) continue;
+      const cx = Math.max(o.minX, Math.min(o.maxX, p.x));
+      const cz = Math.max(o.minZ, Math.min(o.maxZ, p.z));
+      const dx = p.x - cx;
+      const dz = p.z - cz;
+      if (dx * dx + dz * dz < r * r) best = o.top;
+    }
+    return best;
   }
 }

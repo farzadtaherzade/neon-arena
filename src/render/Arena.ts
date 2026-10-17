@@ -212,6 +212,9 @@ export class Arena {
     this.solids.push(mesh);
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh);
-    this.collision.addObstacle({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+    this.collision.addObstacle(
+      { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z },
+      box.max.y,
+    );
   }
 }

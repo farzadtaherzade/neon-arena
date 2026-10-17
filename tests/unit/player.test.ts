@@ -119,6 +119,39 @@ describe('Player movement', () => {
     expect(p.bobPhase).toBeGreaterThan(1);
   });
 
+  it('steps up onto a low lip and stands on it', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 0.4);
+    run(p, c, IDLE, 5);
+    expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H + 0.4, 6);
+    expect(p.grounded).toBe(true);
+  });
+
+  it('lands on a platform when dropped onto it', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 1);
+    p.position.y = WORLD.PLAYER_H + 2;
+    p.velocity.y = 0;
+    p.grounded = false;
+    run(p, c, IDLE, 60);
+    expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H + 1, 6);
+    expect(p.grounded).toBe(true);
+  });
+
+  it('walks off a platform edge and falls back to the floor', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 1);
+    p.position.y = WORLD.PLAYER_H + 1;
+    p.grounded = true;
+    p.yaw = Math.PI; // forward points toward +z, off the platform
+    run(p, c, { forward: 1, right: 0, sprint: false }, 240);
+    expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H, 6);
+    expect(p.position.z).toBeGreaterThan(2);
+  });
+
   it('reset puts the player back on the spawn point', () => {
     const p = new Player();
     const c = new CollisionWorld();
