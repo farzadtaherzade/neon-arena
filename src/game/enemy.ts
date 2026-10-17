@@ -80,7 +80,7 @@ export class Enemy {
     // Stagger the first plant so a wave of sappers doesn't fire in lockstep.
     this.plantT = rng.range(SAPPER.PLANT_T * 0.4, SAPPER.PLANT_T);
     this.wanderA = rng.next() * Math.PI * 2;
-    this.look = rng.next() % looks.length;
+    this.look = Math.floor(rng.next() * looks.length);
   }
 
   get hp(): number {

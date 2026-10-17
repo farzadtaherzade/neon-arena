@@ -26,6 +26,7 @@ let gBarFg: THREE.BoxGeometry | undefined;
 let gAccent: THREE.BoxGeometry | undefined;
 let gBomb: THREE.SphereGeometry | undefined;
 let gBombRing: THREE.RingGeometry | undefined;
+let gXpOrb: THREE.IcosahedronGeometry | undefined;
 
 export const GEO = {
   body: () => (gBody ??= new THREE.BoxGeometry(0.66, 0.85, 0.4)),
@@ -38,6 +39,8 @@ export const GEO = {
   barFg: () => (gBarFg ??= new THREE.BoxGeometry(0.86, 0.06, 0.02)),
   bombBody: () => (gBomb ??= new THREE.SphereGeometry(BOMB.BODY_R, 14, 10)),
   bombRing: () => (gBombRing ??= new THREE.RingGeometry(BOMB.RADIUS - 0.15, BOMB.RADIUS, 48)),
+  /** The XP pickup orb. Shared: a dead enemy must never add a geometry to the scene. */
+  xpOrb: () => (gXpOrb ??= new THREE.IcosahedronGeometry(0.16, 0)),
 };
 
 let mEye: THREE.MeshBasicMaterial | undefined;
