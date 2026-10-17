@@ -272,6 +272,23 @@ __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', col
 `npm run build` produces a fully static `dist/`. Upload **that folder** to any
 static host.
 
+### Docker
+
+```bash
+docker build -t neon-arena .
+
+# `-p` publishes the container's port 80 on the host, all interfaces (0.0.0.0)
+docker run --rm -d -p 8080:80 neon-arena
+
+# open http://localhost:8080
+```
+
+> In environments where npm only runs behind a local proxy (e.g. the dev
+> machine's `127.0.0.1:10808`), the build needs it passed explicitly:
+> `docker build --network host --build-arg HTTP_PROXY=$HTTP_PROXY
+> --build-arg HTTPS_PROXY=$HTTPS_PROXY -t neon-arena .`
+
+
 ### GitHub Pages
 
 ```bash
