@@ -18,7 +18,7 @@ import {
   WORLD,
 } from '../game/config';
 import { SpatialHash } from '../game/enemies';
-import { Enemy } from '../game/enemy';
+import { Enemy, type EnemyWorld } from '../game/enemy';
 import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
@@ -83,6 +83,10 @@ export class Game {
   readonly weapon: Weapon;
   readonly hostiles: Hostile[] = [];
   private hash = new SpatialHash();
+  /** Reused each step: the broadphase rebuild must not allocate an array per tick. */
+  private enemyScratch: Enemy[] = [];
+  /** The world handed to enemies each step — built once, mutated in place. */
+  private readonly world: EnemyWorld;
 
   /** Live sapper bombs and the meshes backing them. */
   private bombs: Bomb[] = [];
@@ -165,6 +169,15 @@ export class Game {
 
     this.waves.testing = test;
     this.waves.rng = this.rng;
+
+    this.world = {
+      playerPos: this.player.position,
+      neighbours: EMPTY,
+      hostileCount: 0,
+      collide: (p, r) => this.collision.resolveCircle(p, r),
+      damagePlayer: (amount) => this.damagePlayer(amount),
+      plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
+    };
 
     document.getElementById('startScreen')!.addEventListener('click', () => this.start(false));
     document.getElementById('gameOverScreen')!.addEventListener('click', () => this.start(false));
@@ -515,16 +528,13 @@ export class Game {
       this.aliveCount++;
     }
 
-    this.hash.rebuild(this.hostiles.map((h) => h.enemy));
-    const world = {
-      playerPos: this.player.position,
-      neighbours: EMPTY,
-      hostileCount: this.waves.hostileCount(this.aliveCount),
-      collide: (p: { x: number; z: number }, r: number) => this.collision.resolveCircle(p, r),
-      damagePlayer: (amount: number) => this.damagePlayer(amount),
-      plantBomb: (from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean) =>
-        this.plantBomb(from, to, thrown),
-    };
+    const scratch = this.enemyScratch;
+    scratch.length = 0;
+    for (const h of this.hostiles) scratch.push(h.enemy);
+    this.hash.rebuild(scratch);
+
+    const world = this.world;
+    world.hostileCount = this.waves.hostileCount(this.aliveCount);
 
     for (let i = this.hostiles.length - 1; i >= 0; i--) {
       const h = this.hostiles[i]!;
