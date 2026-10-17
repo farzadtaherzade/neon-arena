@@ -7,13 +7,20 @@ Built with **Vite + TypeScript**.
 
 ---
 
-## Screenshot
+## Screenshots
 
 ![NEON ARENA — a sapper's bomb counting down with the radar in the corner](docs/screenshot-sapper.png)
 
 A **Sapper** has just planted a bomb mid-wave: the blast ring is marked on the
 floor, the `BOMB` countdown is up, and the radar (top right) shows the pack
 closing in — including the sapper's green blip.
+
+| | |
+|:---:|:---:|
+| ![Opening volley — a tracer beam and muzzle sparks land on a Grunt](docs/screenshot-combat.png) | ![Wave 5 pack — colour-coded robot types with matching radar blips](docs/screenshot-enemy-faces.png) |
+| *A hitscan tracer, sparks and the hitmarker; the magazine counter already at 4.* | *Robot types read by colour and silhouette; the radar mirrors each one as a blip.* |
+| ![XP crystal on the floor, stamina gauge under the integrity bar](docs/screenshot-xp-stamina.png) | ![Warehouse paint — hazard stripes, warning plates and striped cover](docs/screenshot-painted-floor.png) |
+| *XP crystals drop from kills, sprint stamina gets its own gauge, and upgrades have grown integrity to 150.* | *Every mark on the floor is procedural: hazard lanes, warning plates, striped cover blocks.* |
 
 ---
 
