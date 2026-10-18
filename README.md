@@ -1,7 +1,8 @@
 # NEON ARENA — 3D Arena Shooter
 
 A browser-based first-person 3D arena shooter built with [Three.js](https://threejs.org/).
-Survive escalating waves of hostile robots in a dark industrial arena.
+Survive escalating waves of hostile robots across an 84 × 84 maze of cover
+blocks, gatehouse towers and a central reactor.
 
 Built with **Vite + TypeScript**.
 
@@ -9,24 +10,34 @@ Built with **Vite + TypeScript**.
 
 ## Screenshots
 
-![NEON ARENA — a sapper's bomb counting down with the radar in the corner](docs/screenshot-sapper.png)
+![The 84 × 84 arena from above: mirrored cover blocks, four gatehouse decks and the reactor at the centre](docs/screenshot-overview.png)
 
-A **Sapper** has just planted a bomb mid-wave: the blast ring is marked on the
-floor, the `BOMB` countdown is up, and the radar (top right) shows the pack
-closing in — including the sapper's green blip.
+The whole floor at a glance: 32 cover blocks mirrored four ways, the four cyan
+gatehouse decks on the mid-edges, and the magenta reactor every lane is
+navigated by.
 
 | | |
 |:---:|:---:|
-| ![Opening volley — a tracer beam and muzzle sparks land on a Grunt](docs/screenshot-combat.png) | ![Wave 5 pack — colour-coded robot types with matching radar blips](docs/screenshot-enemy-faces.png) |
-| *A hitscan tracer, sparks and the hitmarker; the magazine counter already at 4.* | *Robot types read by colour and silhouette; the radar mirrors each one as a blip.* |
-| ![XP crystal on the floor, stamina gauge under the integrity bar](docs/screenshot-xp-stamina.png) | ![Warehouse paint — hazard stripes, warning plates and striped cover](docs/screenshot-painted-floor.png) |
-| *XP crystals drop from kills, sprint stamina gets its own gauge, and upgrades have grown integrity to 150.* | *Every mark on the floor is procedural: hazard lanes, warning plates, striped cover blocks.* |
+| ![Standing on the north gatehouse deck, the maze below](docs/screenshot-deck.png) | ![The reactor at the centre, hazard lanes leading in](docs/screenshot-reactor.png) |
+| *On a gatehouse deck: capture pad underfoot, the ramp down, the maze laid out below.* | *The reactor — dark monolith, magenta containment rings, lit corner edges.* |
+| ![Alarm beacon red over hostiles at the tower base](docs/screenshot-alarm.png) | ![A hit flash and health bar on a Grunt](docs/screenshot-combat.png) |
+| *Tower alarm: hostiles at the base turn the beacon red and pulse a ring on the radar.* | *A hit lands — flash, health bar, and the magazine counting down.* |
+| ![A live bomb with its blast ring and countdown](docs/screenshot-bomb.png) | ![Wave 5 with all four enemy types on the field](docs/screenshot-enemy-faces.png) |
+| *A live bomb: blast ring on the floor, `BOMB 2.9s`, the tab reddening.* | *Wave 5: grunts, runners, a tank and sappers — colour and silhouette, mirrored by the radar blips.* |
+
+![Procedural floor paint: hazard lanes crossing at a junction](docs/screenshot-painted-floor.png)
+
+Every mark on the floor is drawn in code: hazard lanes, warning plates and the
+orange loading-zone squares repeat on a 14-unit grid.
 
 ---
 
 ## Features
 
 - **FPS controls** — WASD movement, mouse look via Pointer Lock, sprint, jump
+- **The arena** — 84 × 84 of dense maze: 32 cover blocks mirrored four ways around a central reactor, with four gatehouse decks on the mid-edges. Symmetric, so every lane has a twin across the centre
+- **Deck capture** — one gatehouse per wave carries a live pad. Hold it for 4 seconds to repair 30 HP, then that deck cools down for 40; the live pad rotates with the wave, so the objective keeps moving and the climb is never free
+- **Alarm towers** — every gatehouse has a beacon: amber on the deck you can take, dim cyan on the other three, and red with a siren ping and a pulsing radar ring when hostiles mass at its base
 - **Weapon system** — 12-round magazine, infinite reserve, reload, recoil kick, muzzle flash, spread bloom
 - **Four enemy types**
   | Type | HP (wave 1) | Speed | Damage | Score | Behaviour |
@@ -36,12 +47,12 @@ closing in — including the sapper's green blip.
   | Tank | 200 | 2.2 | 22 | 300 | Slow, high HP, big damage |
   | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; charges once fewer than 5 hostiles remain |
 - **Sapper & bombs** — from wave 5 a sapper stalks you, keeping its distance and planting a fused bomb every 6 seconds (thrown at you from afar, dropped in its tracks up close). Shoot a live bomb to defuse it for bonus points; leave it and the blast hurts you *and* nearby enemies. The tab reddens and a tone sounds when a bomb lands close
-- **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius
+- **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius, gatehouses marked (red pulse while their alarm is up)
 - **Wave system** — enemy count, HP and speed scale per wave; clearing a wave restores 25 HP
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
-- **HUD** — score, wave, hostile count, integrity bar, ammo counter, reload progress
+- **HUD** — score, wave, hostile count, integrity bar, sprint gauge, ammo counter, reload progress, deck-capture bar
 - **Crosshair settings** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still. Opens from any screen with `C`, and your choices are saved to `localStorage`
 - **Pause / game over / restart** flow
 
@@ -138,25 +149,33 @@ neon-arena/
 │   │   ├── enemy.ts          one hostile: steering, health, death clock
 │   │   ├── enemies.ts        spatial hash for enemy separation
 │   │   ├── bomb.ts           a planted bomb: fuse, radius, detonation
+│   │   ├── capture.ts        the rotating deck objective: hold timer, cooldowns
+│   │   ├── alarm.ts          tower alarm rising-edge detection
+│   │   ├── xp.ts             XP orb magnet + payout
 │   │   ├── minimap.ts        player-up world→radar projection (pure)
 │   │   ├── waves.ts          wave composition, spawn pacing, intermission
 │   │   ├── fx.ts             particle pool + tracer ring
 │   │   └── world/
-│   │       ├── collision.ts  circle-vs-box push-out
-│   │       └── layout.ts     obstacle table + starfield generation
+│   │       ├── collision.ts  push-out, ramp height fields, spawn blocking
+│   │       └── layout.ts     maze/deck/ramp tables + starfield generation
 │   ├── render/               the Three.js adapter — the only place that imports it
 │   │   ├── Arena.ts          renderer, scene, camera rig, world meshes
+│   │   ├── CapturePad.ts     a gatehouse top: pad, mast, alarm beacon
 │   │   ├── Pick.ts           one raycast per shot
 │   │   ├── Gun.ts            first-person viewmodel
 │   │   ├── EnemyView.ts      one enemy's meshes
 │   │   ├── BombView.ts       a bomb's meshes + blink
+│   │   ├── XpView.ts         an orb's meshes
 │   │   ├── Fx.ts             points + lines wrapping the pure pools
 │   │   ├── Materials.ts      shared geometry/material cache
 │   │   └── Textures.ts       procedural floor texture
-│   ├── audio/Sfx.ts          Web Audio synth
+│   ├── audio/                Web Audio synth, no files
+│   │   ├── Sfx.ts            one-shots (shots, hits, bombs, siren)
+│   │   └── Music.ts          the ambient bed
 │   └── ui/
 │       ├── Hud.ts            all DOM reads/writes
 │       ├── Minimap.ts        canvas radar drawing
+│       ├── Records.ts        best score/wave in localStorage
 │       ├── Settings.ts       crosshair presets, live tuning, localStorage
 │       └── Input.ts          keyboard, mouse, pointer lock
 └── tests/
@@ -197,9 +216,15 @@ neon-arena/
 
 Everything a designer is likely to change is in `src/game/config.ts`, grouped by
 concern — `WORLD`, `WEAPON`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`, `ENEMY`,
-`WAVES`, `FX`. Each group is `as const`, so a typo is a compile error rather
-than an `undefined` at 3 a.m. Mesh-local dimensions (a wall's thickness, a
-barrel's length) stay in the module that owns that mesh.
+`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `FX`. Each group is `as const`,
+so a typo is a compile error rather than an `undefined` at 3 a.m. Mesh-local
+dimensions (a wall's thickness, a barrel's length) stay in the module that owns
+that mesh.
+
+The layout itself is data too: `src/game/world/layout.ts` holds one quadrant of
+maze cover (mirrored four ways), the four gatehouse decks, their ramps and the
+reactor. Edit the quadrant — never the expanded `OBSTACLES` list — or the map
+stops being symmetric.
 
 ```ts
 export const WEAPON = {
@@ -227,12 +252,21 @@ npm test
 - `core` — the RNG is deterministic and uniform, damping is frame-rate
   independent, and the fixed loop survives jittery frames and long stalls
 - `collision` — walls clamp, obstacles push out, embedded circles escape by the
-  nearest face; the arena layout fits inside the arena and leaves the spawn clear
-- `player` — gravity, jumping, damping, diagonal normalisation, no tunnelling
+  nearest face; ramps interpolate and block only where they are a wall; the
+  layout fits inside the arena, every ramp lands on a deck face, and the spawn
+  plaza is free of cover
+- `player` — gravity, jumping, damping, diagonal normalisation, no tunnelling,
+  ramp ascent, and "no climbing a deck from the ground"
 - `weapon` — fire rate, auto-reload, dry fire, bloom clamp and decay, headshot damage
-- `enemy` / `enemies` — damage, death clock, attack cooldown, separation. The
-  spatial hash is run against the all-pairs loop it replaced: two identical
-  populations stepped side by side must end up in the same places
+- `enemy` / `enemies` — damage, death clock, attack cooldown, separation. Mobs
+  besiege a ramp mouth without climbing, lob bombs onto a deck, and fall off
+  ledges. The spatial hash is run against the all-pairs loop it replaced: two
+  identical populations stepped side by side must end up in the same places
+- `capture` — the live deck rotates with the wave, the hold fills and drains,
+  the cooldown blocks a second claim, and the floor beneath a deck never counts
+- `alarm` — one siren per rising edge, a hold that survives a mob ducking behind
+  cover, and towers tracked independently
+- `input` — the look-delta filter accepts a flick and rejects a cursor warp
 - `waves` — composition, the scaling curve, spawn spacing, intermission
 - `fx` — pool wrap-around, gravity, floor bounce, fade, tracer ring reuse
 - `settings` — clamping, colour validation, persistence, corrupt storage
@@ -249,7 +283,9 @@ It builds the app, serves `dist/` with `vite preview`, and drives the real
 browser: boot with no console errors, wave spawn, look, shoot, reload, GPU
 resource convergence (the old code leaked two geometries per enemy), damage,
 death, and the crosshair panel. Waits are condition-based, so it works on
-software rendering as well as a GPU.
+software rendering as well as a GPU. On the maze map the harness lines its
+targets up down an open lane with `faceEnemies()` rather than scattering them on
+a ring that cover would hide them behind.
 
 ### Manual / automation hooks
 
@@ -258,8 +294,9 @@ software rendering as well as a GPU.
 ```js
 __NEON.stats()            // { state, hp, ammo, score, kills, wave, hostiles }
 __NEON.hurt(d)            // damage the player (negative heals)
+__NEON.teleportPlayer(x, z, y?)  // move the player anywhere, at any eye height
 __NEON.teleportEnemies(d) // move all enemies to radius d around the player
-__NEON.faceEnemies(d, y)  // line enemies up in front of the player and aim at them
+__NEON.faceEnemies(d, y)  // line enemies up along your facing and aim at them
 __NEON.aim(yaw, pitch)
 __NEON.enemyPos()         // positions / state / hp of all enemies
 __NEON.camState()         // player position and camera angles
@@ -268,6 +305,9 @@ __NEON.gunVisible()       // is the first-person weapon on screen
 __NEON.bombs()            // remaining fuse of every live bomb
 __NEON.spawnBomb(x, z)    // plant a bomb at a spot (automation)
 __NEON.forceWave(n)       // jump straight to wave n
+__NEON.capture()          // live deck, hold progress, readiness, cooldowns
+__NEON.alarm()            // is each tower's alarm lit
+__NEON.inputStats()       // rejected look deltas, lock losses, warm-up drops
 __NEON.crosshair()        // current crosshair settings
 __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', color: '#ff0000' }
 ```

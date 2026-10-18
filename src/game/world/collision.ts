@@ -166,6 +166,28 @@ export class CollisionWorld {
   }
 
   /**
+   * Would a body of radius `r` overlap any collider at (x, z)? Used by spawn
+   * selection, so a wave never materialises inside a maze wall or on a ramp.
+   */
+  blockedAt(x: number, z: number, r: number): boolean {
+    for (const o of this.obstacles) {
+      const cx = Math.max(o.minX, Math.min(o.maxX, x));
+      const cz = Math.max(o.minZ, Math.min(o.maxZ, z));
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    for (const ramp of this.ramps) {
+      const cx = Math.max(ramp.minX, Math.min(ramp.maxX, x));
+      const cz = Math.max(ramp.minZ, Math.min(ramp.maxZ, z));
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  }
+
+  /**
    * World-Y of the highest walkable surface under `p` (its XZ footprint,
    * inflated by `r`), among colliders whose top is at or below `ceiling`.
    * Returns 0 for the arena floor. Allocation-free, called once per player step.

@@ -124,11 +124,11 @@ describe('Enemy', () => {
     expect(world.hurt).toBe(0);
   });
 
-  it('climbs the ramp to reach a player on the platform', () => {
-    // Player on the NW platform, grunt on the floor south of it.
-    const world = arenaWorld({ x: -25, z: -25 });
+  it('besieges the ramp mouth instead of climbing to a player on the deck', () => {
+    // Player on the north deck, grunt on the floor south of it.
+    const world = arenaWorld({ x: 0, z: -35 });
     world.playerY = PLATFORM_H;
-    const e = spawn('grunt', -25, -8);
+    const e = spawn('grunt', 0, -14);
 
     let peak = 0;
     for (let i = 0; i < 60 * 14; i++) {
@@ -136,21 +136,25 @@ describe('Enemy', () => {
       peak = Math.max(peak, e.pos.y);
     }
 
-    expect(peak).toBeCloseTo(PLATFORM_H, 1);
-    expect(e.pos.y).toBeCloseTo(PLATFORM_H, 1);
-    expect(world.hurt).toBeGreaterThan(0);
+    // High ground is melee-safe: it never leaves the floor...
+    expect(peak).toBeLessThan(0.2);
+    expect(e.pos.y).toBeLessThan(0.2);
+    expect(world.hurt).toBe(0);
+    // ...and it parks at the bottom of the slope, not against the deck wall.
+    const mouthZ = -24.6; // the toe pushed ENEMY.RAMP_OFFSET downhill
+    expect(Math.hypot(e.pos.x, e.pos.z - mouthZ)).toBeLessThan(4);
   });
 
   it('falls back to the floor when it walks off a platform', () => {
-    const world = arenaWorld({ x: 60, z: 60 }); // nothing to chase
-    const e = spawn('grunt', -25, -25);
+    // Chase east, off the deck's bare east face (the ramp is on the south side).
+    const world = arenaWorld({ x: 60, z: -35 });
+    const e = spawn('grunt', 0, -35);
     e.pos.y = PLATFORM_H;
     e.grounded = true;
     world.playerY = 0;
 
-    // Walk south, off the platform's inner face, then wait for gravity.
     for (let i = 0; i < 60 * 4; i++) e.update(1 / 60, world);
-    expect(e.pos.z).toBeGreaterThan(-21.9);
+    expect(e.pos.x).toBeGreaterThan(3.5);
     expect(e.pos.y).toBeLessThan(0.01);
   });
 
@@ -221,6 +225,16 @@ describe('Sapper', () => {
     expect(world.bombs[0]!.thrown).toBe(false);
     expect(world.bombs[0]!.to.x).toBeCloseTo(e.pos.x, 10);
     expect(world.bombs[0]!.to.z).toBeCloseTo(e.pos.z, 10);
+  });
+
+  it('lobs a bomb onto the deck when the player is up on one', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.playerY = PLATFORM_H; // out of melee reach, so distance is irrelevant
+    const e = spawn('sapper', 0, 5);
+    e.plantT = 0.05;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(world.bombs[0]!.thrown).toBe(true);
+    expect(world.bombs[0]!.to).toEqual({ x: 0, z: 0 });
   });
 
   it('hunts the player once the herd drops below the threshold', () => {

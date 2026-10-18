@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import type { Rng } from '../core/rng';
+import { WORLD } from '../game/config';
 
 /**
  * Procedural painted warehouse floor. Drawn once at boot, then GPU-resident.
  *
- * One 512px tile covers ~15 world units (`repeat` 4 over the 60-unit arena), so
- * the hazard lanes painted along the tile edges line up into a continuous
- * yellow safety grid, and the orange zone marker repeats once per square.
+ * One 512px tile covers ~15 world units, so the hazard lanes painted along the
+ * tile edges line up into a continuous yellow safety grid and the orange zone
+ * marker repeats once per square. The repeat is derived from the arena size so
+ * the grid keeps its scale when the map changes.
  */
 export function makeFloorTexture(rng: Rng): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -75,7 +77,9 @@ export function makeFloorTexture(rng: Rng): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 4);
+  // ~15 world units per tile, whatever the arena size.
+  const tiles = Math.max(1, Math.round(WORLD.ARENA / 15));
+  tex.repeat.set(tiles, tiles);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   return tex;

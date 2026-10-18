@@ -712,6 +712,41 @@ input.toggle {
   text-shadow: 0 0 18px rgba(255, 45, 40, 0.9);
 }
 
+/* Deck capture: on screen only while the player is holding a live pad. */
+#capture {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  width: 220px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+#capture.on {
+  opacity: 1;
+}
+#captureText {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 5px;
+  color: var(--accent);
+  text-shadow: 0 0 12px rgba(70, 224, 255, 0.8);
+  margin-bottom: 6px;
+}
+#captureBar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(70, 224, 255, 0.35);
+}
+#captureFill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #1f9fd6, #46e0ff);
+  box-shadow: 0 0 12px rgba(70, 224, 255, 0.8);
+}
+
 @keyframes bombPulse {
   0%,
   100% {

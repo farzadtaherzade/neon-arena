@@ -227,13 +227,13 @@ describe('layout', () => {
     }
   });
 
-  it('leaves no pocket between a platform and the wall', () => {
-    // A body pushed out of a platform must still be inside the wall clamp, and
-    // the clamp itself must be too narrow to slip behind the platform.
-    const reach = WORLD.HALF - WORLD.WALL_INSET - WORLD.PLAYER_R;
+  it('leaves a walkable lane behind every deck', () => {
+    // The decks sit inboard of the wall on the mid-edges, so the corridor behind
+    // them is a real maze route rather than a dead slot: it must fit a body.
+    const clamp = WORLD.HALF - WORLD.WALL_INSET;
     for (const p of platformBoxes()) {
       const outer = Math.max(Math.abs(p.minX), Math.abs(p.maxX), Math.abs(p.minZ), Math.abs(p.maxZ));
-      expect(outer).toBeCloseTo(reach - WORLD.PLAYER_R, 6);
+      expect(clamp - outer, `deck at ${p.minX},${p.minZ}`).toBeGreaterThan(WORLD.PLAYER_R * 2);
     }
   });
 
@@ -241,9 +241,21 @@ describe('layout', () => {
     const w = new CollisionWorld();
     for (const o of boxes) w.addObstacle(o);
     for (const r of rampBoxes()) w.addRamp(r);
-    const p = { x: 0, z: 0 };
+    const p = { x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z };
     w.resolveCircle(p, WORLD.PLAYER_R);
-    expect(p).toEqual({ x: 0, z: 0 });
+    expect(p).toEqual({ x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z });
+  });
+
+  it('keeps the spawn plaza free of cover', () => {
+    const w = new CollisionWorld();
+    for (const o of boxes) w.addObstacle(o);
+    for (const r of rampBoxes()) w.addRamp(r);
+    // A 10×10 pocket around the spawn, so a run never starts inside a wall.
+    for (let dx = -5; dx <= 5; dx += 1) {
+      for (let dz = -5; dz <= 5; dz += 1) {
+        expect(w.blockedAt(WORLD.SPAWN_X + dx, WORLD.SPAWN_Z + dz, 0.45)).toBe(false);
+      }
+    }
   });
 
   it('builds a seeded starfield on a shell around the arena', () => {

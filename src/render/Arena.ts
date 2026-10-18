@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { Rng } from '../core/rng';
 import { CAMERA, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
-import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, starfieldPositions } from '../game/world/layout';
+import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, REACTOR, starfieldPositions } from '../game/world/layout';
+import { CapturePad } from './CapturePad';
 import { MAT } from './Materials';
 import { makeFloorTexture } from './Textures';
 
@@ -18,6 +19,8 @@ export class Arena {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly solids: THREE.Object3D[] = [];
+  /** One capture pad per corner platform, in `PLATFORMS` order. */
+  readonly pads: CapturePad[] = [];
 
   private yawObj = new THREE.Group();
   private pitchObj = new THREE.Group();
@@ -36,7 +39,9 @@ export class Arena {
     document.body.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(0x07090f);
-    this.scene.fog = new THREE.Fog(0x07090f, 22, 90);
+    // Pushed out with the bigger floor: at 84 units a 22-unit near plane fogged
+    // the far wall into nothing and killed the reactor's silhouette.
+    this.scene.fog = new THREE.Fog(0x07090f, 34, 150);
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.FOV, innerWidth / innerHeight, CAMERA.NEAR, CAMERA.FAR);
     this.yawObj.add(this.pitchObj);
@@ -47,8 +52,10 @@ export class Arena {
     this.floor(rng);
     this.walls();
     this.cover();
+    this.reactor();
     this.platforms();
     this.ramps();
+    this.capturePads();
     this.stars(rng);
 
     addEventListener('resize', () => this.resize());
@@ -75,22 +82,22 @@ export class Arena {
     this.scene.add(new THREE.AmbientLight(0x2e3448, 0.7));
 
     const sun = new THREE.DirectionalLight(0xffd9a0, 2.2);
-    sun.position.set(25, 42, 15);
+    sun.position.set(36, 58, 22);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -38;
-    sun.shadow.camera.right = 38;
-    sun.shadow.camera.top = 38;
-    sun.shadow.camera.bottom = -38;
+    sun.shadow.camera.left = -54;
+    sun.shadow.camera.right = 54;
+    sun.shadow.camera.top = 54;
+    sun.shadow.camera.bottom = -54;
     sun.shadow.camera.near = 5;
-    sun.shadow.camera.far = 110;
+    sun.shadow.camera.far = 150;
     sun.shadow.bias = -0.0006;
     this.scene.add(sun);
 
     // Cool fill from the opposite side so enemies facing away from the key
     // light still show their body colours rather than going black.
     const fill = new THREE.DirectionalLight(0x8fb4ff, 0.7);
-    fill.position.set(-22, 26, -18);
+    fill.position.set(-32, 38, -28);
     this.scene.add(fill);
   }
 
@@ -147,11 +154,64 @@ export class Arena {
       strip.position.set(x, h + 0.04, z);
       this.scene.add(strip);
 
+      // Darker inset cap over the hazard rim: 32 blocks of solid yellow read as
+      // one yellow slab from above, and swallowed the cyan and magenta.
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(w - 0.6, 0.1, d - 0.6), MAT.panel());
+      cap.position.set(x, h + 0.09, z);
+      this.scene.add(cap);
+
       // Painted panel band around the middle of each crate.
       const panel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h * 0.34, d + 0.03), MAT.panel());
       panel.position.set(x, h * 0.5, z);
       this.scene.add(panel);
     }
+  }
+
+  /**
+   * The central reactor: the landmark every lane is navigated by, and the
+   * reason the middle of the map is not a shooting gallery. Solid, not walkable.
+   */
+  private reactor(): void {
+    const { x, z, w, h, d } = REACTOR;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.obstacle());
+    body.position.set(x, h / 2, z);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    this.scene.add(body);
+    this.block(body);
+
+    // Magenta containment rings: the map's third colour, readable through fog.
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(w * 0.53, 0.09, 8, 48), MAT.magenta());
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, 1.1 + i * 1.7, z);
+      this.scene.add(ring);
+    }
+
+    // Lit corner edges, so the reactor reads as a structure rather than a void.
+    for (const [sx, sz] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ] as const) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.16, h, 0.16), MAT.magenta());
+      edge.position.set(x + sx * (w / 2 - 0.08), h / 2, z + sz * (d / 2 - 0.08));
+      this.scene.add(edge);
+    }
+
+    // Core column rising out of the top, plus the light it throws.
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 4.5, 20, 1, true), MAT.core());
+    core.position.set(x, h + 2.25, z);
+    this.scene.add(core);
+
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.22, 20), MAT.magenta());
+    cap.position.set(x, h + 0.12, z);
+    this.scene.add(cap);
+
+    const light = new THREE.PointLight(0xff3ba8, 45, 36, 2);
+    light.position.set(x, h + 1.5, z);
+    this.scene.add(light);
   }
 
   private platforms(): void {
@@ -172,6 +232,20 @@ export class Arena {
       const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.18, d + 0.03), MAT.hazard());
       band.position.set(x, h * 0.5, z);
       this.scene.add(band);
+    }
+  }
+
+  /**
+   * One tower top per deck: capture pad, mast and beacon. The mast is a real
+   * collider, so the pad is something you circle rather than stand on dead
+   * centre. Only the wave's live pad is drawn — the beacons carry the rest.
+   */
+  private capturePads(): void {
+    for (const [x, z] of PLATFORMS) {
+      const pad = new CapturePad({ x, z, y: PLATFORM_H });
+      pad.addTo(this.scene);
+      this.block(pad.mast);
+      this.pads.push(pad);
     }
   }
 

@@ -12,9 +12,9 @@
  */
 
 export const WORLD = {
-  ARENA: 60,
-  HALF: 30,
-  WALL_H: 5,
+  ARENA: 84,
+  HALF: 42,
+  WALL_H: 6,
   PLAYER_H: 1.7,
   PLAYER_R: 0.45,
   WALL_INSET: 1,
@@ -24,6 +24,10 @@ export const WORLD = {
   JUMP_V: 8.5,
   MOVE_DAMP: 10,
   PITCH_LIMIT: 1.45,
+
+  /** Where a run starts: the clear plaza south of the reactor. */
+  SPAWN_X: 0,
+  SPAWN_Z: 14,
 
   /** Sprint can't be held forever: drain while running, regen otherwise. */
   STAMINA_MAX: 100,
@@ -140,27 +144,37 @@ export const ENEMY = {
   KNOCKBACK: 0.18,
 
   /**
-   * Vertical navigation. Mobs walk the same ramps the player does: `STEP` lets
-   * them follow the slope (and must stay under a platform top so they cannot
-   * climb the side), `CLIMB_RISE` is how far above them the player has to be
-   * before they detour to a ramp, and `ATTACK_RISE` stops them clawing at
-   * someone standing on a deck they have not reached yet.
+   * Vertical navigation. Mobs follow the floor and fall off ledges, but they
+   * never take a ramp — a deck is melee-safe, and artillery is the answer to it.
+   * `STEP` lets them ride a slope if they are ever on one, `CLIMB_RISE` is how
+   * far above them the player must be before they give up the chase and besiege
+   * the ramp mouth, and `ATTACK_RISE` stops them clawing at someone on a deck.
    */
   STEP: 0.55,
   CLIMB_RISE: 0.5,
   ATTACK_RISE: 1.1,
-  /** How far outside a ramp's mouth — and past its top — a climber aims. */
+  /** How far outside a ramp's mouth a besieging mob gathers. */
   RAMP_OFFSET: 0.9,
-  /** Within this of the mouth it commits to the climb instead of lining up. */
-  RAMP_ALIGN: 1.2,
 
-  SPAWN_ATTEMPTS: 14,
-  SPAWN_RING: 23,
-  SPAWN_RING_JITTER: 5,
-  SPAWN_MIN_DIST: 13,
-  SPAWN_FALLBACK: [24, 0],
+  SPAWN_ATTEMPTS: 24,
+  SPAWN_RING: 30,
+  SPAWN_RING_JITTER: 6,
+  SPAWN_MIN_DIST: 20,
+  /** Last resort if every ring attempt lands in geometry — the south plaza. */
+  SPAWN_FALLBACK: [0, 22],
   TEST_SPAWN_RING: 9,
   TEST_SPAWN_JITTER: 4,
+} as const;
+
+/**
+ * Tower alarms. Each gatehouse deck carries a beacon; when hostiles mass inside
+ * `RADIUS` of one it flips red, a siren pings on the rising edge, and the
+ * minimap pulses a ring there. `HOLD` keeps it lit briefly after they leave so
+ * a mob stepping behind cover does not strobe the alarm.
+ */
+export const ALARM = {
+  RADIUS: 20,
+  HOLD: 3,
 } as const;
 
 export const WAVES = {
@@ -180,6 +194,31 @@ export const WAVES = {
 } as const;
 
 /**
+ * Deck capture: the rotating high-ground objective.
+ *
+ * One corner platform per wave carries a live pad. Holding it for `HOLD_T`
+ * seconds banks a heal-over-time, then that deck cools down. Mobs deliberately
+ * never climb (see `ENEMY`), but sappers lob bombs onto the deck, so holding it
+ * is a fight against artillery rather than a safe camp.
+ */
+export const CAPTURE = {
+  /** Seconds of continuous presence needed to secure the deck. */
+  HOLD_T: 4,
+  /** Progress lost per second while off the pad. */
+  DECAY: 2,
+  /** Seconds before the same deck can be secured again. */
+  COOLDOWN: 40,
+  /** Total HP restored by one capture. */
+  HEAL: 30,
+  /** Seconds the heal takes to land, so it reads as a repair not a jump-cut. */
+  HEAL_T: 3,
+  /** How close to the pad centre counts, in world units. */
+  RADIUS: 2.2,
+  /** Vertical tolerance: standing on the floor below must never count. */
+  RISE: 0.5,
+} as const;
+
+/**
  * Sapper behaviour. It never charges while the pack is healthy — instead it
  * keeps its distance and drops bombs on a timer. Only when the herd thins below
  * `HUNT_AT` does it switch to a fast, direct pursuit.
@@ -193,9 +232,9 @@ export const SAPPER = {
   /** Seconds between bomb plants while lurking. */
   PLANT_T: 6,
   /** Back away when closer than this; otherwise wander. */
-  KEEP_DIST: 15,
+  KEEP_DIST: 18,
   /** Farther than this and it throws a bomb at the player instead of dropping one. */
-  THROW_DIST: 10,
+  THROW_DIST: 12,
   LURK_GAIN: 0.7,
   /** Wander heading wobble, radians per second of its animation phase. */
   WANDER_TURN: 1.2,

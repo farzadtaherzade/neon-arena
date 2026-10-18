@@ -22,7 +22,7 @@ export interface MoveInput {
  * handed. `render/PlayerRig.ts` is what pushes that onto the camera hierarchy.
  */
 export class Player {
-  readonly position: Vec3 = { x: 0, y: WORLD.PLAYER_H, z: 0 };
+  readonly position: Vec3 = { x: WORLD.SPAWN_X, y: WORLD.PLAYER_H, z: WORLD.SPAWN_Z };
   readonly velocity: Vec3 = { x: 0, y: 0, z: 0 };
   grounded = true;
   jumpQueued = false;
@@ -37,9 +37,9 @@ export class Player {
   private sprintLocked = false;
 
   reset(): void {
-    this.position.x = 0;
+    this.position.x = WORLD.SPAWN_X;
     this.position.y = WORLD.PLAYER_H;
-    this.position.z = 0;
+    this.position.z = WORLD.SPAWN_Z;
     this.velocity.x = 0;
     this.velocity.y = 0;
     this.velocity.z = 0;

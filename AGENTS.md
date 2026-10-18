@@ -35,11 +35,14 @@ src/game/        simulation — pure logic, no Three.js, no DOM
   waves.ts       WaveDirector: composition + staggered spawning
   weapon.ts      ammo, fire cadence, spread bloom, recoil
   bomb.ts        a planted bomb: fuse, radius, detonation
+  capture.ts     the rotating deck objective: hold timer, cooldowns
+  alarm.ts       tower alarm rising-edge detection
   minimap.ts     world→radar projection (pure maths)
   fx.ts          particle + tracer pools
   world/         collision.ts (AABB + ramp height fields), layout.ts (arena constants)
 src/render/      everything that owns meshes
   Arena.ts       renderer, scene, camera rig, lights, floor, walls, cover
+  CapturePad.ts  the live deck's ring, progress disc and beacon beam
   EnemyView.ts   an enemy's meshes + health bar
   BombView.ts    a bomb's meshes + blink
   Gun.ts         the first-person viewmodel
@@ -87,27 +90,31 @@ src/main.ts      bootstrap, fixed-step loop, test API
   `show()` calls spread over `start()`/`gameOver()`. Prefer that shape; it
   avoids the "pausing lost the gun" class of bug.
 
-## Vertical navigation: platforms, ramps and high ground
+## The map: 84×84 maze, four gatehouse decks
 
-Four raised platforms sit in the arena corners, one per quadrant, each reached
-by a single ramp on its arena-facing side. This is the only piece of terrain
-that is not a flat box, and it touches collision, player movement, enemy AI and
-the renderer at once — so the whole contract is spelled out here.
+The floor is 84×84 of dense maze — one quadrant of cover mirrored four ways, a
+magenta reactor at the centre as the landmark every lane is navigated by, and
+four gatehouse decks on the **mid-edges, never the corners**. Each deck is
+reached by exactly one ramp and carries a capture pad plus an alarm mast. This
+is the only terrain that is not a flat box, and it touches collision, player
+movement, enemy AI and the renderer at once — so the whole contract is spelled
+out here.
 
 ### The design intent
 
-- `PLATFORM_H` is **1.6**. That number is load-bearing: it is above
+- `PLATFORM_H` is **2.4**. That number is load-bearing: it is above
   `WORLD.STEP_HEIGHT` (0.55) and above the jump apex
-  (`JUMP_V² / 2·GRAVITY` ≈ 1.39). A platform is therefore *unreachable* by
-  walking into it or by jumping at it — the ramp is the only way up, for the
-  player and for the mobs. Lower it and the ramp becomes pointless again.
-- Corner platforms are `6.2 × 6.2` centred at `±25`, so each outer face lands
-  at `28.1` — exactly one player radius inside the walkable clamp
-  (`HALF − WALL_INSET − PLAYER_R` = 28.55). That closes the old dead pocket
-  between platform and wall: there is no longer a gap wide enough to wedge a
-  body into. Push a platform's outer face past that and the player gets caught
-  between the wall clamp and the collider push (the clamp runs first, so the
-  push wins and leaves them outside the inset).
+  (`JUMP_V² / 2·GRAVITY` ≈ 1.39). A deck is therefore *unreachable* by walking
+  into it or jumping at it — the ramp is the only way up, for the player.
+- Decks are `7 × 7` on the mid-edges at `±35`, so each outer face lands at 38.5
+  and leaves a 2.5-unit lane between deck and wall. That lane is a deliberate
+  maze route, so keep `wall clamp − outer face > 2·PLAYER_R`; close it and the
+  corridor behind the deck stops being walkable.
+- The maze is generated from `MAZE_QUADRANT` by mirroring each block four ways.
+  Edit the quadrant, never the expanded `OBSTACLES` — symmetry is what keeps
+  every lane fair. Keep clear: the four ramps, the four decks, the reactor
+  footprint and the 10×10 spawn plaza at `WORLD.SPAWN_*`.
+
 
 ### Collision model
 
@@ -159,18 +166,51 @@ Mobs have no pathfinder. `Enemy.route()` is the whole of it:
 - If `playerY − pos.y < ENEMY.CLIMB_RISE`, walk straight at the player.
 - Otherwise pick `nearestRamp()` **by ramp top**, not by mouth — the top tells
   you which platform the player is actually on, so an enemy on the far side of
-  the arena does not climb the wrong ramp.
-- Off the ramp: aim at the mouth (its low edge pushed `RAMP_OFFSET` downhill)
-  until within `RAMP_ALIGN`, which lines the body up with the slope.
-- On the ramp: aim at the top (its high edge pushed onto the deck) until the
-  body is level with the player.
+  the arena does not besiege the wrong ramp.
+- Then aim at that ramp's **mouth only** (its low edge pushed `RAMP_OFFSET`
+  downhill). Mobs never take the slope: a deck is melee-safe by design, and the
+  sappers are the answer to it. Remove the `mouth` assignment and they climb
+  again, which silently deletes the capture mechanic's entire risk.
 - `ENEMY.ATTACK_RISE` gates melee by height, so a mob at the foot of a platform
   cannot claw at someone standing on it — and, symmetrically, nothing hits
   through a deck from above.
 
 `Enemy.followGround()` runs *after* `world.collide()`, using `pos.y` as the
-`feetY` for the step context. Enemies can therefore follow the slope (their
-`ENEMY.STEP` is the same 0.55 the player gets) but cannot climb a platform side.
+`feetY` for the step context. Enemies can ride a slope if they are ever on one
+(their `ENEMY.STEP` is the same 0.55 the player gets) and fall off ledges, but
+they cannot climb a platform side.
+
+### Deck capture
+
+The reward that makes high ground worth the walk. One platform per wave carries
+a live pad; standing on it for `CAPTURE.HOLD_T` seconds banks a heal-over-time
+(`CAPTURE.HEAL` HP over `HEAL_T`), then that deck cools down for
+`CAPTURE.COOLDOWN`.
+
+- `src/game/capture.ts` is pure and owns rotation, hold progress and cooldowns.
+  The live deck is **derived** (`(wave − 1) % 4`) rather than set explicitly, so
+  it cannot desync from the HUD's wave counter — including when the wave
+  advances inside `WaveDirector` instead of `beginWave()`.
+- Progress *drains* at `CAPTURE.DECAY` per second off the pad rather than
+  resetting, so a bomb that forces you off costs progress but not the attempt.
+- The pad checks `feetY >= deck.y − CAPTURE.RISE` as well as XZ radius, so
+  standing on the floor beneath a deck never counts.
+- `render/CapturePad.ts` draws ring + progress disc + a beam on the live deck
+  only. That beam is the entire wayfinding cue for "where is the objective".
+- `Game.updateCapture()` pays the heal out over `HEAL_T` seconds and caps at
+  `START_HP`, so a capture can top you up but never overheal.
+
+### Tower alarms
+
+Every deck carries a mast and a beacon. `TowerAlarm` (in `game/alarm.ts`) is the
+pure rising-edge detector: `Game` does the spatial query each step and reports
+which towers see hostiles inside `ALARM.RADIUS`; the class holds the state for
+`ALARM.HOLD` seconds and returns true only on the transition, so the siren pings
+once instead of every frame. The beacon reads that state — red and fast-pulsing
+while hot, amber on the live deck, dim cyan on the other three — and the minimap
+pulses a ring there. Break the edge detection and the siren screams non-stop;
+break the hold and it strobes whenever a mob steps behind cover.
+
 
 ### Renderer
 
@@ -193,18 +233,26 @@ Mirrored ramps are one geometry rotated `PI` about Y, not a second code path.
 - `ENEMY.CLIMB_RISE < ENEMY.ATTACK_RISE < PLATFORM_H`.
 
 `tests/unit/enemy.test.ts` proves the behaviour end to end: a grunt spawned on
-the floor climbs the NW ramp and reaches a player standing on that platform,
-and an enemy that walks off a deck falls back to the floor.
+the floor **besieges the NW ramp mouth** without ever leaving the ground, a
+sapper lobs onto the deck instead of dropping at its feet, and an enemy that
+walks off a deck falls back to the floor. `tests/unit/capture.test.ts` covers
+rotation, the drain, the cooldown and the floor-beneath-the-deck case.
 
-### If you move or add a platform
+### If you move a deck or add cover
 
-1. Keep the outer face at `HALF − WALL_INSET − 2·PLAYER_R` (28.1 today).
-2. Put the ramp's high edge **on** a platform face and give the tuple the `up`
-   vector that points at that face; length ≈ 4 gives a walkable ~21° slope.
-3. Leave the ramp mouth clear of cover blocks and the spawn ring
-   (`ENEMY.SPAWN_RING ± JITTER` reaches radius 28 — a ramp at radius ~32 is
-   safe, one at the arena centre is not).
-4. Run `npm test` — the layout invariants above will catch a hand-placed slip.
+1. Keep `wall clamp − deck outer face > 2·PLAYER_R` so the lane behind it stays
+   walkable (38.5 out of 41 today).
+2. Put the ramp's high edge **on** a deck face and give the tuple the `up`
+   vector that points at that face. Length 6 over `PLATFORM_H` 2.4 is a walkable
+   ~22° slope; much shorter and the step-per-frame exceeds `STEP_HEIGHT`.
+3. Add cover to `MAZE_QUADRANT` only, never to `OBSTACLES`, and re-check the
+   ramps, decks, reactor and spawn plaza. `collision.test.ts` samples a 10×10
+   grid around the spawn with `blockedAt()` and will catch an intrusion.
+4. Spawns are rejected when `CollisionWorld.blockedAt()` says the ring point is
+   inside geometry (`WaveDirector.blocked`). If a new structure sits on the
+   spawn ring (`ENEMY.SPAWN_RING ± JITTER` = 30–36), that check is what stops a
+   tank materialising inside it.
+5. Run `npm test` — the layout invariants above will catch a hand-placed slip.
 
 ## Testing
 
@@ -224,8 +272,9 @@ The game has a headless entry point for automation:
 - `window.__NEON` exposes the hooks the suite drives:
   `stats()`, `hurt(d)`, `teleportEnemies(d)`, `faceEnemies(d, y)`,
   `aim(yaw, pitch)`, `enemyPos()`, `camState()`, `renderInfo()`,
-  `gunVisible()`, `bombs()`, `spawnBomb(x, z)`, `forceWave(n)`,
-  `crosshair()`, `setCrosshair(patch)`.
+  `gunVisible()`, `inputStats()`, `capture()`, `alarm()`, `bombs()`,
+  `spawnBomb(x, z)`, `forceWave(n)`, `crosshair()`, `setCrosshair(patch)`,
+  `teleportPlayer(x, z, y?)`.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -247,15 +296,29 @@ so the spec re-declares the shapes it uses.
   read as black silhouettes.
 - The E2E takes ~2 minutes and has a 15-minute ceiling. Budget new waits
   deliberately rather than raising the timeout.
-- Ramps, platforms and enemy climbing are one system with several invariants
-  that a test asserts. Read [Vertical navigation](#vertical-navigation-platforms-ramps-and-high-ground)
-  before touching `layout.ts`, `PLATFORM_H`, `STEP_HEIGHT` or `Enemy.route()`.
+- Ramps, platforms, enemy siege behaviour and deck capture are one system with
+  several invariants that a test asserts. Read
+  [Vertical navigation](#vertical-navigation-platforms-ramps-and-high-ground)
+  before touching `layout.ts`, `PLATFORM_H`, `STEP_HEIGHT`, `CAPTURE` or
+  `Enemy.route()`.
 
 ## Trackpads
 
 - Re-lock taps no longer fire the gun: `pointerlockchange` resets
   `Input.firing = false` whenever pointer lock is gained, so a carried-over
-  trigger pull from a tap can't enter play.
+  trigger pull from a tap can't enter play. `mousedown` is additionally gated on
+  the pointer actually being captured, so the click that re-acquires the cursor
+  cannot pull the trigger on the same press.
+- **Mouse look trusts the DOM, not `Input.locked`.** The flag deliberately lags a
+  lock loss by 120 ms so a brief drop doesn't hard-pause; during that window the
+  pointer is free, and its deltas are measured from the real cursor — the classic
+  "view teleports when the lock drops". `lookCaptured()` checks
+  `document.pointerLockElement` directly instead. Two more guards sit behind it:
+  `LOCK_WARMUP` swallows the cursor-warp events that arrive when the lock is
+  granted, and `lookDeltaOk()` rejects single-event deltas above `LOOK_MAX`
+  (600 px ≈ 79° at default sensitivity). `__NEON.inputStats()` reports
+  `{ spikes, lockLosses, warmupDrops }` — rising `lockLosses` means the browser
+  is dropping the pointer, not that a delta slipped through.
 - Re-lock requests come from any bare document click (except while the settings
   overlay is open), so the pause screen's "click to resume" works. `mousedown`
   starts firing and `mouseup` clears it.

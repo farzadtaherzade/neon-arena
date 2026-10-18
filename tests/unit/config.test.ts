@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALARM,
   BOMB,
   CAMERA,
+  CAPTURE,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
@@ -17,7 +19,7 @@ import {
   WEAPON,
   WORLD,
 } from '../../src/game/config';
-import { PLATFORM_H } from '../../src/game/world/layout';
+import { PLATFORM_H, PLATFORMS } from '../../src/game/world/layout';
 
 /**
  * The tuning table has no schema beyond these literals, so this suite is the
@@ -80,16 +82,43 @@ describe('config', () => {
 
   it('keeps vertical navigation coherent with the arena', () => {
     // A platform is a wall to a walker and to a jumper, so its ramp is the only
-    // way up — for the player and for the mobs alike.
+    // way up — for the player. Mobs never climb; they besiege the mouth.
     expect(ENEMY.STEP).toBeLessThan(PLATFORM_H);
     expect(WORLD.STEP_HEIGHT).toBeLessThan(PLATFORM_H);
     expect((WORLD.JUMP_V * WORLD.JUMP_V) / (2 * WORLD.GRAVITY)).toBeLessThan(PLATFORM_H);
-    // Melee cannot reach across a platform deck...
+    // Melee cannot reach across a deck, and giving up the chase happens first.
     expect(ENEMY.ATTACK_RISE).toBeLessThan(PLATFORM_H);
-    // ...but a mob on the slope can still be hit, and knows to detour.
     expect(ENEMY.CLIMB_RISE).toBeLessThan(ENEMY.ATTACK_RISE);
     expect(ENEMY.RAMP_OFFSET).toBeGreaterThan(0);
-    expect(ENEMY.RAMP_ALIGN).toBeGreaterThan(ENEMY.RAMP_OFFSET);
+  });
+
+  it('keeps the map and its spawn ring consistent', () => {
+    expect(WORLD.SPAWN_X).toBeGreaterThan(-WORLD.HALF);
+    expect(WORLD.SPAWN_X).toBeLessThan(WORLD.HALF);
+    expect(WORLD.SPAWN_Z).toBeGreaterThan(-WORLD.HALF);
+    expect(WORLD.SPAWN_Z).toBeLessThan(WORLD.HALF);
+    // Every ring spawn has to land inside the walls.
+    expect(ENEMY.SPAWN_RING + ENEMY.SPAWN_RING_JITTER).toBeLessThan(WORLD.HALF);
+    expect(ENEMY.SPAWN_MIN_DIST).toBeLessThan(ENEMY.SPAWN_RING);
+  });
+
+  it('keeps the tower alarm readable', () => {
+    expect(ALARM.RADIUS).toBeGreaterThan(0);
+    expect(ALARM.RADIUS).toBeLessThan(WORLD.HALF);
+    expect(ALARM.HOLD).toBeGreaterThan(0);
+  });
+
+  it('keeps the deck capture loop coherent', () => {
+    expect(CAPTURE.HOLD_T).toBeGreaterThan(0);
+    expect(CAPTURE.DECAY).toBeGreaterThan(0);
+    expect(CAPTURE.COOLDOWN).toBeGreaterThan(CAPTURE.HOLD_T);
+    expect(CAPTURE.HEAL).toBeGreaterThan(0);
+    expect(CAPTURE.HEAL).toBeLessThanOrEqual(START_HP);
+    expect(CAPTURE.HEAL_T).toBeGreaterThan(0);
+    expect(CAPTURE.RISE).toBeLessThan(PLATFORM_H);
+    // The pad has to fit on the deck with room to walk onto it.
+    const deckWidth = PLATFORMS[0]?.[2] ?? 0;
+    expect(CAPTURE.RADIUS * 2).toBeLessThan(deckWidth);
   });
 
   it('keeps the wave curve bounded', () => {

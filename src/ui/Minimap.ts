@@ -7,6 +7,16 @@ export interface MapEnemy {
   readonly enemy: { readonly pos: { x: number; z: number }; readonly kind: keyof typeof ENEMY_TYPES };
 }
 
+/**
+ * A gatehouse blip. `hot` is written by `Game` from the alarm state each frame,
+ * so the array is allocated once and mutated rather than rebuilt.
+ */
+export interface MapTower {
+  readonly x: number;
+  readonly z: number;
+  hot: boolean;
+}
+
 const SIZE = 168;
 const HALF_PX = SIZE / 2;
 const SCALE = SIZE / (2 * MAP_RANGE);
@@ -51,6 +61,7 @@ export class Minimap {
     enemies: readonly MapEnemy[],
     bombs: readonly Bomb[],
     elapsed: number,
+    towers: readonly MapTower[] = [],
   ): void {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -83,6 +94,25 @@ export class Minimap {
     }
     ctx.closePath();
     ctx.stroke();
+
+    // Watchtowers: a steady blip, pulsing red while their alarm is up.
+    for (const t of towers) {
+      const q = at(t.x, t.z);
+      if (!visible(q)) continue;
+      if (t.hot) {
+        const pulse = 6 + 5 * (0.5 + 0.5 * Math.sin(elapsed * 8));
+        ctx.strokeStyle = 'rgba(255,59,48,0.85)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, pulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = t.hot ? 'rgba(255,90,70,0.9)' : 'rgba(70,224,255,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 3.4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // Bombs: blast ring plus a blinking core.
     for (const bomb of bombs) {

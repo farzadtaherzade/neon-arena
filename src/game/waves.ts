@@ -62,6 +62,11 @@ export class WaveDirector {
   testing = false;
   /** Injected so a test can pin the seed; gameplay uses the shared game RNG. */
   rng: Rng = new Rng(1);
+  /**
+   * Does this spot overlap arena geometry? Supplied by `Game` from the collision
+   * world — a dense maze needs it, or waves materialise inside walls.
+   */
+  blocked: (x: number, z: number) => boolean = () => false;
 
   private queue: Queued[] = [];
   private out: WaveUpdate = { spawned: [], cleared: false };
@@ -116,7 +121,7 @@ export class WaveDirector {
     return out;
   }
 
-  /** Ring around the player, rejecting spots that are too close. */
+  /** Ring around the player, rejecting spots that are too close or inside cover. */
   pickSpawn(playerPos: Vec2): { x: number; z: number } {
     const ring = this.testing ? ENEMY.TEST_SPAWN_RING : ENEMY.SPAWN_RING;
     const jitter = this.testing ? ENEMY.TEST_SPAWN_JITTER : ENEMY.SPAWN_RING_JITTER;
@@ -126,7 +131,9 @@ export class WaveDirector {
       const r = ring + this.rng.next() * jitter;
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
-      if (Math.hypot(x - playerPos.x, z - playerPos.z) > ENEMY.SPAWN_MIN_DIST) return { x, z };
+      if (Math.hypot(x - playerPos.x, z - playerPos.z) <= ENEMY.SPAWN_MIN_DIST) continue;
+      if (this.blocked(x, z)) continue;
+      return { x, z };
     }
     return { x: ENEMY.SPAWN_FALLBACK[0], z: ENEMY.SPAWN_FALLBACK[1] };
   }

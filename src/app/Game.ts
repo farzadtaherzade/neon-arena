@@ -5,9 +5,13 @@ import { Sfx } from '../audio/Sfx';
 import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
 import { Bomb } from '../game/bomb';
+import { TowerAlarm } from '../game/alarm';
+import { CapturePoints } from '../game/capture';
 import {
+  ALARM,
   BOMB,
   CAMERA,
+  CAPTURE,
   ENEMY,
   FEEDBACK,
   type GameState,
@@ -34,7 +38,7 @@ import { Pick } from '../render/Pick';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
-import { Minimap } from '../ui/Minimap';
+import { Minimap, type MapTower } from '../ui/Minimap';
 import { Settings } from '../ui/Settings';
 
 interface Hostile {
@@ -65,6 +69,10 @@ export class Game {
   readonly player = new Player();
   readonly waves = new WaveDirector();
   readonly arena: Arena;
+  /** The rotating high-ground objective; assigned once the arena exists. */
+  readonly capture: CapturePoints;
+  /** Watchtower alarms, one per deck; assigned once the arena exists. */
+  readonly alarm: TowerAlarm;
   aliveCount = 0;
   /** Prevents a replayed cleared update from repeating wave banners. */
   private waveClearPending = false;
@@ -97,12 +105,27 @@ export class Game {
   /** XP orbs on the floor and the meshes backing them. */
   private xps: Xp[] = [];
   private xpViews = new Map<Xp, XpView>();
+  /** HP still to be paid out by a secured deck, at `CAPTURE.HEAL / HEAL_T` per second. */
+  private healLeft = 0;
+  /** Reused per-step scratch: does each tower see hostiles right now? */
+  private alarmContact: boolean[] = [];
+  /** Reused minimap blips, mutated each frame instead of reallocated. */
+  private readonly mapTowers: MapTower[] = [];
   /** Current camera FOV, lerped toward the ADS target so it never pops. */
   private fov = CAMERA.FOV;
 
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
     return this.gun.group.visible;
+  }
+
+  /**
+   * How much mouse input has been thrown away: `spikes` are deltas the glitch
+   * filter rejected, `lockLosses` are times the browser dropped pointer lock.
+   * A rising `lockLosses` means the "jump" was the cursor being released.
+   */
+  get inputStats(): { spikes: number; lockLosses: number; warmupDrops: number } {
+    return this.input.stats;
   }
 
   private scratch = new THREE.Vector3();
@@ -125,10 +148,18 @@ export class Game {
     stamina: WORLD.STAMINA_MAX,
     bombDist: Number.POSITIVE_INFINITY,
     bombFuse: 0,
+    captureProgress: 0,
+    captureOn: false,
   };
 
   constructor(readonly test = false) {
     this.arena = new Arena(this.collision, this.rng);
+    this.capture = new CapturePoints(this.arena.pads.map((pad) => pad.deck));
+    this.alarm = new TowerAlarm(this.arena.pads.length);
+    this.alarmContact = new Array<boolean>(this.arena.pads.length).fill(false);
+    for (const pad of this.arena.pads) {
+      this.mapTowers.push({ x: pad.deck.x, z: pad.deck.z, hot: false });
+    }
     this.fx = new Fx(this.arena.scene);
     this.minimap = new Minimap();
     this.arena.camera.add(this.gun.group);
@@ -157,21 +188,28 @@ export class Game {
       onReloadEnd: () => this.sfx.reloadEnd(),
     });
 
-    this.input = new Input(this.arena.renderer.domElement, {
-      isPlaying: () => this.state === STATE.PLAYING,
-      isPaused: () => this.state === STATE.PAUSED,
-      isSettingsOpen: () => this.settings.isOpen,
-      onJump: () => this.player.queueJump(),
-      onReload: () => this.weapon.startReload(),
-      onLook: (dx, dy) => this.player.look(dx, dy, this.settings.values.sensitivity),
-      onLockRequest: () => this.input.lock(),
-      onLockChange: (locked) => this.onLockChange(locked),
-      onToggleSettings: () => this.settings.toggle(),
-      onCloseSettings: () => this.settings.close(),
-    });
+    this.input = new Input(
+      this.arena.renderer.domElement,
+      {
+        isPlaying: () => this.state === STATE.PLAYING,
+        isPaused: () => this.state === STATE.PAUSED,
+        isSettingsOpen: () => this.settings.isOpen,
+        onJump: () => this.player.queueJump(),
+        onReload: () => this.weapon.startReload(),
+        onLook: (dx, dy) => this.player.look(dx, dy, this.settings.values.sensitivity),
+        onLockRequest: () => this.input.lock(),
+        onLockChange: (locked) => this.onLockChange(locked),
+        onToggleSettings: () => this.settings.toggle(),
+        onCloseSettings: () => this.settings.close(),
+      },
+      test,
+    );
 
     this.waves.testing = test;
     this.waves.rng = this.rng;
+    // A dense maze means the spawn ring lands in walls; let the director reject
+    // those instead of materialising a tank inside a bunker.
+    this.waves.blocked = (x, z) => this.collision.blockedAt(x, z, 1.2);
 
     this.world = {
       playerPos: this.player.position,
@@ -222,6 +260,9 @@ export class Game {
     this.clearHostiles();
     this.clearBombs();
     this.clearXps();
+    this.capture.reset();
+    this.alarm.reset();
+    this.healLeft = 0;
 
     this.hp = START_HP;
     this.score = 0;
@@ -496,6 +537,59 @@ export class Game {
     this.xps.length = 0;
   }
 
+  // ------------------------------------------------------------------- capture
+
+  /**
+   * Hold the live deck for a heal. The deck is melee-safe — mobs besiege the
+   * ramp mouth instead of climbing — so the pressure comes from sapper bombs
+   * landing on it, which is what makes standing still a decision.
+   */
+  private updateCapture(dt: number): void {
+    const cap = this.capture;
+    const p = this.player.position;
+    cap.update(dt, this.wave, p.x, p.z, this.world.playerY);
+
+    if (cap.justCaptured) {
+      this.healLeft = CAPTURE.HEAL;
+      this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
+      this.sfx.xpCollect();
+    }
+
+    if (this.healLeft <= 0) return;
+    const step = Math.min(this.healLeft, (CAPTURE.HEAL / CAPTURE.HEAL_T) * dt);
+    this.healLeft -= step;
+    this.hp = Math.min(START_HP, this.hp + step);
+  }
+
+  // -------------------------------------------------------------------- alarm
+
+  /**
+   * Watchtower alarms: any hostile inside a tower's radius lights it. The siren
+   * fires on the rising edge only, so a crowd milling at a gatehouse does not
+   * scream continuously.
+   */
+  private updateAlarm(dt: number): void {
+    const pads = this.arena.pads;
+    const contact = this.alarmContact;
+    for (let i = 0; i < pads.length; i++) {
+      const deck = pads[i]?.deck;
+      contact[i] = deck ? this.hostileNear(deck.x, deck.z, ALARM.RADIUS) : false;
+    }
+    if (this.alarm.update(dt, contact)) this.sfx.alarm();
+  }
+
+  /** Is any live hostile within `r` of (x, z)? Allocation-free. */
+  private hostileNear(x: number, z: number, r: number): boolean {
+    const r2 = r * r;
+    for (const h of this.hostiles) {
+      if (h.enemy.state !== 'alive') continue;
+      const dx = h.enemy.pos.x - x;
+      const dz = h.enemy.pos.z - z;
+      if (dx * dx + dz * dz <= r2) return true;
+    }
+    return false;
+  }
+
   // E2E hooks: plant a bomb and jump waves without a full playthrough.
 
   spawnBomb(x: number, z: number): void {
@@ -529,6 +623,8 @@ export class Game {
       this.updateWaves(dt);
       this.updateBombs(dt);
       this.updateXps(dt);
+      this.updateCapture(dt);
+      this.updateAlarm(dt);
     } else if (this.state === STATE.MENU) {
       const pose = this.player.menuPose(this.elapsed);
       this.player.position.x = pose.x;
@@ -659,6 +755,18 @@ export class Game {
 
     for (const xp of this.xps) this.xpViews.get(xp)?.sync();
 
+    // Only the live deck draws a pad; the beacons carry the rest.
+    const cap = this.capture;
+    const pads = this.arena.pads;
+    const hot = this.alarm.hot;
+    for (let i = 0; i < pads.length; i++) {
+      const active = i === cap.active;
+      const alarm = hot[i] ?? false;
+      pads[i]?.sync(active, cap.ready, active ? cap.progress : 0, this.elapsed, alarm);
+      const blip = this.mapTowers[i];
+      if (blip) blip.hot = alarm;
+    }
+
     this.fx.update(dt);
 
     // ADS zoom: ease the camera FOV to its target instead of popping.
@@ -686,9 +794,11 @@ export class Game {
     m.stamina = player.stamina;
     m.bombDist = nearestD;
     m.bombFuse = nearestFuse;
+    m.captureProgress = cap.progress;
+    m.captureOn = cap.onPad;
 
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
-      this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed);
+      this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
     }
 
     this.hud.setHitmark(this.feedback.hitT);

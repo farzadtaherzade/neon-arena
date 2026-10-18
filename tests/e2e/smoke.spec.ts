@@ -78,10 +78,24 @@ const aimAtNearestEnemy = () => {
 };
 
 /**
+ * Spin the view all the way round. Static geometry uploads to the GPU on its
+ * first draw, and an 84-unit maze has far more of it than one screenful — so
+ * without a sweep "stable geometry count" just means "everything I happened to
+ * look at so far", and the next kill that turns the camera reads as a leak.
+ */
+async function sweep(page: Page): Promise<void> {
+  for (let i = 0; i < 8; i++) {
+    await page.evaluate((yaw) => window.__NEON.aim(yaw, -0.05), (i * Math.PI) / 4);
+    await page.waitForTimeout(140);
+  }
+}
+
+/**
  * Wait until the renderer's geometry count stops growing. Geometries reach the
  * GPU lazily on first use, so measuring a leak before that settles is noise.
  */
 async function warmUp(page: Page, budgetMs = 45_000): Promise<void> {
+  await sweep(page);
   let stable = 0;
   let previous = -1;
   const deadline = Date.now() + budgetMs;
@@ -105,7 +119,16 @@ async function killEnemies(page: Page, target: number, budgetMs: number): Promis
     while (Date.now() < deadline) {
       const kills = (await stats(page)).kills;
       if (kills >= target) return kills;
-      await page.evaluate(() => window.__NEON.teleportEnemies(22));
+      await page.evaluate(() => {
+        // Face south from the spawn plaza: a clear lane, whatever the maze does
+        // between the player and the ring.
+        window.__NEON.aim(Math.PI, 0);
+        window.__NEON.faceEnemies(10, 1.0);
+        // This phase measures GPU resources over minutes of shooting; keep the
+        // player alive rather than turning it into a survival test.
+        const s = window.__NEON.stats() as Stats;
+        if (s.hp < 60) window.__NEON.hurt(-40);
+      });
       await page.evaluate(aimAtNearestEnemy);
       await page
         .waitForFunction((k) => (window.__NEON.stats() as Stats).kills > k, kills, { timeout: 2500 })
@@ -157,6 +180,23 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(looked.yawObjY).toBeCloseTo(0.5, 2);
 
   // --- shoot ----------------------------------------------------------------
+  // Let the wave finish spawning first: HP totals are only comparable between
+  // two snapshots if the population did not change in between.
+  await page.waitForFunction(
+    () => {
+      const s = window.__NEON.stats() as Stats;
+      const alive = (window.__NEON.enemyPos() as EnemyPos[]).length;
+      return alive > 0 && s.hostiles === alive;
+    },
+    undefined,
+    { timeout: 90_000 },
+  );
+  await page.evaluate(() => {
+    // A maze map means a ring teleport can hide every target behind cover; line
+    // them up down the open plaza instead.
+    window.__NEON.aim(Math.PI, 0);
+    window.__NEON.faceEnemies(8, 1.0);
+  });
   await page.evaluate(aimAtNearestEnemy);
   const before = (await enemies(page)).map((e) => e.hp);
   await page.mouse.down();
@@ -202,9 +242,15 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(third.textures - second.textures, `textures ${second.textures} -> ${third.textures}`).toBe(0);
 
   // --- damage and death -----------------------------------------------------
+  // Park the mobs first: this check is about the damage path, not about
+  // surviving the kill phase, and a stray melee in the sample window would
+  // skew the delta.
+  await page.evaluate(() => window.__NEON.teleportEnemies(26));
+  await page.waitForTimeout(200);
+  const hpBeforeHit = (await stats(page)).hp;
   await page.evaluate(() => window.__NEON.hurt(30));
   await page.waitForTimeout(150);
-  expect((await stats(page)).hp).toBe(70);
+  expect((await stats(page)).hp).toBeCloseTo(hpBeforeHit - 30, 3);
 
   // Clicks inside the open settings panel must not re-lock the pointer: that
   // resumes the game underneath the panel and swallows the cursor, which is

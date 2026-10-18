@@ -2,7 +2,7 @@ import './styles.css';
 
 import { Game } from './app/Game';
 import { FixedLoop } from './core/loop';
-import { FIXED_STEP, MAX_DT } from './game/config';
+import { FIXED_STEP, MAX_DT, WORLD } from './game/config';
 
 /**
  * Bootstrap: build the game, run the fixed-timestep loop, and expose the
@@ -62,19 +62,41 @@ function exposeTestApi(game: Game) {
       }
     },
 
-    /** Line enemies up in front of the player and aim the camera at them. */
+    /**
+     * Line enemies up in front of the player, along the current yaw, and aim at
+     * them. On a maze map a ring teleport puts half the targets behind walls, so
+     * the harness needs a clear lane rather than a circle.
+     */
     faceEnemies: (d: number, y = 1.0) => {
+      const p = game.player;
+      const fx = -Math.sin(p.yaw);
+      const fz = -Math.cos(p.yaw);
+      const rx = Math.cos(p.yaw);
+      const rz = -Math.sin(p.yaw);
       const n = game.hostiles.length;
       game.hostiles.forEach((h, i) => {
-        h.enemy.pos.x = game.player.position.x + (i - (n - 1) / 2) * 1.6;
-        h.enemy.pos.z = game.player.position.z - d;
+        const side = (i - (n - 1) / 2) * 1.6;
+        h.enemy.pos.x = p.position.x + fx * d + rx * side;
+        h.enemy.pos.z = p.position.z + fz * d + rz * side;
+        h.enemy.pos.y = 0;
       });
-      game.player.pitch = Math.atan2(y - game.player.position.y, d);
+      p.pitch = Math.atan2(y - p.position.y, d);
     },
 
     aim: (yaw: number, pitch: number) => {
       game.player.yaw = yaw;
       game.player.pitch = pitch;
+    },
+
+    /** Put the player somewhere specific — decks, ramps, the arena centre. */
+    teleportPlayer: (x: number, z: number, y = WORLD.PLAYER_H) => {
+      const p = game.player;
+      p.position.x = x;
+      p.position.z = z;
+      p.position.y = y;
+      p.velocity.x = 0;
+      p.velocity.y = 0;
+      p.velocity.z = 0;
     },
 
     enemyPos: () =>
@@ -106,6 +128,21 @@ function exposeTestApi(game: Game) {
 
     /** Is the first-person viewmodel drawn? Catches the pause/resume bug. */
     gunVisible: () => game.gunVisible,
+
+    /** Rejected mouse deltas / pointer-lock losses — diagnoses aim glitches. */
+    inputStats: () => ({ ...game.inputStats }),
+
+    /** Deck capture: live deck, hold progress and per-deck cooldowns. */
+    capture: () => ({
+      active: game.capture.active,
+      progress: round(game.capture.progress, 3),
+      ready: game.capture.ready,
+      onPad: game.capture.onPad,
+      cooldown: game.capture.cooldown.map((c) => round(c, 1)),
+    }),
+
+    /** Watchtower alarms, one boolean per deck. */
+    alarm: () => game.alarm.hot.slice(),
 
     /** Remaining fuses of every live sapper bomb. */
     bombs: () => game.bombFuses,

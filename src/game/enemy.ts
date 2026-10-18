@@ -206,10 +206,13 @@ export class Enemy {
     }
 
     const inv = 1 / (dist || 1);
+    // A player on a deck is out of melee reach, so the sapper lobs instead of
+    // dropping at its feet: that bomb is what makes high ground a fight.
+    const elevated = world.playerY - this.pos.y > ENEMY.ATTACK_RISE;
     this.plantT -= dt;
     if (this.plantT <= 0) {
       this.plantT = SAPPER.PLANT_T;
-      const thrown = dist > SAPPER.THROW_DIST;
+      const thrown = elevated || dist > SAPPER.THROW_DIST;
       world.plantBomb(this.pos, thrown ? world.playerPos : this.pos, thrown);
     }
 
@@ -249,7 +252,12 @@ export class Enemy {
     this.steer(dt, dx / d, dz / d, speed, world);
   }
 
-  /** Pick the next steering target: the player, or a ramp that leads to them. */
+  /**
+   * Pick the next steering target. High ground is melee-safe by design: mobs
+   * never take the ramp. When the player is up on a deck they gather at that
+   * deck's ramp mouth — the point the player has to come back down past — and
+   * the sappers are what flush them off it.
+   */
   private route(world: EnemyWorld): void {
     const px = world.playerPos.x;
     const pz = world.playerPos.z;
@@ -262,25 +270,9 @@ export class Enemy {
     const ramp = this.nearestRamp(world.ramps, px, pz);
     if (!ramp) return;
 
-    const onRamp =
-      this.pos.x >= ramp.minX &&
-      this.pos.x <= ramp.maxX &&
-      this.pos.z >= ramp.minZ &&
-      this.pos.z <= ramp.maxZ;
-
-    const mx = rampMouthX(ramp);
-    const mz = rampMouthZ(ramp);
-    const dx = mx - this.pos.x;
-    const dz = mz - this.pos.z;
-    if (!onRamp && dx * dx + dz * dz > ENEMY.RAMP_ALIGN * ENEMY.RAMP_ALIGN) {
-      // Not lined up yet: go stand at the bottom of the slope.
-      this.navX = mx;
-      this.navZ = mz;
-    } else {
-      // Committed: climb, and keep pushing until we are actually on the deck.
-      this.navX = rampTopX(ramp);
-      this.navZ = rampTopZ(ramp);
-    }
+    // Lay siege to the bottom of the slope, never climb it.
+    this.navX = rampMouthX(ramp);
+    this.navZ = rampMouthZ(ramp);
   }
 
   /** The ramp whose top is nearest the player — i.e. the one onto their deck. */

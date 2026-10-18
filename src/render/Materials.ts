@@ -52,6 +52,8 @@ let mHazard: THREE.MeshBasicMaterial | undefined;
 let mPanel: THREE.MeshStandardMaterial | undefined;
 let mObstacle: THREE.MeshStandardMaterial | undefined;
 let mGlow: THREE.MeshBasicMaterial | undefined;
+let mMagenta: THREE.MeshBasicMaterial | undefined;
+let mCore: THREE.MeshBasicMaterial | undefined;
 let mGunMetal: THREE.MeshStandardMaterial | undefined;
 let mGunDark: THREE.MeshStandardMaterial | undefined;
 let mMuzzleFlash: THREE.MeshBasicMaterial | undefined;
@@ -74,6 +76,18 @@ export const MAT = {
   obstacle: () =>
     (mObstacle ??= new THREE.MeshStandardMaterial({ color: 0x242c44, roughness: 0.75, metalness: 0.12 })),
   glow: () => (mGlow ??= new THREE.MeshBasicMaterial({ color: 0x46e0ff })),
+  /** Reactor accent: hot magenta, the third colour in the map's palette. */
+  magenta: () => (mMagenta ??= new THREE.MeshBasicMaterial({ color: 0xff3ba8 })),
+  /** Additive column rising out of the reactor core. */
+  core: () =>
+    (mCore ??= new THREE.MeshBasicMaterial({
+      color: 0xff3ba8,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    })),
 
   gunMetal: () =>
     (mGunMetal ??= new THREE.MeshStandardMaterial({ color: 0x1f2430, roughness: 0.5, metalness: 0.15 })),

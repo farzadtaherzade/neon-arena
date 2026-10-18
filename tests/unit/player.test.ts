@@ -123,6 +123,8 @@ describe('Player movement', () => {
     const p = new Player();
     const c = new CollisionWorld();
     c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 0.4);
+    p.position.x = 0;
+    p.position.z = 0;
     run(p, c, IDLE, 5);
     expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H + 0.4, 6);
     expect(p.grounded).toBe(true);
@@ -137,6 +139,7 @@ describe('Player movement', () => {
 
     p.position.x = -3;
     p.position.y = WORLD.PLAYER_H;
+    p.position.z = 0;
     p.yaw = -Math.PI / 2; // forward points at +x
     run(p, c, { forward: 1, right: 0, sprint: false }, 120);
 
@@ -152,6 +155,7 @@ describe('Player movement', () => {
 
     p.position.x = 4;
     p.position.y = WORLD.PLAYER_H;
+    p.position.z = 0;
     p.yaw = Math.PI / 2; // forward points at -x, into the platform's face
     run(p, c, { forward: 1, right: 0, sprint: false }, 120);
 
@@ -163,6 +167,8 @@ describe('Player movement', () => {
     const p = new Player();
     const c = new CollisionWorld();
     c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 1);
+    p.position.x = 0;
+    p.position.z = 0;
     p.position.y = WORLD.PLAYER_H + 2;
     p.velocity.y = 0;
     p.grounded = false;
@@ -175,6 +181,8 @@ describe('Player movement', () => {
     const p = new Player();
     const c = new CollisionWorld();
     c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 1);
+    p.position.x = 0;
+    p.position.z = 0;
     p.position.y = WORLD.PLAYER_H + 1;
     p.grounded = true;
     p.yaw = Math.PI; // forward points toward +z, off the platform
@@ -189,7 +197,7 @@ describe('Player movement', () => {
     run(p, c, { forward: 1, right: 1, sprint: true }, 120);
     p.look(50, 20);
     p.reset();
-    expect(p.position).toEqual({ x: 0, y: WORLD.PLAYER_H, z: 0 });
+    expect(p.position).toEqual({ x: WORLD.SPAWN_X, y: WORLD.PLAYER_H, z: WORLD.SPAWN_Z });
     expect(p.velocity).toEqual({ x: 0, y: 0, z: 0 });
     expect(p.yaw).toBe(0);
     expect(p.pitch).toBe(0);

@@ -20,6 +20,9 @@ export interface HudModel {
   /** Distance to the nearest live bomb, and its remaining fuse. */
   bombDist: number;
   bombFuse: number;
+  /** Deck capture hold progress 0..1, and whether the player is on the pad. */
+  captureProgress: number;
+  captureOn: boolean;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -59,6 +62,8 @@ export class Hud {
   private finalStats = $('finalStats');
   private bombWarn = $('bombWarn');
   private bombWarnText = $('bombWarnText');
+  private capture = $('capture');
+  private captureFill = $('captureFill');
   private newBestBadge = $('newBestBadge');
   private bestRecord = $('bestRecord');
 
@@ -157,6 +162,7 @@ export class Hud {
     this.vignette.style.opacity = '0';
     this.reloadBar.style.opacity = '0';
     this.bombWarn.classList.remove('on');
+    this.capture.classList.remove('on');
     this.scopeRing.classList.remove('on');
     this.last = {};
   }
@@ -257,6 +263,22 @@ export class Hud {
 
     this.setCrosshair(model.bloom, model.moving, settings);
     this.setThreat(model.bombDist, model.bombFuse);
+    this.setCapture(model.captureOn, model.captureProgress);
+  }
+
+  /** Hold bar for the live deck; visible while standing on it or still draining. */
+  setCapture(on: boolean, progress: number): void {
+    const visible = on || progress > 0.01;
+    if (this.last.captureOn !== visible) {
+      this.last.captureOn = visible;
+      this.capture.classList.toggle('on', visible);
+    }
+    if (!visible) return;
+    const pct = Math.round(progress * 100);
+    if (this.last.capturePct !== pct) {
+      this.last.capturePct = pct;
+      this.captureFill.style.width = `${pct}%`;
+    }
   }
 
   /** Red screen pulse plus a countdown while a live bomb is close. */
