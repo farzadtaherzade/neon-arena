@@ -128,6 +128,19 @@ so the spec re-declares the shapes it uses.
   read as black silhouettes.
 - The E2E takes ~2 minutes and has a 15-minute ceiling. Budget new waits
   deliberately rather than raising the timeout.
+- **Ramps are height fields, not boxes.** `CollisionWorld.addRamp()` stores a
+  sloped surface; it is deliberately absent from `obstacles` because a flat
+  `top` cannot describe a slope. `groundHeight()` returns the interpolated
+  height and `resolveCircle()` only blocks a ramp where that surface is higher
+  than the caller's step allowance (so the toe is walk-on and the high side is
+  a wall). Registering a ramp with `addObstacle` instead makes it an
+  unclimbable wall; skipping `addRamp` makes it decoration — the old bug.
+- **High ground has exactly one way up.** `PLATFORM_H` (1.6) is above
+  `STEP_HEIGHT` *and* above the jump apex, so the ramp is the only route for
+  the player and for mobs. Mobs get there via `Enemy.route()`, which aims at
+  the mouth of the ramp whose top is nearest the player; break that and they
+  revert to grinding against the platform wall. `ENEMY.ATTACK_RISE` is what
+  stops them hitting through the deck.
 
 ## Trackpads
 

@@ -1,10 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
 import { WORLD } from '../../src/game/config';
-import { type Aabb, CollisionWorld } from '../../src/game/world/collision';
-import { OBSTACLES, PLATFORMS, starfieldPositions } from '../../src/game/world/layout';
+import { type Aabb, CollisionWorld, type Ramp, rampHeight } from '../../src/game/world/collision';
+import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, starfieldPositions } from '../../src/game/world/layout';
 
 const BOX: Aabb = { minX: -2, maxX: 2, minZ: -2, maxZ: 2 };
+
+/** Same conversion `render/Arena.ts` does when it builds each mesh. */
+const platformBoxes = (): Aabb[] =>
+  PLATFORMS.map(([x, z, w, , d]) => ({
+    minX: x - w / 2,
+    maxX: x + w / 2,
+    minZ: z - d / 2,
+    maxZ: z + d / 2,
+  }));
+
+const rampBoxes = (): Ramp[] =>
+  RAMPS.map(([x, z, w, len, upX, upZ]) => {
+    const spanX = upX !== 0 ? len : w;
+    const spanZ = upZ !== 0 ? len : w;
+    return {
+      minX: x - spanX / 2,
+      maxX: x + spanX / 2,
+      minZ: z - spanZ / 2,
+      maxZ: z + spanZ / 2,
+      lowY: 0,
+      highY: PLATFORM_H,
+      upX,
+      upZ,
+    };
+  });
 
 describe('CollisionWorld.resolveCircle', () => {
   it('keeps a circle inside the arena walls', () => {
@@ -114,8 +139,51 @@ describe('CollisionWorld.groundHeight', () => {
   });
 });
 
+describe('CollisionWorld ramps', () => {
+  const RAMP: Ramp = { minX: -2, maxX: 2, minZ: -1, maxZ: 1, lowY: 0, highY: 2, upX: 1, upZ: 0 };
+
+  it('interpolates the surface from the low edge to the high edge', () => {
+    expect(rampHeight(RAMP, -2, 0)).toBeCloseTo(0, 10);
+    expect(rampHeight(RAMP, 0, 0)).toBeCloseTo(1, 10);
+    expect(rampHeight(RAMP, 2, 0)).toBeCloseTo(2, 10);
+  });
+
+  it('mirrors the slope when the uphill vector points the other way', () => {
+    const mirrored: Ramp = { ...RAMP, upX: -1 };
+    expect(rampHeight(mirrored, -2, 0)).toBeCloseTo(2, 10);
+    expect(rampHeight(mirrored, 2, 0)).toBeCloseTo(0, 10);
+  });
+
+  it('supports a body standing on the slope', () => {
+    const w = new CollisionWorld();
+    w.addRamp(RAMP);
+    expect(w.groundHeight({ x: 0, z: 0 }, 0.45, 2)).toBeCloseTo(1, 10);
+    expect(w.groundHeight({ x: 0, z: 0 }, 0.45, 0.5)).toBe(0); // above the ceiling
+  });
+
+  it('is a step at the toe and a wall at the top', () => {
+    const w = new CollisionWorld();
+    w.addRamp(RAMP);
+    const ctx = { feetY: 0, step: 0.55 };
+
+    // Walking in at the toe: the surface there is at floor level.
+    const toe = { x: -2.2, z: 0 };
+    w.resolveCircle(toe, 0.45, ctx);
+    expect(toe.x).toBeCloseTo(-2.2, 10);
+
+    // Walking into the high side: the surface there is 2 high.
+    const top = { x: 2.2, z: 0 };
+    w.resolveCircle(top, 0.45, ctx);
+    expect(top.x).toBeCloseTo(2.45, 10);
+
+    // Standing on the slope is not a collision at all.
+    const on = { x: 0, z: 0 };
+    w.resolveCircle(on, 0.45, ctx);
+    expect(on).toEqual({ x: 0, z: 0 });
+  });
+});
+
 describe('layout', () => {
-  // Same conversion `render/Arena.ts` does when it builds each cover and platform mesh.
   const boxes: Aabb[] = [...OBSTACLES, ...PLATFORMS].map(([x, z, w, , d]) => ({
     minX: x - w / 2,
     maxX: x + w / 2,
@@ -134,9 +202,45 @@ describe('layout', () => {
     }
   });
 
+  it('keeps every ramp inside the arena', () => {
+    for (const r of rampBoxes()) {
+      expect(r.minX).toBeGreaterThanOrEqual(-WORLD.HALF);
+      expect(r.maxX).toBeLessThanOrEqual(WORLD.HALF);
+      expect(r.minZ).toBeGreaterThanOrEqual(-WORLD.HALF);
+      expect(r.maxZ).toBeLessThanOrEqual(WORLD.HALF);
+    }
+  });
+
+  it('lands every ramp exactly on the platform face it serves', () => {
+    for (const ramp of rampBoxes()) {
+      const highEdge =
+        ramp.upX > 0 ? ramp.maxX : ramp.upX < 0 ? ramp.minX : ramp.upZ > 0 ? ramp.maxZ : ramp.minZ;
+      const matches = platformBoxes().some((p) => {
+        const withinX = ramp.minX >= p.minX - 1e-9 && ramp.maxX <= p.maxX + 1e-9;
+        const withinZ = ramp.minZ >= p.minZ - 1e-9 && ramp.maxZ <= p.maxZ + 1e-9;
+        if (ramp.upX !== 0) {
+          return withinZ && (Math.abs(highEdge - p.minX) < 1e-9 || Math.abs(highEdge - p.maxX) < 1e-9);
+        }
+        return withinX && (Math.abs(highEdge - p.minZ) < 1e-9 || Math.abs(highEdge - p.maxZ) < 1e-9);
+      });
+      expect(matches, `ramp ${ramp.minX},${ramp.minZ}`).toBe(true);
+    }
+  });
+
+  it('leaves no pocket between a platform and the wall', () => {
+    // A body pushed out of a platform must still be inside the wall clamp, and
+    // the clamp itself must be too narrow to slip behind the platform.
+    const reach = WORLD.HALF - WORLD.WALL_INSET - WORLD.PLAYER_R;
+    for (const p of platformBoxes()) {
+      const outer = Math.max(Math.abs(p.minX), Math.abs(p.maxX), Math.abs(p.minZ), Math.abs(p.maxZ));
+      expect(outer).toBeCloseTo(reach - WORLD.PLAYER_R, 6);
+    }
+  });
+
   it('leaves the spawn point clear', () => {
     const w = new CollisionWorld();
     for (const o of boxes) w.addObstacle(o);
+    for (const r of rampBoxes()) w.addRamp(r);
     const p = { x: 0, z: 0 };
     w.resolveCircle(p, WORLD.PLAYER_R);
     expect(p).toEqual({ x: 0, z: 0 });

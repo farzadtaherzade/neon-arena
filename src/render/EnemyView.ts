@@ -136,23 +136,24 @@ export class EnemyView {
   /** Pull the pure enemy's state onto the meshes. Called once per rendered frame. */
   sync(playerPos: { x: number; z: number }, cameraQuat: THREE.Quaternion): void {
     const g = this.group;
-    const { x, z } = this.enemy.pos;
+    const { x, y, z } = this.enemy.pos;
 
     if (this.enemy.state === 'dying') {
       const k = this.enemy.deathK;
       g.rotation.x = (-k * Math.PI * 2 * ENEMY.DEATH_TILT) / 2;
-      g.position.y = -k * ENEMY.DEATH_SINK;
+      g.position.y = y - k * ENEMY.DEATH_SINK;
     } else {
       g.rotation.x = 0;
       g.rotation.y = this.enemy.facing(playerPos);
-      g.position.y = this.enemy.bounce;
+      // `pos.y` is the enemy's feet: it rises with a ramp and drops off a ledge.
+      g.position.y = y + this.enemy.bounce;
       this.legL.rotation.x = this.enemy.legSwing;
       this.legR.rotation.x = -this.enemy.legSwing;
 
       const on = this.enemy.flashT > 0;
       for (const m of this.mats) m.emissive.setHex(on ? this.enemy.flashHex : 0x000000);
 
-      this.barGroup.position.set(x, 1.98 * this.enemy.scale, z);
+      this.barGroup.position.set(x, y + 1.98 * this.enemy.scale, z);
       this.barGroup.quaternion.copy(cameraQuat);
       const frac = Math.max(this.enemy.hp / this.enemy.stats.maxHp, 0);
       this.barGroup.visible = frac < 1;

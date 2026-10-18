@@ -8,6 +8,7 @@ import { Bomb } from '../game/bomb';
 import {
   BOMB,
   CAMERA,
+  ENEMY,
   FEEDBACK,
   type GameState,
   SCREEN,
@@ -107,6 +108,8 @@ export class Game {
   private scratch = new THREE.Vector3();
   private tracerEnd = new THREE.Vector3();
   private camQuat = new THREE.Quaternion();
+  /** Scratch point for `CollisionWorld.groundHeight` queries that must not allocate. */
+  private groundProbe = { x: 0, z: 0 };
   private model: HudModel = {
     hp: 0,
     score: 0,
@@ -172,9 +175,19 @@ export class Game {
 
     this.world = {
       playerPos: this.player.position,
+      playerY: 0,
       neighbours: EMPTY,
       hostileCount: 0,
-      collide: (p, r) => this.collision.resolveCircle(p, r),
+      collide: (p, r, feetY) => this.collision.resolveCircle(p, r, { feetY, step: ENEMY.STEP }),
+      // Reused probe: enemies ask for the ground every step and must not
+      // allocate a `{x, z}` per query.
+      support: (x, z, r, ceiling) => {
+        const probe = this.groundProbe;
+        probe.x = x;
+        probe.z = z;
+        return this.collision.groundHeight(probe, r, ceiling);
+      },
+      ramps: this.collision.ramps,
       damagePlayer: (amount) => this.damagePlayer(amount),
       plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
     };
@@ -325,7 +338,7 @@ export class Game {
     this.fx.burst({ ...origin, color: 0xff4455, count: 26, speed: 5, life: 0.7, gravity: 9 }, this.rng);
     this.fx.burst({ ...origin, color: 0xff8866, count: 10, speed: 3, life: 0.5, gravity: 9 }, this.rng);
 
-    this.spawnXp(enemy.pos.x, enemy.pos.z);
+    this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z);
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
@@ -353,6 +366,11 @@ export class Game {
   plantBomb(from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean): void {
     const limit = WORLD.HALF - WORLD.WALL_INSET;
     const bomb = new Bomb(clamp(to.x, -limit, limit), clamp(to.z, -limit, limit));
+    // Rest it on whatever is actually under the blast spot, so a bomb thrown at
+    // someone on a platform does not blink inside the platform's geometry.
+    this.groundProbe.x = bomb.pos.x;
+    this.groundProbe.z = bomb.pos.z;
+    bomb.pos.y = this.collision.groundHeight(this.groundProbe, 0.2, Number.POSITIVE_INFINITY);
     const view = new BombView(bomb);
     view.addTo(this.arena.scene);
     this.pick.add(view.mesh);
@@ -396,13 +414,17 @@ export class Game {
     this.sfx.explode();
     this.feedback.shakeT = Math.max(this.feedback.shakeT, BOMB.SHAKE);
 
-    const pd = Math.hypot(this.player.position.x - x, this.player.position.z - z);
+    const pd = Math.hypot(
+      this.player.position.x - x,
+      this.player.position.z - z,
+      this.player.position.y - WORLD.PLAYER_H - bomb.pos.y,
+    );
     if (pd < r) this.damagePlayer(BOMB.PLAYER_DMG * (1 - pd / r));
 
     for (const h of this.hostiles) {
       const enemy = h.enemy;
       if (enemy.state !== 'alive') continue;
-      const d = Math.hypot(enemy.pos.x - x, enemy.pos.z - z);
+      const d = Math.hypot(enemy.pos.x - x, enemy.pos.z - z, enemy.pos.y - bomb.pos.y);
       if (d >= r) continue;
       if (enemy.takeDamage(BOMB.ENEMY_DMG)) this.killEnemy(enemy, false);
       else {
@@ -435,9 +457,9 @@ export class Game {
 
   // ------------------------------------------------------------------------ XP
 
-  /** An enemy dies; it drops one orb on the floor for the player to gather. */
-  private spawnXp(x: number, z: number): void {
-    const xp = new Xp(x, z, XP.VALUE);
+  /** An enemy dies; it drops one orb where it fell, for the player to gather. */
+  private spawnXp(x: number, y: number, z: number): void {
+    const xp = new Xp(x, z, XP.VALUE, y + 0.5);
     const view = new XpView(xp);
     view.addTo(this.arena.scene);
     this.xps.push(xp);
@@ -496,6 +518,8 @@ export class Game {
 
     if (this.state === STATE.PLAYING) {
       this.player.update(dt, this.input.move(), this.collision);
+      // Enemies compare their own height against the player's feet, not the eye.
+      this.world.playerY = this.player.position.y - WORLD.PLAYER_H;
       // Sync the rig to the current view before firing, so a shot's ray matches
       // the crosshair this frame rather than the camera left by the last render.
       this.applyCameraPose();

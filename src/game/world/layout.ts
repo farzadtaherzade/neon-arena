@@ -20,20 +20,42 @@ export const OBSTACLES: readonly (readonly [number, number, number, number, numb
   [-4, 20, 5, 2.5, 3],
 ];
 
-/** Four raised corner platforms as `[x, z, width, height, depth]`. */
+/**
+ * Height of a raised corner platform — and therefore of the ramp that reaches
+ * it. Kept above `WORLD.JUMP_V`'s apex and well above `WORLD.STEP_HEIGHT`, so
+ * the ramp is the only way up for the player *and* for the mobs.
+ */
+export const PLATFORM_H = 1.6;
+
+/**
+ * Four raised corner platforms as `[x, z, width, height, depth]`.
+ *
+ * The outer faces land one player radius inside the walkable limit
+ * (`HALF - WALL_INSET - 2 * PLAYER_R` = 28.1), which is what closes the old
+ * dead pocket between platform and wall: there is no longer a gap wide enough
+ * to wedge a body into, so the corner *is* the platform.
+ */
 export const PLATFORMS: readonly (readonly [number, number, number, number, number])[] = [
-  [-22, -22, 7, 1.0, 7], // NW
-  [22, -22, 7, 1.0, 7], // NE
-  [22, 22, 7, 1.0, 7], // SE
-  [-22, 22, 7, 1.0, 7], // SW
+  [-25, -25, 6.2, PLATFORM_H, 6.2], // NW
+  [25, -25, 6.2, PLATFORM_H, 6.2], // NE
+  [25, 25, 6.2, PLATFORM_H, 6.2], // SE
+  [-25, 25, 6.2, PLATFORM_H, 6.2], // SW
 ];
 
-/** Ramps leading up to platforms as `[x, z, width, height, depth, rotY]`. */
+/**
+ * Ramps from the floor up to a platform, as
+ * `[x, z, width, length, upX, upZ]`.
+ *
+ * `upX`/`upZ` is the unit vector pointing *uphill* (exactly one is ±1), so the
+ * high edge is the edge the vector points at. Each ramp is placed so that edge
+ * lands exactly on its platform's inner face: the walkable surface meets the
+ * platform top with no lip and no gap. `width` is the cross-slope span.
+ */
 export const RAMPS: readonly (readonly [number, number, number, number, number, number])[] = [
-  [-17.2, -22, 2.8, 0.9, 3.5, 0], // NW ramp facing East
-  [17.2, -22, 2.8, 0.9, 3.5, Math.PI], // NE ramp facing West
-  [17.2, 22, 2.8, 0.9, 3.5, Math.PI], // SE ramp facing West
-  [-17.2, 22, 2.8, 0.9, 3.5, 0], // SW ramp facing East
+  [-19.8, -25, 3.6, 4.2, -1, 0], // NW: climbs west onto the platform's east face
+  [19.8, -25, 3.6, 4.2, 1, 0], // NE: climbs east onto the west face
+  [19.8, 25, 3.6, 4.2, 1, 0], // SE
+  [-19.8, 25, 3.6, 4.2, -1, 0], // SW
 ];
 
 export const STAR_COUNT = 420;

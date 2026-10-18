@@ -3,7 +3,8 @@ import { Rng } from '../../src/core/rng';
 import { ENEMY, ENEMY_TYPES, SAPPER } from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
-import type { Vec2 } from '../../src/game/world/collision';
+import { CollisionWorld, type Vec2 } from '../../src/game/world/collision';
+import { PLATFORM_H, PLATFORMS, RAMPS } from '../../src/game/world/layout';
 
 interface TestWorld extends EnemyWorld {
   hurt: number;
@@ -13,11 +14,14 @@ interface TestWorld extends EnemyWorld {
 function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []): TestWorld {
   const w: TestWorld = {
     playerPos,
+    playerY: 0,
     neighbours,
     hostileCount: 99,
+    ramps: [],
     hurt: 0,
     bombs: [],
     collide: () => {},
+    support: () => 0,
     damagePlayer(amount: number) {
       w.hurt += amount;
     },
@@ -26,6 +30,34 @@ function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []
     },
   };
   return w;
+}
+
+/** A world backed by the real arena layout, so ramps and platforms collide. */
+function arenaWorld(playerPos = { x: 0, z: 0 }): TestWorld {
+  const c = new CollisionWorld();
+  for (const [x, z, w, h, d] of PLATFORMS) {
+    c.addObstacle({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 }, h);
+  }
+  for (const [x, z, w, len, upX, upZ] of RAMPS) {
+    const spanX = upX !== 0 ? len : w;
+    const spanZ = upZ !== 0 ? len : w;
+    c.addRamp({
+      minX: x - spanX / 2,
+      maxX: x + spanX / 2,
+      minZ: z - spanZ / 2,
+      maxZ: z + spanZ / 2,
+      lowY: 0,
+      highY: PLATFORM_H,
+      upX,
+      upZ,
+    });
+  }
+
+  const world = makeWorld(playerPos);
+  world.ramps = c.ramps;
+  world.collide = (p, r, feetY) => c.resolveCircle(p, r, { feetY, step: ENEMY.STEP });
+  world.support = (x, z, r, ceiling) => c.groundHeight({ x, z }, r, ceiling);
+  return world;
 }
 
 function spawn(kind: keyof typeof ENEMY_TYPES, x: number, z: number): Enemy {
@@ -81,6 +113,45 @@ describe('Enemy', () => {
     expect(world.hurt).toBe(ENEMY_TYPES.grunt.dmg);
     expect(e.cool).toBeGreaterThan(0);
     expect(e.cool).toBeLessThanOrEqual(ENEMY.ATTACK_COOLDOWN);
+  });
+
+  it('does not claw at a player standing on a platform it has not climbed', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.playerY = PLATFORM_H;
+    const e = spawn('grunt', 0.2, 0);
+    e.cool = 0;
+    for (let i = 0; i < 120; i++) e.update(1 / 60, world);
+    expect(world.hurt).toBe(0);
+  });
+
+  it('climbs the ramp to reach a player on the platform', () => {
+    // Player on the NW platform, grunt on the floor south of it.
+    const world = arenaWorld({ x: -25, z: -25 });
+    world.playerY = PLATFORM_H;
+    const e = spawn('grunt', -25, -8);
+
+    let peak = 0;
+    for (let i = 0; i < 60 * 14; i++) {
+      e.update(1 / 60, world);
+      peak = Math.max(peak, e.pos.y);
+    }
+
+    expect(peak).toBeCloseTo(PLATFORM_H, 1);
+    expect(e.pos.y).toBeCloseTo(PLATFORM_H, 1);
+    expect(world.hurt).toBeGreaterThan(0);
+  });
+
+  it('falls back to the floor when it walks off a platform', () => {
+    const world = arenaWorld({ x: 60, z: 60 }); // nothing to chase
+    const e = spawn('grunt', -25, -25);
+    e.pos.y = PLATFORM_H;
+    e.grounded = true;
+    world.playerY = 0;
+
+    // Walk south, off the platform's inner face, then wait for gravity.
+    for (let i = 0; i < 60 * 4; i++) e.update(1 / 60, world);
+    expect(e.pos.z).toBeGreaterThan(-21.9);
+    expect(e.pos.y).toBeLessThan(0.01);
   });
 
   it('pushes away from a neighbour standing on top of it', () => {

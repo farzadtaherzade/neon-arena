@@ -17,6 +17,7 @@ import {
   WEAPON,
   WORLD,
 } from '../../src/game/config';
+import { PLATFORM_H } from '../../src/game/world/layout';
 
 /**
  * The tuning table has no schema beyond these literals, so this suite is the
@@ -75,6 +76,20 @@ describe('config', () => {
     expect(ENEMY.DEATH_TIME).toBeGreaterThan(0);
     expect(ENEMY.SPAWN_ATTEMPTS).toBeGreaterThan(0);
     expect(ENEMY.SPAWN_MIN_DIST).toBeLessThan(ENEMY.SPAWN_RING);
+  });
+
+  it('keeps vertical navigation coherent with the arena', () => {
+    // A platform is a wall to a walker and to a jumper, so its ramp is the only
+    // way up — for the player and for the mobs alike.
+    expect(ENEMY.STEP).toBeLessThan(PLATFORM_H);
+    expect(WORLD.STEP_HEIGHT).toBeLessThan(PLATFORM_H);
+    expect((WORLD.JUMP_V * WORLD.JUMP_V) / (2 * WORLD.GRAVITY)).toBeLessThan(PLATFORM_H);
+    // Melee cannot reach across a platform deck...
+    expect(ENEMY.ATTACK_RISE).toBeLessThan(PLATFORM_H);
+    // ...but a mob on the slope can still be hit, and knows to detour.
+    expect(ENEMY.CLIMB_RISE).toBeLessThan(ENEMY.ATTACK_RISE);
+    expect(ENEMY.RAMP_OFFSET).toBeGreaterThan(0);
+    expect(ENEMY.RAMP_ALIGN).toBeGreaterThan(ENEMY.RAMP_OFFSET);
   });
 
   it('keeps the wave curve bounded', () => {

@@ -31,8 +31,12 @@ export const WORLD = {
   STAMINA_REGEN: 15,
   /** Sprint is locked out until the bar climbs back above this. */
   STAMINA_UNLOCK: 25,
-  /** Maximum step height for walking up slopes/ramps onto platforms. */
-  STEP_HEIGHT: 1,
+  /**
+   * Maximum height a walking body is lifted over — a kerb, a ramp's lip. Kept
+   * well under `PLATFORM_H` (1.6) so a platform is only reachable by its ramp,
+   * and under the jump apex so you cannot hop onto one either.
+   */
+  STEP_HEIGHT: 0.55,
 } as const;
 
 export const WEAPON = {
@@ -134,6 +138,21 @@ export const ENEMY = {
   DEATH_TILT: 0.92,
   DEATH_SINK: 0.25,
   KNOCKBACK: 0.18,
+
+  /**
+   * Vertical navigation. Mobs walk the same ramps the player does: `STEP` lets
+   * them follow the slope (and must stay under a platform top so they cannot
+   * climb the side), `CLIMB_RISE` is how far above them the player has to be
+   * before they detour to a ramp, and `ATTACK_RISE` stops them clawing at
+   * someone standing on a deck they have not reached yet.
+   */
+  STEP: 0.55,
+  CLIMB_RISE: 0.5,
+  ATTACK_RISE: 1.1,
+  /** How far outside a ramp's mouth — and past its top — a climber aims. */
+  RAMP_OFFSET: 0.9,
+  /** Within this of the mouth it commits to the climb instead of lining up. */
+  RAMP_ALIGN: 1.2,
 
   SPAWN_ATTEMPTS: 14,
   SPAWN_RING: 23,

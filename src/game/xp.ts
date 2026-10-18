@@ -14,8 +14,10 @@ export class Xp {
     x: number,
     z: number,
     readonly value: number,
+    y = 0.5,
   ) {
     this.pos.x = x;
+    this.pos.y = y;
     this.pos.z = z;
   }
 

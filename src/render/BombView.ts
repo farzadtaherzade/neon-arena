@@ -25,13 +25,13 @@ export class BombView {
     });
 
     this.mesh = new THREE.Mesh(GEO.bombBody(), this.mat);
-    this.mesh.position.set(bomb.pos.x, 0.35, bomb.pos.z);
+    this.mesh.position.set(bomb.pos.x, bomb.pos.y + 0.35, bomb.pos.z);
     this.mesh.castShadow = true;
     this.mesh.userData = { bomb };
 
     this.ring = new THREE.Mesh(GEO.bombRing(), MAT.bombRing());
     this.ring.rotation.x = -Math.PI / 2;
-    this.ring.position.set(bomb.pos.x, 0.02, bomb.pos.z);
+    this.ring.position.set(bomb.pos.x, bomb.pos.y + 0.02, bomb.pos.z);
   }
 
   addTo(scene: THREE.Scene): void {

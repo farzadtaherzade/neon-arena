@@ -106,6 +106,7 @@ export class Player {
     // caught by a platform top they cross during the frame rather than phasing
     // through it.
     const feetBefore = this.position.y - WORLD.PLAYER_H;
+    const wasGrounded = this.grounded;
 
     this.velocity.y -= WORLD.GRAVITY * dt;
     this.position.x += this.velocity.x * dt;
@@ -117,10 +118,15 @@ export class Player {
     // ceiling allows a `STEP_HEIGHT` walk-up while grounded, and always covers
     // the feet's travel this step so descent can't tunnel through.
     const feet = this.position.y - WORLD.PLAYER_H;
-    const ceiling = Math.max(feet + (this.grounded ? WORLD.STEP_HEIGHT : 0), feetBefore);
+    const ceiling = Math.max(feet + (wasGrounded ? WORLD.STEP_HEIGHT : 0), feetBefore);
     const support = collision.groundHeight(this.position, WORLD.PLAYER_R, ceiling);
     const supportEye = support + WORLD.PLAYER_H;
-    if (this.velocity.y <= 0 && this.position.y <= supportEye + 1e-4) {
+    // Walking *down* a slope drops the surface a few centimetres per frame, which
+    // would read as a series of little falls (and keep clearing `grounded`).
+    // Stick to it while the drop is within a step; anything deeper is a real
+    // ledge and gravity keeps it.
+    const stick = wasGrounded && this.velocity.y <= 0 && this.position.y - supportEye <= WORLD.STEP_HEIGHT;
+    if (this.velocity.y <= 0 && (this.position.y <= supportEye + 1e-4 || stick)) {
       this.position.y = supportEye;
       this.velocity.y = 0;
       this.grounded = true;

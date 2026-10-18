@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Rng } from '../core/rng';
 import { CAMERA, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
-import { OBSTACLES, PLATFORMS, RAMPS, starfieldPositions } from '../game/world/layout';
+import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, starfieldPositions } from '../game/world/layout';
 import { MAT } from './Materials';
 import { makeFloorTexture } from './Textures';
 
@@ -175,17 +175,67 @@ export class Arena {
     }
   }
 
+  /**
+   * Ramps as solid wedges. The hypotenuse runs from the floor at the mouth to
+   * `PLATFORM_H` at the back edge, which is exactly the surface the collision
+   * world walks you up — mesh and collider are built from the same numbers, so
+   * they cannot drift apart the way the old tilted slabs did.
+   */
   private ramps(): void {
-    for (const [x, z, w, h, d, ry] of RAMPS) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.wall());
-      m.position.set(x, h / 2, z);
-      m.rotation.y = ry;
-      // Slight pitch slope angle
-      m.rotation.z = ry === 0 ? 0.12 : -0.12;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
-      this.solids.push(m);
+    for (const [x, z, width, length, upX, upZ] of RAMPS) {
+      const half = length / 2;
+      const angle = Math.atan2(PLATFORM_H, length);
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+      // Build in local +x and mirror the whole ramp for the -x / -z cases, so
+      // there is one geometry path instead of two mirrored ones.
+      if (upX < 0 || upZ < 0) group.rotation.y = Math.PI;
+
+      // Cross-section in XY, extruded across the slope: a right wedge whose
+      // long face is the walkable surface.
+      const shape = new THREE.Shape();
+      shape.moveTo(-half, 0);
+      shape.lineTo(half, 0);
+      shape.lineTo(half, PLATFORM_H);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+      geo.translate(0, 0, -width / 2);
+
+      const wedge = new THREE.Mesh(geo, MAT.obstacle());
+      wedge.castShadow = true;
+      wedge.receiveShadow = true;
+      group.add(wedge);
+
+      // Glowing edge rails: the visual cue that this is the way up.
+      const slope = Math.hypot(length, PLATFORM_H);
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(slope, 0.07, 0.07), MAT.trim());
+        rail.position.set(0, PLATFORM_H / 2 + 0.02, (side * width) / 2);
+        rail.rotation.z = angle;
+        group.add(rail);
+      }
+
+      // Hazard threshold at the mouth.
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, width * 0.92), MAT.hazard());
+      stripe.position.set(-half + 0.25 * Math.cos(angle), 0.25 * Math.sin(angle) + 0.03, 0);
+      stripe.rotation.z = angle;
+      group.add(stripe);
+
+      this.scene.add(group);
+      this.solids.push(wedge);
+
+      const spanX = upX !== 0 ? length : width;
+      const spanZ = upZ !== 0 ? length : width;
+      this.collision.addRamp({
+        minX: x - spanX / 2,
+        maxX: x + spanX / 2,
+        minZ: z - spanZ / 2,
+        maxZ: z + spanZ / 2,
+        lowY: 0,
+        highY: PLATFORM_H,
+        upX,
+        upZ,
+      });
     }
   }
 

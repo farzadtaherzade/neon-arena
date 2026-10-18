@@ -128,6 +128,37 @@ describe('Player movement', () => {
     expect(p.grounded).toBe(true);
   });
 
+  it('walks up a ramp onto the platform it serves', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    // Toe at x=-2 rising east to 1.6 at x=2, where the deck starts.
+    c.addRamp({ minX: -2, maxX: 2, minZ: -1.5, maxZ: 1.5, lowY: 0, highY: 1.6, upX: 1, upZ: 0 });
+    c.addObstacle({ minX: 2, maxX: 20, minZ: -3, maxZ: 3 }, 1.6);
+
+    p.position.x = -3;
+    p.position.y = WORLD.PLAYER_H;
+    p.yaw = -Math.PI / 2; // forward points at +x
+    run(p, c, { forward: 1, right: 0, sprint: false }, 120);
+
+    expect(p.position.x).toBeGreaterThan(2);
+    expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H + 1.6, 2);
+    expect(p.grounded).toBe(true);
+  });
+
+  it('cannot climb a platform from the ground — only the ramp gets you up', () => {
+    const p = new Player();
+    const c = new CollisionWorld();
+    c.addObstacle({ minX: -2, maxX: 2, minZ: -2, maxZ: 2 }, 1.6);
+
+    p.position.x = 4;
+    p.position.y = WORLD.PLAYER_H;
+    p.yaw = Math.PI / 2; // forward points at -x, into the platform's face
+    run(p, c, { forward: 1, right: 0, sprint: false }, 120);
+
+    expect(p.position.y).toBeCloseTo(WORLD.PLAYER_H, 6);
+    expect(p.position.x).toBeCloseTo(2 + WORLD.PLAYER_R, 3);
+  });
+
   it('lands on a platform when dropped onto it', () => {
     const p = new Player();
     const c = new CollisionWorld();

@@ -1,17 +1,23 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, SAPPER } from './config';
+import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, SAPPER, WORLD } from './config';
 import type { Vec3 } from './player';
-import type { Vec2 } from './world/collision';
+import type { Ramp, Vec2 } from './world/collision';
 
 /** Everything an enemy needs from the world, handed in per step. */
 export interface EnemyWorld {
   playerPos: Vec2;
+  /** The player's feet height — what tells a mob the player is up on a deck. */
+  playerY: number;
   /** Live separation candidates from the population's spatial hash. */
   neighbours: readonly Enemy[];
   /** Live + queued hostiles; drives the sapper's hunt trigger. */
   hostileCount: number;
-  collide(pos: Vec2, r: number): void;
+  collide(pos: Vec2, r: number, feetY: number): void;
+  /** Highest walkable surface at (x, z) at or below `ceiling`, floor included. */
+  support(x: number, z: number, r: number, ceiling: number): number;
+  /** Ramps in the arena, so a mob can follow the player onto high ground. */
+  ramps: readonly Ramp[];
   damagePlayer(amount: number): void;
   /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc. */
   plantBomb(from: Vec2, to: Vec2, thrown: boolean): void;
@@ -26,10 +32,32 @@ export interface EnemyStats {
   scale: number;
 }
 
+/** Centre of a ramp's low edge, pushed downhill so a climber lines up first. */
+function rampMouthX(ramp: Ramp): number {
+  if (ramp.upX !== 0) return (ramp.upX > 0 ? ramp.minX : ramp.maxX) - ramp.upX * ENEMY.RAMP_OFFSET;
+  return (ramp.minX + ramp.maxX) / 2;
+}
+
+function rampMouthZ(ramp: Ramp): number {
+  if (ramp.upZ !== 0) return (ramp.upZ > 0 ? ramp.minZ : ramp.maxZ) - ramp.upZ * ENEMY.RAMP_OFFSET;
+  return (ramp.minZ + ramp.maxZ) / 2;
+}
+
+/** Centre of a ramp's high edge, pushed onto the platform it serves. */
+function rampTopX(ramp: Ramp): number {
+  if (ramp.upX !== 0) return (ramp.upX > 0 ? ramp.maxX : ramp.minX) + ramp.upX * ENEMY.RAMP_OFFSET;
+  return (ramp.minX + ramp.maxX) / 2;
+}
+
+function rampTopZ(ramp: Ramp): number {
+  if (ramp.upZ !== 0) return (ramp.upZ > 0 ? ramp.maxZ : ramp.minZ) + ramp.upZ * ENEMY.RAMP_OFFSET;
+  return (ramp.minZ + ramp.maxZ) / 2;
+}
+
 /**
  * One hostile robot: steering, health, and the death clock.
  *
- * Pure — `pos` is a plain `{x, y, z}`, meshes live in `render/EnemyView.ts` and
+ * Pure — `pos` is a plain `{x,y,z}`, meshes live in `render/EnemyView.ts` and
  * read that position every frame. The hit flash is a timer + colour here; the
  * view applies it.
  */
@@ -40,6 +68,8 @@ export class Enemy {
   state: 'alive' | 'dying' = 'alive';
   vx = 0;
   vz = 0;
+  vy = 0;
+  grounded = true;
   cool = 0;
   phase = 0;
   flashT = 0;
@@ -53,6 +83,10 @@ export class Enemy {
 
   /** Distance of the nearest living neighbour at the last separation pass. */
   private reachPad: number = ENEMY.REACH_PAD;
+
+  /** Current steering target; `pos`-shaped so routing never allocates. */
+  private navX = 0;
+  private navZ = 0;
 
   /** Which cosmetic skin this individual uses (index into its kind's looks). */
   readonly look: number;
@@ -116,7 +150,8 @@ export class Enemy {
     this.flashT = Math.max(0, this.flashT - dt);
     this.phase += dt * (3 + this.stats.speed * 1.6);
 
-    world.collide(this.pos, ENEMY.COLLIDE_RADIUS * this.scale);
+    world.collide(this.pos, ENEMY.COLLIDE_RADIUS * this.scale, this.pos.y);
+    this.followGround(dt, world);
     return false;
   }
 
@@ -139,8 +174,13 @@ export class Enemy {
     const dx = world.playerPos.x - this.pos.x;
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    if (dist > this.reachPad) this.chase(dt, dx, dz, dist, world);
-    else this.attack(world);
+    // Melee only works across a small height gap: an enemy at the foot of a
+    // platform must not claw at someone standing on top of it.
+    if (dist > this.reachPad || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
+      this.pursue(dt, world, this.stats.speed);
+    } else {
+      this.attack(world);
+    }
   }
 
   /**
@@ -157,8 +197,11 @@ export class Enemy {
     this.sapperMode = hunting ? 'hunt' : 'lurk';
 
     if (hunting) {
-      if (dist > this.reachPad) this.chase(dt, dx, dz, dist, world, SAPPER.HUNT_SPEED);
-      else this.attack(world);
+      if (dist > this.reachPad || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
+        this.pursue(dt, world, SAPPER.HUNT_SPEED);
+      } else {
+        this.attack(world);
+      }
       return;
     }
 
@@ -183,19 +226,102 @@ export class Enemy {
     this.steer(dt, mx, mz, this.stats.speed * SAPPER.LURK_GAIN, world);
     this.wanderA += Math.sin(this.phase * 0.7) * SAPPER.WANDER_TURN * dt;
 
-    if (dist <= this.reachPad) this.attack(world);
+    if (dist <= this.reachPad && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
+      this.attack(world);
+    }
   }
 
-  private chase(
-    dt: number,
-    dx: number,
-    dz: number,
-    dist: number,
-    world: EnemyWorld,
-    speed = this.stats.speed,
-  ): void {
-    const inv = 1 / (dist || 1);
-    this.steer(dt, dx * inv, dz * inv, speed, world);
+  /**
+   * Steer at the player — or, when they are up on a platform we cannot reach in
+   * a straight line, at the mouth of the ramp that leads there and then up it.
+   * Without this a mob just grinds against the platform wall forever.
+   */
+  private pursue(dt: number, world: EnemyWorld, speed: number): void {
+    this.route(world);
+    const dx = this.navX - this.pos.x;
+    const dz = this.navZ - this.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 1e-3) {
+      this.vx *= ENEMY.ARRIVE_DAMP;
+      this.vz *= ENEMY.ARRIVE_DAMP;
+      return;
+    }
+    this.steer(dt, dx / d, dz / d, speed, world);
+  }
+
+  /** Pick the next steering target: the player, or a ramp that leads to them. */
+  private route(world: EnemyWorld): void {
+    const px = world.playerPos.x;
+    const pz = world.playerPos.z;
+    this.navX = px;
+    this.navZ = pz;
+
+    // Same level (or the player is below us): walk straight at them.
+    if (world.playerY - this.pos.y < ENEMY.CLIMB_RISE) return;
+
+    const ramp = this.nearestRamp(world.ramps, px, pz);
+    if (!ramp) return;
+
+    const onRamp =
+      this.pos.x >= ramp.minX &&
+      this.pos.x <= ramp.maxX &&
+      this.pos.z >= ramp.minZ &&
+      this.pos.z <= ramp.maxZ;
+
+    const mx = rampMouthX(ramp);
+    const mz = rampMouthZ(ramp);
+    const dx = mx - this.pos.x;
+    const dz = mz - this.pos.z;
+    if (!onRamp && dx * dx + dz * dz > ENEMY.RAMP_ALIGN * ENEMY.RAMP_ALIGN) {
+      // Not lined up yet: go stand at the bottom of the slope.
+      this.navX = mx;
+      this.navZ = mz;
+    } else {
+      // Committed: climb, and keep pushing until we are actually on the deck.
+      this.navX = rampTopX(ramp);
+      this.navZ = rampTopZ(ramp);
+    }
+  }
+
+  /** The ramp whose top is nearest the player — i.e. the one onto their deck. */
+  private nearestRamp(ramps: readonly Ramp[], px: number, pz: number): Ramp | undefined {
+    let best: Ramp | undefined;
+    let bestD = Number.POSITIVE_INFINITY;
+    for (const ramp of ramps) {
+      const dx = rampTopX(ramp) - px;
+      const dz = rampTopZ(ramp) - pz;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) {
+        bestD = d;
+        best = ramp;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Follow the walkable surface: ride up a ramp, fall off a ledge. Mirrors the
+   * player's resolution, including the "stick to a slope" case so walking down
+   * a ramp is a slide rather than a string of little drops.
+   */
+  private followGround(dt: number, world: EnemyWorld): void {
+    const feetBefore = this.pos.y;
+    const wasGrounded = this.grounded;
+
+    this.vy -= WORLD.GRAVITY * dt;
+    this.pos.y += this.vy * dt;
+
+    const r = ENEMY.COLLIDE_RADIUS * this.scale;
+    const ceiling = Math.max(this.pos.y + (wasGrounded ? ENEMY.STEP : 0), feetBefore);
+    const support = world.support(this.pos.x, this.pos.z, r, ceiling);
+    const stick = wasGrounded && this.vy <= 0 && this.pos.y - support <= ENEMY.STEP;
+    if (this.vy <= 0 && (this.pos.y <= support + 1e-4 || stick)) {
+      this.pos.y = support;
+      this.vy = 0;
+      this.grounded = true;
+    } else {
+      this.grounded = false;
+    }
   }
 
   /** Steer toward a unit direction at `speed`, with neighbour separation. */
