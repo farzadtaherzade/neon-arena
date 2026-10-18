@@ -54,6 +54,9 @@ let mObstacle: THREE.MeshStandardMaterial | undefined;
 let mGlow: THREE.MeshBasicMaterial | undefined;
 let mMagenta: THREE.MeshBasicMaterial | undefined;
 let mCore: THREE.MeshBasicMaterial | undefined;
+let mStructure: THREE.MeshStandardMaterial | undefined;
+let mStructureGlow: THREE.MeshBasicMaterial | undefined;
+let mHalo: THREE.MeshBasicMaterial | undefined;
 let mGunMetal: THREE.MeshStandardMaterial | undefined;
 let mGunDark: THREE.MeshStandardMaterial | undefined;
 let mMuzzleFlash: THREE.MeshBasicMaterial | undefined;
@@ -84,6 +87,35 @@ export const MAT = {
       color: 0xff3ba8,
       transparent: true,
       opacity: 0.2,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    })),
+
+  /**
+   * The structural asset kit bakes its palette into vertex colours, so every
+   * cover block, deck and wall is one draw call instead of a dozen. The base
+   * colour stays white; the buffers carry the actual industrial palette.
+   */
+  structure: () =>
+    (mStructure ??= new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.76,
+      metalness: 0.18,
+    })),
+  /** Unlit hazard paint and neon trim, merged into one glow mesh per asset. */
+  structureGlow: () =>
+    (mStructureGlow ??= new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+    })),
+  /** Soft magenta wash on the floor around the reactor. */
+  halo: () =>
+    (mHalo ??= new THREE.MeshBasicMaterial({
+      color: 0xff3ba8,
+      transparent: true,
+      opacity: 0.11,
       depthWrite: false,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,

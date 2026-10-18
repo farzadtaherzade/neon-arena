@@ -4,15 +4,17 @@ import { CAMERA, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
 import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, REACTOR, starfieldPositions } from '../game/world/layout';
 import { CapturePad } from './CapturePad';
-import { MAT } from './Materials';
+import { mobWarmup } from './models/MobModel';
+import { makeCover, makeDeck, makeRamp, makeReactor, makeWall } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
 
 /**
  * Renderer, scene, lights and every static mesh.
  *
- * Owns the one place where `layout.ts` data becomes geometry. Boxes are handed
- * to the collision world as plain AABBs, and meshes a bullet can stop on go
- * into `solids` for `render/Pick.ts`.
+ * Owns the one place where `layout.ts` data becomes geometry. The structure kit
+ * bakes each prop into a lit shell and a neon trim pass, then Arena registers
+ * authored AABBs from the source tables — never from the decorative overhang.
+ * Meshes a bullet can stop on go into `solids` for `render/Pick.ts`.
  */
 export class Arena {
   readonly renderer: THREE.WebGLRenderer;
@@ -24,6 +26,10 @@ export class Arena {
 
   private yawObj = new THREE.Group();
   private pitchObj = new THREE.Group();
+  private reactorRings: THREE.Group[] = [];
+  private reactorCore: THREE.Mesh | null = null;
+  private reactorLight: THREE.PointLight | null = null;
+  private mobWarmupGroup: THREE.Group | null = null;
 
   constructor(
     private readonly collision: CollisionWorld,
@@ -57,6 +63,8 @@ export class Arena {
     this.ramps();
     this.capturePads();
     this.stars(rng);
+    this.mobWarmupGroup = mobWarmup();
+    this.scene.add(this.mobWarmupGroup);
 
     addEventListener('resize', () => this.resize());
   }
@@ -73,6 +81,28 @@ export class Arena {
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+    // The warm-up exists only to upload the shared mob buffers before the E2E
+    // suite starts sampling geometry counts. Drop it after the first frame.
+    if (this.mobWarmupGroup) {
+      this.scene.remove(this.mobWarmupGroup);
+      this.mobWarmupGroup = null;
+    }
+  }
+
+  /** Slow reactor life: rings counter-rotate and the containment light breathes. */
+  update(elapsed: number): void {
+    for (let i = 0; i < this.reactorRings.length; i++) {
+      const ring = this.reactorRings[i];
+      if (!ring) continue;
+      ring.rotation.y = elapsed * (0.16 + i * 0.055) * (i % 2 === 0 ? 1 : -1);
+    }
+    if (this.reactorCore) {
+      this.reactorCore.rotation.y = elapsed * 0.7;
+      this.reactorCore.scale.y = 1 + Math.sin(elapsed * 1.6) * 0.03;
+    }
+    if (this.reactorLight) {
+      this.reactorLight.intensity = 43 + Math.sin(elapsed * 1.7) * 7 + Math.sin(elapsed * 4.1) * 2;
+    }
   }
 
   private lights(): void {
@@ -114,56 +144,30 @@ export class Arena {
 
   private walls(): void {
     const { ARENA, HALF, WALL_H } = WORLD;
-    const mkWall = (w: number, x: number, z: number, ry: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, WALL_H, 1), MAT.wall());
-      m.position.set(x, WALL_H / 2, z);
-      m.rotation.y = ry;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
-      this.block(m);
-
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 1.04), MAT.trim());
-      trim.position.set(x, WALL_H + 0.06, z);
-      trim.rotation.y = ry;
-      this.scene.add(trim);
-
-      // Painted hazard band across the middle of the wall.
-      const band = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, 1.06), MAT.hazard());
-      band.position.set(x, WALL_H * 0.5, z);
-      band.rotation.y = ry;
-      this.scene.add(band);
+    const length = ARENA + 2;
+    const mkWall = (x: number, z: number, ry: number) => {
+      const asset = makeWall(length, WALL_H);
+      asset.group.position.set(x, 0, z);
+      asset.group.rotation.y = ry;
+      this.scene.add(asset.group);
+      // The wall is long on local X; rotating by ±90° swaps the footprint.
+      const halfX = ry === 0 ? length / 2 : 0.5;
+      const halfZ = ry === 0 ? 0.5 : length / 2;
+      this.blockAt(asset.solid, x, z, halfX, halfZ, WALL_H);
     };
 
-    mkWall(ARENA + 2, 0, -HALF - 0.5, 0);
-    mkWall(ARENA + 2, 0, HALF + 0.5, 0);
-    mkWall(ARENA + 2, -HALF - 0.5, 0, Math.PI / 2);
-    mkWall(ARENA + 2, HALF + 0.5, 0, Math.PI / 2);
+    mkWall(0, -HALF - 0.5, 0);
+    mkWall(0, HALF + 0.5, 0);
+    mkWall(-HALF - 0.5, 0, Math.PI / 2);
+    mkWall(HALF + 0.5, 0, Math.PI / 2);
   }
 
   private cover(): void {
     for (const [x, z, w, h, d] of OBSTACLES) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.obstacle());
-      m.position.set(x, h / 2, z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
-      this.block(m);
-
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), MAT.hazard());
-      strip.position.set(x, h + 0.04, z);
-      this.scene.add(strip);
-
-      // Darker inset cap over the hazard rim: 32 blocks of solid yellow read as
-      // one yellow slab from above, and swallowed the cyan and magenta.
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(w - 0.6, 0.1, d - 0.6), MAT.panel());
-      cap.position.set(x, h + 0.09, z);
-      this.scene.add(cap);
-
-      // Painted panel band around the middle of each crate.
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, h * 0.34, d + 0.03), MAT.panel());
-      panel.position.set(x, h * 0.5, z);
-      this.scene.add(panel);
+      const asset = makeCover(w, h, d);
+      asset.group.position.set(x, 0, z);
+      this.scene.add(asset.group);
+      this.blockAt(asset.solid, x, z, w / 2, d / 2, h);
     }
   }
 
@@ -173,65 +177,21 @@ export class Arena {
    */
   private reactor(): void {
     const { x, z, w, h, d } = REACTOR;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.obstacle());
-    body.position.set(x, h / 2, z);
-    body.castShadow = true;
-    body.receiveShadow = true;
-    this.scene.add(body);
-    this.block(body);
-
-    // Magenta containment rings: the map's third colour, readable through fog.
-    for (let i = 0; i < 3; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(w * 0.53, 0.09, 8, 48), MAT.magenta());
-      ring.rotation.x = Math.PI / 2;
-      ring.position.set(x, 1.1 + i * 1.7, z);
-      this.scene.add(ring);
-    }
-
-    // Lit corner edges, so the reactor reads as a structure rather than a void.
-    for (const [sx, sz] of [
-      [-1, -1],
-      [1, -1],
-      [1, 1],
-      [-1, 1],
-    ] as const) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.16, h, 0.16), MAT.magenta());
-      edge.position.set(x + sx * (w / 2 - 0.08), h / 2, z + sz * (d / 2 - 0.08));
-      this.scene.add(edge);
-    }
-
-    // Core column rising out of the top, plus the light it throws.
-    const core = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 4.5, 20, 1, true), MAT.core());
-    core.position.set(x, h + 2.25, z);
-    this.scene.add(core);
-
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.22, 20), MAT.magenta());
-    cap.position.set(x, h + 0.12, z);
-    this.scene.add(cap);
-
-    const light = new THREE.PointLight(0xff3ba8, 45, 36, 2);
-    light.position.set(x, h + 1.5, z);
-    this.scene.add(light);
+    const asset = makeReactor(w, h, d);
+    asset.group.position.set(x, 0, z);
+    this.scene.add(asset.group);
+    this.blockAt(asset.solid, x, z, w / 2, d / 2, h);
+    this.reactorRings = asset.rings;
+    this.reactorCore = asset.core;
+    this.reactorLight = asset.light;
   }
 
   private platforms(): void {
     for (const [x, z, w, h, d] of PLATFORMS) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), MAT.obstacle());
-      m.position.set(x, h / 2, z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
-      this.block(m);
-
-      // Glowing trim around the platform top edge
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.08, d + 0.04), MAT.trim());
-      trim.position.set(x, h + 0.04, z);
-      this.scene.add(trim);
-
-      // Hazard band on the platform sides
-      const band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.03, 0.18, d + 0.03), MAT.hazard());
-      band.position.set(x, h * 0.5, z);
-      this.scene.add(band);
+      const asset = makeDeck(w, h, d);
+      asset.group.position.set(x, 0, z);
+      this.scene.add(asset.group);
+      this.blockAt(asset.solid, x, z, w / 2, d / 2, h);
     }
   }
 
@@ -244,7 +204,7 @@ export class Arena {
     for (const [x, z] of PLATFORMS) {
       const pad = new CapturePad({ x, z, y: PLATFORM_H });
       pad.addTo(this.scene);
-      this.block(pad.mast);
+      this.blockObject(pad.mast);
       this.pads.push(pad);
     }
   }
@@ -253,50 +213,17 @@ export class Arena {
    * Ramps as solid wedges. The hypotenuse runs from the floor at the mouth to
    * `PLATFORM_H` at the back edge, which is exactly the surface the collision
    * world walks you up — mesh and collider are built from the same numbers, so
-   * they cannot drift apart the way the old tilted slabs did.
+   * they cannot drift apart.
    */
   private ramps(): void {
     for (const [x, z, width, length, upX, upZ] of RAMPS) {
-      const half = length / 2;
-      const angle = Math.atan2(PLATFORM_H, length);
-      const group = new THREE.Group();
-      group.position.set(x, 0, z);
+      const asset = makeRamp(width, length, PLATFORM_H);
+      asset.group.position.set(x, 0, z);
       // Build in local +x and mirror the whole ramp for the -x / -z cases, so
       // there is one geometry path instead of two mirrored ones.
-      if (upX < 0 || upZ < 0) group.rotation.y = Math.PI;
-
-      // Cross-section in XY, extruded across the slope: a right wedge whose
-      // long face is the walkable surface.
-      const shape = new THREE.Shape();
-      shape.moveTo(-half, 0);
-      shape.lineTo(half, 0);
-      shape.lineTo(half, PLATFORM_H);
-      shape.closePath();
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
-      geo.translate(0, 0, -width / 2);
-
-      const wedge = new THREE.Mesh(geo, MAT.obstacle());
-      wedge.castShadow = true;
-      wedge.receiveShadow = true;
-      group.add(wedge);
-
-      // Glowing edge rails: the visual cue that this is the way up.
-      const slope = Math.hypot(length, PLATFORM_H);
-      for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(slope, 0.07, 0.07), MAT.trim());
-        rail.position.set(0, PLATFORM_H / 2 + 0.02, (side * width) / 2);
-        rail.rotation.z = angle;
-        group.add(rail);
-      }
-
-      // Hazard threshold at the mouth.
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, width * 0.92), MAT.hazard());
-      stripe.position.set(-half + 0.25 * Math.cos(angle), 0.25 * Math.sin(angle) + 0.03, 0);
-      stripe.rotation.z = angle;
-      group.add(stripe);
-
-      this.scene.add(group);
-      this.solids.push(wedge);
+      if (upX < 0 || upZ < 0) asset.group.rotation.y = Math.PI;
+      this.scene.add(asset.group);
+      this.solids.push(asset.solid);
 
       const spanX = upX !== 0 ? length : width;
       const spanZ = upZ !== 0 ? length : width;
@@ -331,8 +258,27 @@ export class Arena {
     );
   }
 
-  /** Register a mesh as both a bullet blocker and a movement obstacle. */
-  private block(mesh: THREE.Mesh): void {
+  /**
+   * Register a world-space AABB from the authored layout. Passing the dimensions
+   * explicitly keeps a decorative lip or trim from widening a corridor.
+   */
+  private blockAt(
+    mesh: THREE.Object3D,
+    x: number,
+    z: number,
+    halfX: number,
+    halfZ: number,
+    top: number,
+  ): void {
+    this.solids.push(mesh);
+    this.collision.addObstacle({ minX: x - halfX, maxX: x + halfX, minZ: z - halfZ, maxZ: z + halfZ }, top);
+  }
+
+  /**
+   * For a one-off prop whose mesh already carries its world transform (the
+   * capture mast). Not used for the kit, whose trim deliberately overhangs.
+   */
+  private blockObject(mesh: THREE.Mesh): void {
     this.solids.push(mesh);
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh);

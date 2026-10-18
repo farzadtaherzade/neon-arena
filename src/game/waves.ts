@@ -85,9 +85,14 @@ export class WaveDirector {
   start(n: number): void {
     this.wave = n;
     const scale = speedScale(n);
+    // Headless runs at a few frames per second under SwiftShader, so wall-clock
+    // waits cannot be trusted to let a timed opening play out. Test mode drops
+    // the pacing entirely; normal play keeps the designed first beat and stagger.
+    const first = this.testing ? 0 : WAVES.FIRST_DELAY;
+    const stagger = this.testing ? 0 : WAVES.STAGGER;
     this.queue.length = 0;
     composition(n).forEach((kind, i) => {
-      this.queue.push({ kind, delay: WAVES.FIRST_DELAY + i * WAVES.STAGGER, speedScale: scale });
+      this.queue.push({ kind, delay: first + i * stagger, speedScale: scale });
     });
   }
 

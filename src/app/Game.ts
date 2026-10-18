@@ -4,8 +4,8 @@ import { Music } from '../audio/Music';
 import { Sfx } from '../audio/Sfx';
 import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
-import { Bomb } from '../game/bomb';
 import { TowerAlarm } from '../game/alarm';
+import { Bomb } from '../game/bomb';
 import { CapturePoints } from '../game/capture';
 import {
   ALARM,
@@ -38,7 +38,7 @@ import { Pick } from '../render/Pick';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
-import { Minimap, type MapTower } from '../ui/Minimap';
+import { type MapTower, Minimap } from '../ui/Minimap';
 import { Settings } from '../ui/Settings';
 
 interface Hostile {
@@ -737,6 +737,7 @@ export class Game {
     }
 
     this.arena.camera.getWorldQuaternion(this.camQuat);
+    this.arena.update(this.elapsed);
     for (const h of this.hostiles) h.view.sync(player.position, this.camQuat);
 
     // Bombs blink, and the closest live one drives the HUD warning.

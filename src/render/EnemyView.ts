@@ -1,65 +1,31 @@
 import * as THREE from 'three';
-import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind } from '../game/config';
+import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES } from '../game/config';
 import type { Enemy } from '../game/enemy';
 import { GEO, MAT } from './Materials';
+import { buildMobRig, type MobRig } from './models/MobModel';
 
 /**
- * The meshes for one enemy: body, head, eyes, legs and a billboarded health bar.
+ * The meshes for one enemy: a merged low-poly robot rig plus a billboarded
+ * health bar.
  *
- * Owns its four body/head/accent/leg materials (the hit flash writes `emissive`
- * on them, so they cannot be shared) and disposes exactly those. Geometry, eyes
- * and bar materials are shared and never disposed.
+ * Geometry is process-wide and shared (`models/MobModel.ts` caches one merged
+ * buffer set per kind), so spawning forty enemies adds no geometry. The five
+ * materials are per-enemy — the hit flash writes `emissive` on four of them and
+ * the glow colour follows the cosmetic skin — and are disposed here.
  *
- * Cosmetic silhouettes: each kind mounts one accent prop (a unit box scaled into
- * shape), positioned on the head except the tank's shoulder/back plate.
+ * `body` and `head` remain the only pick targets and keep the old silhouettes:
+ * torso and helmet are exactly the two meshes a shot can hit.
  */
-const ACCENTS: Record<
-  EnemyKind,
-  { scale: [number, number, number]; pos: [number, number, number]; onBody?: boolean }
-> = {
-  grunt: { scale: [0.42, 0.08, 0.05], pos: [0, 0.02, 0.21] },
-  runner: { scale: [0.06, 0.2, 0.06], pos: [0, 0.26, 0] },
-  tank: { scale: [0.72, 0.16, 0.08], pos: [0, -0.08, -0.22], onBody: true },
-  sapper: { scale: [0.16, 0.16, 0.16], pos: [0, 0.26, 0] },
-};
-
-/**
- * One extra wearable prop per kind, on top of the silhouette accent above.
- * Everything stays a unit box scaled into place: tie, belt, strap, hat. Small
- * enough to read at medium range without becoming clutter.
- */
-const EXTRAS: Record<
-  EnemyKind,
-  Array<{ scale: [number, number, number]; pos: [number, number, number]; onBody?: boolean }>
-> = {
-  grunt: [
-    { scale: [0.08, 0.24, 0.03], pos: [0, 0.2, 0.22], onBody: true },
-    { scale: [0.6, 0.08, 0.42], pos: [0, -0.28, 0], onBody: true },
-  ],
-  runner: [
-    { scale: [0.4, 0.06, 0.04], pos: [0, 0.3, 0.22], onBody: true },
-    { scale: [0.56, 0.06, 0.4], pos: [0, -0.3, 0], onBody: true },
-  ],
-  tank: [
-    { scale: [0.5, 0.08, 0.06], pos: [0, 0.32, 0.02], onBody: true },
-    { scale: [0.66, 0.1, 0.44], pos: [0, -0.3, 0], onBody: true },
-  ],
-  sapper: [
-    { scale: [0.3, 0.08, 0.3], pos: [0, 0.24, 0] },
-    { scale: [0.54, 0.08, 0.4], pos: [0, -0.3, 0], onBody: true },
-  ],
-};
-
 export class EnemyView {
   readonly body: THREE.Mesh;
   readonly head: THREE.Mesh;
 
   private group = new THREE.Group();
-  private legL = new THREE.Group();
-  private legR = new THREE.Group();
+  private rig: MobRig;
   private barGroup = new THREE.Group();
   private barFg: THREE.Mesh;
   private mats: THREE.MeshStandardMaterial[];
+  private glowMat: THREE.MeshBasicMaterial;
 
   constructor(readonly enemy: Enemy) {
     const looks = ENEMY_LOOKS[enemy.kind];
@@ -74,50 +40,21 @@ export class EnemyView {
     });
     const accentMat = new THREE.MeshStandardMaterial({ color: look.accent, roughness: 0.5, metalness: 0.12 });
     const legMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.7, metalness: 0.1 });
+    this.glowMat = new THREE.MeshBasicMaterial({ color: look.accent });
     this.mats = [bodyMat, headMat, accentMat, legMat];
 
-    this.body = new THREE.Mesh(GEO.body(), bodyMat);
-    this.body.position.y = 0.85;
-    this.body.castShadow = true;
+    this.rig = buildMobRig(enemy.kind, {
+      body: bodyMat,
+      head: headMat,
+      accent: accentMat,
+      limb: legMat,
+      glow: this.glowMat,
+    });
+    this.rig.group.scale.setScalar(enemy.scale);
+    this.group.add(this.rig.group);
 
-    this.head = new THREE.Mesh(GEO.head(), headMat);
-    this.head.position.y = 1.52;
-    this.head.castShadow = true;
-
-    const eyeL = new THREE.Mesh(GEO.eye(), MAT.eye());
-    eyeL.position.set(-0.1, 1.55, 0.21);
-    const eyeR = new THREE.Mesh(GEO.eye(), MAT.eye());
-    eyeR.position.set(0.1, 1.55, 0.21);
-
-    // One kind-specific accent prop, added to head/body so the silhouette reads
-    // from range. It is never a pick target and gets disposed with the rest.
-    const accent = new THREE.Mesh(GEO.accent(), accentMat);
-    const A = ACCENTS[enemy.kind] ?? { scale: [0, 0, 0], pos: [0, 0, 0] as [number, number, number] };
-    accent.scale.set(...A.scale);
-    accent.position.set(...A.pos);
-    (A.onBody ? this.body : this.head).add(accent);
-
-    // Wearable extras (tie, cap, belt, strap) share the accent material so they
-    // pick up the variant colour. Also cosmetic-only: never pick targets.
-    for (const E of EXTRAS[enemy.kind] ?? []) {
-      const prop = new THREE.Mesh(GEO.accent(), accentMat);
-      prop.scale.set(...E.scale);
-      prop.position.set(...E.pos);
-      (E.onBody ? this.body : this.head).add(prop);
-    }
-
-    this.legL.position.set(-0.17, 0.55, 0);
-    this.legR.position.set(0.17, 0.55, 0);
-    for (const leg of [this.legL, this.legR]) {
-      const m = new THREE.Mesh(GEO.leg(), legMat);
-      m.position.y = -0.25;
-      m.castShadow = true;
-      leg.add(m);
-    }
-
-    this.group.add(this.body, this.head, eyeL, eyeR, this.legL, this.legR);
-    this.group.scale.setScalar(enemy.scale);
-
+    this.body = this.rig.body;
+    this.head = this.rig.head;
     this.body.userData = { enemy, part: 'body' };
     this.head.userData = { enemy, part: 'head' };
 
@@ -147,8 +84,19 @@ export class EnemyView {
       g.rotation.y = this.enemy.facing(playerPos);
       // `pos.y` is the enemy's feet: it rises with a ramp and drops off a ledge.
       g.position.y = y + this.enemy.bounce;
-      this.legL.rotation.x = this.enemy.legSwing;
-      this.legR.rotation.x = -this.enemy.legSwing;
+
+      const swing = this.enemy.legSwing;
+      this.rig.legL.rotation.x = swing;
+      this.rig.legR.rotation.x = -swing;
+
+      // Arms counter-swing against the legs. The attack flash adds a short
+      // overhead strike, so a melee hit has a tell rather than just a red glow.
+      const attack =
+        this.enemy.flashT > 0 && this.enemy.flashHex === ENEMY.ATTACK_FLASH_COLOR
+          ? Math.sin((1 - this.enemy.flashT / ENEMY.ATTACK_FLASH) * Math.PI) * 0.8
+          : 0;
+      this.rig.armL.rotation.x = this.rig.armBaseL + swing * this.rig.armSwing - attack;
+      this.rig.armR.rotation.x = this.rig.armBaseR - swing * this.rig.armSwing - attack;
 
       const on = this.enemy.flashT > 0;
       for (const m of this.mats) m.emissive.setHex(on ? this.enemy.flashHex : 0x000000);
@@ -176,5 +124,6 @@ export class EnemyView {
     scene.remove(this.group);
     scene.remove(this.barGroup);
     for (const m of this.mats) m.dispose();
+    this.glowMat.dispose();
   }
 }

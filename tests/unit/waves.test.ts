@@ -82,6 +82,13 @@ describe('WaveDirector', () => {
     expect(spawned).toBe(composition(1).length);
   });
 
+  it('spawns the testing wave without a wall-clock delay', () => {
+    const d = makeDir();
+    d.testing = true;
+    d.start(1);
+    expect(d.update(0, player, 0).spawned).toHaveLength(composition(1).length);
+  });
+
   it('waits for the last enemy to die before reporting a clear', () => {
     const d = makeDir();
     d.start(1);

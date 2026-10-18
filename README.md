@@ -32,6 +32,29 @@ orange loading-zone squares repeat on a 14-unit grid.
 
 ---
 
+## 3D asset kit
+
+The game still ships with **no model files**: the robot rigs and structures are
+built from primitives at boot, then merged into a handful of shared GPU buffers.
+
+- **Four articulated mobs** — grunt, runner, tank and sapper each have their own
+  silhouette, armour, equipment and glow language. Arms counter-swing against
+  the legs, and the melee flash drives a short strike animation.
+- **Industrial structures** — cover blocks, gatehouse decks, perimeter walls,
+  ramps and the reactor are assembled by `src/render/models/StructureKit.ts`.
+  Each asset bakes its palette into vertex colours and draws as one lit mesh plus
+  one neon trim mesh.
+- **Collision stays authoritative** — `Arena` registers authored AABBs from
+  `layout.ts`, not from decorative overhang, so a trim strip can never narrow a
+  corridor or widen a ramp.
+
+| | |
+|:---:|:---:|
+| ![Four robot types lined up in the arena](docs/asset-mob-lineup.png) | ![The reactor asset with animated containment rings](docs/asset-reactor.png) |
+| *The four mob rigs, sharing one geometry cache per kind.* | *Reactor: stepped shell, containment rings, core column and floor halo.* |
+
+---
+
 ## Features
 
 - **FPS controls** — WASD movement, mouse look via Pointer Lock, sprint, jump
@@ -46,6 +69,7 @@ orange loading-zone squares repeat on a 14-unit grid.
   | Runner | 30 | 6.2 | 7 | 150 | Fast, fragile |
   | Tank | 200 | 2.2 | 22 | 300 | Slow, high HP, big damage |
   | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; charges once fewer than 5 hostiles remain |
+- **Four robot silhouettes** — each type is an articulated low-poly rig with its own armour, backpack, weapon and glow accents; the set is generated in code and shared through a per-kind geometry cache
 - **Sapper & bombs** — from wave 5 a sapper stalks you, keeping its distance and planting a fused bomb every 6 seconds (thrown at you from afar, dropped in its tracks up close). Shoot a live bomb to defuse it for bonus points; leave it and the blast hurts you *and* nearby enemies. The tab reddens and a tone sounds when a bomb lands close
 - **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius, gatehouses marked (red pulse while their alarm is up)
 - **Wave system** — enemy count, HP and speed scale per wave; clearing a wave restores 25 HP
@@ -168,7 +192,10 @@ neon-arena/
 │   │   ├── XpView.ts         an orb's meshes
 │   │   ├── Fx.ts             points + lines wrapping the pure pools
 │   │   ├── Materials.ts      shared geometry/material cache
-│   │   └── Textures.ts       procedural floor texture
+│   │   ├── Textures.ts       procedural floor texture
+│   │   └── models/
+│   │       ├── MobModel.ts   four articulated robot rigs, shared merged buffers
+│   │       └── StructureKit.ts  cover, decks, walls, ramps and reactor assets
 │   ├── audio/                Web Audio synth, no files
 │   │   ├── Sfx.ts            one-shots (shots, hits, bombs, siren)
 │   │   └── Music.ts          the ambient bed
