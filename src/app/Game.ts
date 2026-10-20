@@ -738,7 +738,7 @@ export class Game {
       this.applyCameraPose();
       this.arena.camera.updateWorldMatrix(true, false);
       this.weapon.aiming = this.input.aiming;
-      this.weapon.update(dt, this.elapsed, this.input.firing);
+      this.weapon.update(dt, this.elapsed, this.input.trigger);
       this.updateWaves(dt);
       this.updateBombs(dt);
       this.updateXps(dt);

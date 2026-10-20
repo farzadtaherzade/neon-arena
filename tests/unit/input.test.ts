@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEAPON } from '../../src/game/config';
-import { LOCK_WARMUP, LOOK_MAX, lookDeltaOk } from '../../src/ui/Input';
+import { fireKeyDown, LOCK_WARMUP, LOOK_MAX, lookDeltaOk } from '../../src/ui/Input';
 
 /**
  * The look filter is the only thing standing between a browser glitch and a
@@ -33,5 +33,34 @@ describe('look delta filter', () => {
   it('swallows a couple of events after the lock, not a burst', () => {
     expect(LOCK_WARMUP).toBeGreaterThan(0);
     expect(LOCK_WARMUP).toBeLessThanOrEqual(4);
+  });
+});
+
+/**
+ * A touchpad player has to hold the pad down to shoot, which is awkward with
+ * one hand on WASD — so the keyboard has to be able to pull the trigger.
+ */
+describe('keyboard fire', () => {
+  const keys = (code: string) => ({ [code]: true });
+
+  it('fires on F and on V', () => {
+    expect(fireKeyDown(keys('KeyF'))).toBe(true);
+    expect(fireKeyDown(keys('KeyV'))).toBe(true);
+  });
+
+  it('does not fire on the keys that do something else', () => {
+    for (const code of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyC', 'Space', 'ShiftLeft']) {
+      expect(fireKeyDown(keys(code))).toBe(false);
+    }
+  });
+
+  it('does not fire on Ctrl, which the browser owns', () => {
+    // Ctrl+W closes the tab and Ctrl+R reloads; a page cannot block either.
+    expect(fireKeyDown(keys('ControlLeft'))).toBe(false);
+    expect(fireKeyDown(keys('ControlRight'))).toBe(false);
+  });
+
+  it('is idle with no key held', () => {
+    expect(fireKeyDown({})).toBe(false);
   });
 });

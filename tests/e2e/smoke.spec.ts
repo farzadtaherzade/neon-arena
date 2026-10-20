@@ -233,6 +233,16 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     timeout: 30_000,
   });
 
+  // --- keyboard fire --------------------------------------------------------
+  // Touchpad players hold WASD with one hand and cannot also press the pad
+  // down, so the gun needs a keyboard trigger. The magazine is full here, so
+  // any shot shows up as a lower ammo count.
+  await page.keyboard.down('f');
+  await page.waitForFunction(() => (window.__NEON.stats() as Stats).ammo < 12, undefined, {
+    timeout: 30_000,
+  });
+  await page.keyboard.up('f');
+
   // --- GPU resources converge instead of growing forever ---------------------
   const warm = await killEnemies(page, 4, 120_000);
   await warmUp(page);

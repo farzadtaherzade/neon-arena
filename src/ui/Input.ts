@@ -28,6 +28,25 @@ export interface MoveInput {
 const held = (keys: Record<string, boolean>, code: string): boolean => keys[code] === true;
 
 /**
+ * Keys that pull the trigger.
+ *
+ * The left mouse button is the primary trigger, but a touchpad player whose
+ * hands are on WASD cannot also press the pad down without interrupting the
+ * aim, and some operating systems suspend the pad outright while a key is
+ * held. F and V are a keyboard trigger that works either way.
+ *
+ * shortcut: no Ctrl, deliberately — the browser owns Ctrl+W, Ctrl+R and Ctrl+S
+ * and a page cannot block them, so holding Ctrl to shoot and pressing W to
+ * walk would close the tab. Add it back if you want it.
+ */
+const FIRE_KEYS = ['KeyF', 'KeyV'] as const;
+
+/** Is one of the fire keys held down? */
+export function fireKeyDown(keys: Record<string, boolean>): boolean {
+  return FIRE_KEYS.some((code) => held(keys, code));
+}
+
+/**
  * Largest mouse delta a single event may carry.
  *
  * A deliberate flick produces tens of pixels per event even on a 1000 Hz mouse;
@@ -206,6 +225,17 @@ export class Input {
   get strafe(): number {
     const k = this.keys;
     return (held(k, 'KeyD') ? 1 : 0) - (held(k, 'KeyA') ? 1 : 0);
+  }
+
+  /**
+   * The trigger, by mouse or by key.
+   *
+   * The keyboard half is read from the held-key map rather than a separate
+   * flag, so it is cleared with every other key when the window loses focus,
+   * and a key held across a pause keeps the gun firing when play resumes.
+   */
+  get trigger(): boolean {
+    return this.firing || fireKeyDown(this.keys);
   }
 
   lock(): void {

@@ -142,6 +142,7 @@ npm run check      # tsc --noEmit + biome + vitest
 | `W` `A` `S` `D` | Move |
 | `Mouse` | Look / aim |
 | `Left Mouse` | Shoot |
+| `F` or `V` | Shoot (keyboard trigger — for touchpad players) |
 | `R` | Reload |
 | `Shift` | Sprint |
 | `Space` | Jump |

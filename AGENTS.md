@@ -328,6 +328,12 @@ so the spec re-declares the shapes it uses.
   starts firing and `mouseup` clears it.
 - Runtime behaviour of the game/state machine unchanged: movement and firing
   remain independent, which is what makes simultaneous WASD + aim possible at all.
+- **The trigger has a keyboard half.** `Input.trigger` is the mouse button **or**
+  `F` / `V` held, read from the held-key map rather than a second flag, so a key
+  held across a pause keeps the gun firing and `blur` clears it with every other
+  key. `Game` feeds the weapon from `input.trigger`, not `input.firing`. There is
+  deliberately no Ctrl binding: the browser owns Ctrl+W/R/S and a page cannot
+  block them, so holding Ctrl to shoot and pressing W to walk would close the tab.
 - OS limitation (unchanged): many trackpads have "disable touchpad while typing"
   or palm-rejection settings enabled, which literally suspend the pad while keys
   are held. Those must be turned off in Windows/macOS settings; no browser code
