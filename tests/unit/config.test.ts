@@ -11,6 +11,7 @@ import {
   FIXED_STEP,
   FX,
   MAX_DT,
+  METEOR,
   SAPPER,
   SCREEN,
   START_HP,
@@ -18,6 +19,8 @@ import {
   WAVES,
   WEAPON,
   WORLD,
+  XP,
+  XP_LEVEL,
 } from '../../src/game/config';
 import { PLATFORM_H, PLATFORMS } from '../../src/game/world/layout';
 
@@ -165,6 +168,48 @@ describe('config', () => {
         expect(look.body).not.toBe(look.accent);
       }
     }
+  });
+
+  it('keeps the meteor shower coherent', () => {
+    expect(METEOR.FIRST_DELAY).toBeGreaterThanOrEqual(0);
+    expect(METEOR.DORMANT_MIN).toBeGreaterThan(0);
+    expect(METEOR.DORMANT_SPAN).toBeGreaterThanOrEqual(0);
+    expect(METEOR.WARN_T).toBeGreaterThan(0);
+    expect(METEOR.DURATION).toBeGreaterThan(0);
+    expect(METEOR.SKY_IN).toBeGreaterThan(0);
+    expect(METEOR.SKY_OUT).toBeGreaterThan(0);
+    expect(METEOR.SKY_MIX).toBeGreaterThan(0);
+    expect(METEOR.SKY_MIX).toBeLessThanOrEqual(1);
+    expect(METEOR.SKY_DIM).toBeGreaterThanOrEqual(0);
+    expect(METEOR.SKY_DIM).toBeLessThanOrEqual(1);
+    expect(METEOR.STONE_EVERY).toBeGreaterThan(0);
+    expect(METEOR.FALL_T).toBeGreaterThan(0);
+    expect(METEOR.SPAWN_Y).toBeGreaterThan(0);
+    expect(METEOR.ROCK_R).toBeGreaterThan(0);
+    // Stones must land near the player but never on top of them.
+    expect(METEOR.RADIUS).toBeLessThan(METEOR.TARGET_MIN);
+    expect(METEOR.TARGET_MIN).toBeLessThan(METEOR.TARGET_MAX);
+    expect(METEOR.TARGET_ATTEMPTS).toBeGreaterThan(0);
+    expect(METEOR.PLAYER_DMG).toBeGreaterThan(0);
+    expect(METEOR.ENEMY_DMG).toBeGreaterThan(0);
+    expect(METEOR.SOUND_R).toBeGreaterThan(METEOR.RADIUS);
+  });
+
+  it('keeps the xp curve and the level-up reward sane', () => {
+    expect(XP_LEVEL.FIRST_NEED).toBeGreaterThan(0);
+    expect(XP_LEVEL.GROWTH).toBeGreaterThan(1);
+    expect(XP_LEVEL.HEAL).toBeGreaterThan(0);
+    // A level-up must never beat a capture, which is the premium heal.
+    expect(XP_LEVEL.HEAL).toBeLessThanOrEqual(CAPTURE.HEAL);
+    expect(XP.RADIUS).toBeGreaterThan(0);
+    expect(XP.COLLECT).toBeGreaterThan(0);
+    expect(XP.PULL_SPEED).toBeGreaterThan(0);
+    // Every enemy kind drops an orb worth something.
+    expect(Object.keys(XP.VALUE).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
+    for (const [kind, value] of Object.entries(XP.VALUE)) {
+      expect(value, kind).toBeGreaterThan(0);
+    }
+    expect(XP.VALUE.tank).toBeGreaterThan(XP.VALUE.grunt);
   });
 
   it('caps a frame at a sane step', () => {

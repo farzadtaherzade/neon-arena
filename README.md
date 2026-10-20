@@ -71,12 +71,14 @@ built from primitives at boot, then merged into a handful of shared GPU buffers.
   | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; charges once fewer than 5 hostiles remain |
 - **Four robot silhouettes** — each type is an articulated low-poly rig with its own armour, backpack, weapon and glow accents; the set is generated in code and shared through a per-kind geometry cache
 - **Sapper & bombs** — from wave 5 a sapper stalks you, keeping its distance and planting a fused bomb every 6 seconds (thrown at you from afar, dropped in its tracks up close). Shoot a live bomb to defuse it for bonus points; leave it and the blast hurts you *and* nearby enemies. The tab reddens and a tone sounds when a bomb lands close
+- **Meteor shower** — every so often the sky bleeds red and the floor starts filling with warning rings: a stone is about to land there. The blast hurts you (less the further you run) and the mobs around it, shakes the screen and throws debris. The sky fades back to normal when the shower ends
+- **XP and levels** — every kill drops an orb; get close and it is magnetised to you. The bar under the integrity bar fills towards the next level, and each level up pays a 15 HP repair — deliberately less than a capture, so a secured deck stays the premium heal. Orbs are XP only: the score comes from kills, headshots and defused bombs
 - **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius, gatehouses marked (red pulse while their alarm is up)
 - **Wave system** — enemy count, HP and speed scale per wave; clearing a wave restores 25 HP
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
-- **HUD** — score, wave, hostile count, integrity bar, sprint gauge, ammo counter, reload progress, deck-capture bar
+- **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter, reload progress, deck-capture bar
 - **Crosshair settings** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still. Opens from any screen with `C`, and your choices are saved to `localStorage`
 - **Pause / game over / restart** flow
 
@@ -175,7 +177,8 @@ neon-arena/
 │   │   ├── bomb.ts           a planted bomb: fuse, radius, detonation
 │   │   ├── capture.ts        the rotating deck objective: hold timer, cooldowns
 │   │   ├── alarm.ts          tower alarm rising-edge detection
-│   │   ├── xp.ts             XP orb magnet + payout
+│   │   ├── xp.ts             XP orb magnet + the level meter
+│   │   ├── meteor.ts         the meteor shower: schedule, falling stones
 │   │   ├── minimap.ts        player-up world→radar projection (pure)
 │   │   ├── waves.ts          wave composition, spawn pacing, intermission
 │   │   ├── fx.ts             particle pool + tracer ring
@@ -190,6 +193,7 @@ neon-arena/
 │   │   ├── EnemyView.ts      one enemy's meshes
 │   │   ├── BombView.ts       a bomb's meshes + blink
 │   │   ├── XpView.ts         an orb's meshes
+│   │   ├── MeteorView.ts     a falling stone + its ground marker ring
 │   │   ├── Fx.ts             points + lines wrapping the pure pools
 │   │   ├── Materials.ts      shared geometry/material cache
 │   │   ├── Textures.ts       procedural floor texture
@@ -243,10 +247,10 @@ neon-arena/
 
 Everything a designer is likely to change is in `src/game/config.ts`, grouped by
 concern — `WORLD`, `WEAPON`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`, `ENEMY`,
-`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `FX`. Each group is `as const`,
-so a typo is a compile error rather than an `undefined` at 3 a.m. Mesh-local
-dimensions (a wall's thickness, a barrel's length) stay in the module that owns
-that mesh.
+`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`, `XP_LEVEL`, `METEOR`, `FX`.
+Each group is `as const`, so a typo is a compile error rather than an `undefined`
+at 3 a.m. Mesh-local dimensions (a wall's thickness, a barrel's length) stay in
+the module that owns that mesh.
 
 The layout itself is data too: `src/game/world/layout.ts` holds one quadrant of
 maze cover (mirrored four ways), the four gatehouse decks, their ramps and the
@@ -295,6 +299,10 @@ npm test
   cover, and towers tracked independently
 - `input` — the look-delta filter accepts a flick and rejects a cursor warp
 - `waves` — composition, the scaling curve, spawn spacing, intermission
+- `xp` — the magnet, the level curve (60 → 78 → 101) and the level-up threshold
+- `meteor` — the shower schedule (dormant → warning → active → dormant), the sky
+  tint ramp, stones that never land inside geometry or outside the arena, and a
+  landing that is reported exactly once
 - `fx` — pool wrap-around, gravity, floor bounce, fade, tracer ring reuse
 - `settings` — clamping, colour validation, persistence, corrupt storage
 - `config` — the tuning table is present, ordered and in range
@@ -309,7 +317,8 @@ npm run test:e2e
 It builds the app, serves `dist/` with `vite preview`, and drives the real
 browser: boot with no console errors, wave spawn, look, shoot, reload, GPU
 resource convergence (the old code leaked two geometries per enemy), damage,
-death, and the crosshair panel. Waits are condition-based, so it works on
+death, the XP bar and a level up, the meteor shower and its stones, and the
+crosshair panel. Waits are condition-based, so it works on
 software rendering as well as a GPU. On the maze map the harness lines its
 targets up down an open lane with `faceEnemies()` rather than scattering them on
 a ring that cover would hide them behind.
@@ -337,6 +346,11 @@ __NEON.alarm()            // is each tower's alarm lit
 __NEON.inputStats()       // rejected look deltas, lock losses, warm-up drops
 __NEON.crosshair()        // current crosshair settings
 __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', color: '#ff0000' }
+__NEON.xpStats()          // { level, xp, need }
+__NEON.grantXp(n)        // bank XP without walking over an orb
+__NEON.meteor()           // { phase, tint, stones } — the shower's state
+__NEON.forceMeteor()      // start a shower now instead of waiting for the dice
+__NEON.dropStone(x, z)    // drop a stone on an exact spot
 ```
 
 ---

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Rng } from '../core/rng';
-import { CAMERA, WORLD } from '../game/config';
+import { CAMERA, METEOR, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
 import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, REACTOR, starfieldPositions } from '../game/world/layout';
 import { CapturePad } from './CapturePad';
@@ -26,6 +26,16 @@ export class Arena {
 
   private yawObj = new THREE.Group();
   private pitchObj = new THREE.Group();
+
+  /** The sky. Mutated in place by `setSkyTint`, so the renderer sees the change. */
+  private readonly bg = new THREE.Color(0x07090f);
+  private readonly skyBase = new THREE.Color(0x07090f);
+  private readonly skyStorm = new THREE.Color(METEOR.SKY_COLOR);
+  private readonly fog = new THREE.Fog(0x07090f, 34, 150);
+  private hemi!: THREE.HemisphereLight;
+  private readonly hemiBase = 1.15;
+  /** Last applied sky tint, so the sky is only re-coloured when it changes. */
+  private tint = -1;
   private reactorRings: THREE.Group[] = [];
   private reactorCore: THREE.Mesh | null = null;
   private reactorLight: THREE.PointLight | null = null;
@@ -44,10 +54,10 @@ export class Arena {
     this.renderer.toneMappingExposure = 1.3;
     document.body.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0x07090f);
+    this.scene.background = this.bg;
     // Pushed out with the bigger floor: at 84 units a 22-unit near plane fogged
     // the far wall into nothing and killed the reactor's silhouette.
-    this.scene.fog = new THREE.Fog(0x07090f, 34, 150);
+    this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.FOV, innerWidth / innerHeight, CAMERA.NEAR, CAMERA.FAR);
     this.yawObj.add(this.pitchObj);
@@ -89,6 +99,19 @@ export class Arena {
     }
   }
 
+  /**
+   * Bleed the sky toward the storm colour. `k` is 0 (normal) to 1 (full
+   * shower); the fog follows the sky so the whole scene turns with it, and the
+   * hemisphere light dips a little so the arena reads as under-lit.
+   */
+  setSkyTint(k: number): void {
+    if (Math.abs(k - this.tint) < 0.005) return;
+    this.tint = k;
+    this.bg.copy(this.skyBase).lerp(this.skyStorm, k * METEOR.SKY_MIX);
+    this.fog.color.copy(this.bg);
+    this.hemi.intensity = this.hemiBase * (1 - k * METEOR.SKY_DIM);
+  }
+
   /** Slow reactor life: rings counter-rotate and the containment light breathes. */
   update(elapsed: number): void {
     for (let i = 0; i < this.reactorRings.length; i++) {
@@ -108,7 +131,8 @@ export class Arena {
   private lights(): void {
     // Dark warehouse mood, but the floor and props stay lit enough that the
     // enemies keep their body colours instead of reading as black silhouettes.
-    this.scene.add(new THREE.HemisphereLight(0x6f86b0, 0x2a3040, 1.15));
+    this.hemi = new THREE.HemisphereLight(0x6f86b0, 0x2a3040, this.hemiBase);
+    this.scene.add(this.hemi);
     this.scene.add(new THREE.AmbientLight(0x2e3448, 0.7));
 
     const sun = new THREE.DirectionalLight(0xffd9a0, 2.2);

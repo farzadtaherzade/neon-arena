@@ -15,25 +15,29 @@ import {
   ENEMY,
   FEEDBACK,
   type GameState,
+  METEOR,
   SCREEN,
   START_HP,
   STATE,
   WAVES,
   WEAPON,
   WORLD,
+  XP_LEVEL,
 } from '../game/config';
 import { SpatialHash } from '../game/enemies';
 import { Enemy, type EnemyWorld } from '../game/enemy';
+import { type Meteor, MeteorShower } from '../game/meteor';
 import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
 import { CollisionWorld } from '../game/world/collision';
-import { XP, Xp } from '../game/xp';
+import { XP, Xp, XpMeter } from '../game/xp';
 import { Arena } from '../render/Arena';
 import { BombView } from '../render/BombView';
 import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
+import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
@@ -73,6 +77,10 @@ export class Game {
   readonly capture: CapturePoints;
   /** Watchtower alarms, one per deck; assigned once the arena exists. */
   readonly alarm: TowerAlarm;
+  /** Player progression: level and the XP banked toward the next one. */
+  readonly meter = new XpMeter();
+  /** The random sky event: a meteor shower that drops rocks around the player. */
+  readonly shower = new MeteorShower();
   aliveCount = 0;
   /** Prevents a replayed cleared update from repeating wave banners. */
   private waveClearPending = false;
@@ -105,6 +113,12 @@ export class Game {
   /** XP orbs on the floor and the meshes backing them. */
   private xps: Xp[] = [];
   private xpViews = new Map<Xp, XpView>();
+  /** Falling stones and the meshes backing them. */
+  private meteorViews = new Map<Meteor, MeteorView>();
+  /** Built once: the shower asks the world these questions every step. */
+  private readonly groundFn = (x: number, z: number): number => this.groundAt(x, z);
+  private readonly blockedFn = (x: number, z: number): boolean =>
+    this.collision.blockedAt(x, z, METEOR.CLEAR_R);
   /** HP still to be paid out by a secured deck, at `CAPTURE.HEAL / HEAL_T` per second. */
   private healLeft = 0;
   /** Reused per-step scratch: does each tower see hostiles right now? */
@@ -150,6 +164,9 @@ export class Game {
     bombFuse: 0,
     captureProgress: 0,
     captureOn: false,
+    level: 1,
+    xp: 0,
+    xpNeed: 1,
   };
 
   constructor(readonly test = false) {
@@ -260,9 +277,12 @@ export class Game {
     this.clearHostiles();
     this.clearBombs();
     this.clearXps();
+    this.clearMeteors();
     this.capture.reset();
     this.alarm.reset();
     this.healLeft = 0;
+    this.meter.reset();
+    this.shower.reset();
 
     this.hp = START_HP;
     this.score = 0;
@@ -379,7 +399,7 @@ export class Game {
     this.fx.burst({ ...origin, color: 0xff4455, count: 26, speed: 5, life: 0.7, gravity: 9 }, this.rng);
     this.fx.burst({ ...origin, color: 0xff8866, count: 10, speed: 3, life: 0.5, gravity: 9 }, this.rng);
 
-    this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+    this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z, XP.VALUE[enemy.kind]);
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
@@ -499,8 +519,8 @@ export class Game {
   // ------------------------------------------------------------------------ XP
 
   /** An enemy dies; it drops one orb where it fell, for the player to gather. */
-  private spawnXp(x: number, y: number, z: number): void {
-    const xp = new Xp(x, z, XP.VALUE, y + 0.5);
+  private spawnXp(x: number, y: number, z: number, value: number): void {
+    const xp = new Xp(x, z, value, y + 0.5);
     const view = new XpView(xp);
     view.addTo(this.arena.scene);
     this.xps.push(xp);
@@ -520,11 +540,22 @@ export class Game {
         this.xpViews.delete(xp);
       }
       this.xps.splice(i, 1);
-      this.score += xp.value;
+      // Orbs are XP, not score: the score comes from kills.
+      if (this.meter.add(xp.value)) this.levelUp();
       this.feedback.hitT = 1;
       this.sfx.xpCollect();
       this.hud.xpPop(xp.value);
     }
+  }
+
+  /**
+   * A level up pays a repair — paid out over time like a secured deck, but
+   * smaller, so capturing a deck stays the premium heal.
+   */
+  private levelUp(): void {
+    this.healLeft += XP_LEVEL.HEAL;
+    this.hud.showBanner(`LEVEL ${this.meter.level}`, `+${XP_LEVEL.HEAL} INTEGRITY`);
+    this.sfx.wave();
   }
 
   private clearXps(): void {
@@ -590,6 +621,71 @@ export class Game {
     return false;
   }
 
+  // ------------------------------------------------------------------ meteors
+
+  /** The walkable surface under (x, z) — where a stone would land. */
+  private groundAt(x: number, z: number): number {
+    const probe = this.groundProbe;
+    probe.x = x;
+    probe.z = z;
+    return this.collision.groundHeight(probe, METEOR.CLEAR_R, Number.POSITIVE_INFINITY);
+  }
+
+  /** One step of the sky event: run the schedule, drop stones, resolve impacts. */
+  private updateMeteorShower(dt: number): void {
+    const out = this.shower.update(dt, this.player.position, this.rng, this.groundFn, this.blockedFn);
+
+    if (out.started) {
+      this.hud.showBanner('METEOR SHOWER', 'DODGE THE DEBRIS');
+      this.sfx.alarm();
+    }
+
+    for (const meteor of out.impacts) {
+      this.meteorImpact(meteor);
+      const view = this.meteorViews.get(meteor);
+      if (view) {
+        view.dispose(this.arena.scene);
+        this.meteorViews.delete(meteor);
+      }
+    }
+  }
+
+  /** A stone landed: it shakes the arena and hurts whatever is in the blast. */
+  private meteorImpact(meteor: Meteor): void {
+    const { x, y, z } = meteor.impact;
+    this.fx.burst(
+      { x, y: y + 0.5, z, color: 0xffa23a, count: 24, speed: 7, life: 0.6, gravity: 6 },
+      this.rng,
+    );
+    this.fx.burst(
+      { x, y: y + 0.2, z, color: 0xff3a22, count: 12, speed: 5, life: 0.8, gravity: 4 },
+      this.rng,
+    );
+    this.feedback.shakeT = Math.max(this.feedback.shakeT, METEOR.SHAKE);
+
+    const p = this.player.position;
+    const pd = Math.hypot(p.x - x, p.y - WORLD.PLAYER_H - y, p.z - z);
+    if (pd < METEOR.SOUND_R) this.sfx.explode();
+    if (pd < METEOR.RADIUS) this.damagePlayer(METEOR.PLAYER_DMG * (1 - pd / METEOR.RADIUS));
+
+    for (const h of this.hostiles) {
+      const enemy = h.enemy;
+      if (enemy.state !== 'alive') continue;
+      const d = Math.hypot(enemy.pos.x - x, enemy.pos.y - y, enemy.pos.z - z);
+      if (d >= METEOR.RADIUS) continue;
+      if (enemy.takeDamage(METEOR.ENEMY_DMG)) this.killEnemy(enemy, false);
+      else {
+        const inv = 1 / (d || 1);
+        enemy.knockback((enemy.pos.x - x) * inv, (enemy.pos.z - z) * inv);
+      }
+    }
+  }
+
+  private clearMeteors(): void {
+    for (const view of this.meteorViews.values()) view.dispose(this.arena.scene);
+    this.meteorViews.clear();
+  }
+
   // E2E hooks: plant a bomb and jump waves without a full playthrough.
 
   spawnBomb(x: number, z: number): void {
@@ -602,6 +698,29 @@ export class Game {
 
   forceWave(n: number): void {
     this.beginWave(n);
+  }
+
+  /** Headless hook: start a meteor shower now instead of waiting for the dice. */
+  forceMeteor(): void {
+    this.shower.force();
+  }
+
+  /** Headless hook: plant a stone on an exact spot. */
+  dropStone(x: number, z: number): void {
+    this.shower.drop(x, z, this.groundAt(x, z), this.rng);
+  }
+
+  /** Headless hook: bank XP without waiting for a pickup. */
+  grantXp(amount: number): void {
+    if (this.meter.add(amount)) this.levelUp();
+  }
+
+  get meteorStats(): { phase: string; tint: number; stones: number } {
+    return {
+      phase: this.shower.phase,
+      tint: Math.round(this.shower.tint * 100) / 100,
+      stones: this.shower.stones.length,
+    };
   }
 
   // ------------------------------------------------------------------- update
@@ -625,6 +744,7 @@ export class Game {
       this.updateXps(dt);
       this.updateCapture(dt);
       this.updateAlarm(dt);
+      this.updateMeteorShower(dt);
     } else if (this.state === STATE.MENU) {
       const pose = this.player.menuPose(this.elapsed);
       this.player.position.x = pose.x;
@@ -756,6 +876,19 @@ export class Game {
 
     for (const xp of this.xps) this.xpViews.get(xp)?.sync();
 
+    // Falling stones: a view is created lazily for each new stone and dropped
+    // on impact, so the shower never has to know about the scene.
+    for (const meteor of this.shower.stones) {
+      let view = this.meteorViews.get(meteor);
+      if (!view) {
+        view = new MeteorView(meteor);
+        view.addTo(this.arena.scene);
+        this.meteorViews.set(meteor, view);
+      }
+      view.sync(dt);
+    }
+    this.arena.setSkyTint(this.shower.tint);
+
     // Only the live deck draws a pad; the beacons carry the rest.
     const cap = this.capture;
     const pads = this.arena.pads;
@@ -797,6 +930,9 @@ export class Game {
     m.bombFuse = nearestFuse;
     m.captureProgress = cap.progress;
     m.captureOn = cap.onPad;
+    m.level = this.meter.level;
+    m.xp = this.meter.xp;
+    m.xpNeed = this.meter.need;
 
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);

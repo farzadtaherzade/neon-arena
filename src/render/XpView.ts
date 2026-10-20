@@ -24,6 +24,8 @@ export class XpView {
     mesh.castShadow = false;
     this.group.add(mesh);
     this.group.position.set(xp.pos.x, xp.pos.y, xp.pos.z);
+    // A tank orb is worth 3× a grunt orb, so it reads bigger on the floor.
+    this.group.scale.setScalar(0.8 + xp.value / 25);
   }
 
   addTo(scene: THREE.Scene): void {

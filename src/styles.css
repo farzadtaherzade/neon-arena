@@ -284,6 +284,43 @@ canvas {
   background: linear-gradient(90deg, #1fd67a, #7dffb8);
   transition: width 0.15s;
 }
+#xpRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+#xpLabel {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #7ce4ff;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+#xpBar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+#xpFill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #2ec5ff, #7ce4ff);
+  transition: width 0.15s;
+}
+#xpBar.levelup {
+  animation: xpLevel 0.7s ease-out;
+}
+@keyframes xpLevel {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 228, 255, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(124, 228, 255, 0);
+  }
+}
 #staminaRow {
   display: flex;
   align-items: center;

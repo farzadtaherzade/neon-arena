@@ -1,3 +1,7 @@
+import { XP, XP_LEVEL } from './config';
+
+export { XP };
+
 /**
  * An XP orb dropped by a dying enemy.
  *
@@ -23,7 +27,7 @@ export class Xp {
 
   /**
    * Advance one step. Returns true once the orb has been collected, which the
-   * caller turns into score and a small burst.
+   * caller turns into XP and a small burst.
    */
   update(dt: number, player: { x: number; z: number }): boolean {
     this.age += dt;
@@ -40,17 +44,40 @@ export class Xp {
   }
 }
 
-/** Tuning for the XP orb magnet and payout. */
-export const XP = {
-  /** Pull the orb toward the player when it is within this radius. */
-  RADIUS: 2.4,
-  /** Distance at which the orb is collected. */
-  COLLECT: 0.8,
-  /** Points per orb. */
-  VALUE: 5,
-  /** How fast the orb slides toward the player while magnetised. */
-  PULL_SPEED: 7,
-  /** Visual-only: how high the orb floats and how fast it bobs. */
-  BOB_H: 0.55,
-  BOB_HZ: 2.4,
-} as const;
+/** XP needed to leave `level`: 60, 78, 101, 131 … */
+export function xpNeeded(level: number): number {
+  return Math.round(XP_LEVEL.FIRST_NEED * XP_LEVEL.GROWTH ** (level - 1));
+}
+
+/**
+ * The player's progression meter.
+ *
+ * Pure: `Game` feeds it the value of every collected orb and pays the level-up
+ * heal. Skills are a future feature — they will read `level` from here.
+ */
+export class XpMeter {
+  level = 1;
+  xp = 0;
+
+  /** XP needed for the next level. */
+  get need(): number {
+    return xpNeeded(this.level);
+  }
+
+  /** Bank `amount` XP. Returns true when at least one level was crossed. */
+  add(amount: number): boolean {
+    this.xp += amount;
+    let up = false;
+    while (this.need > 0 && this.xp >= this.need) {
+      this.xp -= this.need;
+      this.level++;
+      up = true;
+    }
+    return up;
+  }
+
+  reset(): void {
+    this.level = 1;
+    this.xp = 0;
+  }
+}

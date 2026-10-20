@@ -23,6 +23,10 @@ export interface HudModel {
   /** Deck capture hold progress 0..1, and whether the player is on the pad. */
   captureProgress: number;
   captureOn: boolean;
+  /** Player level, and the XP banked toward the next one. */
+  level: number;
+  xp: number;
+  xpNeed: number;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -56,6 +60,9 @@ export class Hud {
   private reloadBar = $('reloadBar');
   private reloadFill = $('reloadFill');
   private staminaFill = $('staminaFill');
+  private levelTag = $('xpLabel');
+  private xpBar = $('xpBar');
+  private xpFill = $('xpFill');
   private banner = $('banner');
   private bannerBig = $('bannerBig');
   private bannerSub = $('bannerSub');
@@ -164,6 +171,7 @@ export class Hud {
     this.bombWarn.classList.remove('on');
     this.capture.classList.remove('on');
     this.scopeRing.classList.remove('on');
+    this.xpBar.classList.remove('levelup');
     this.last = {};
   }
 
@@ -259,6 +267,25 @@ export class Hud {
       this.last.stamina = stamina;
       this.staminaFill.style.width = `${stamina}%`;
       this.staminaFill.classList.toggle('low', stamina < 25);
+    }
+
+    if (this.last.level !== model.level) {
+      // Only a real level-up flashes: the first paint would otherwise fire it
+      // at the start of every run.
+      const first = this.last.level === undefined;
+      this.last.level = model.level;
+      this.levelTag.textContent = `LV ${model.level}`;
+      if (!first) {
+        this.xpBar.classList.remove('levelup');
+        void this.xpBar.offsetWidth; // restart the flash animation
+        this.xpBar.classList.add('levelup');
+      }
+    }
+
+    const xpPct = Math.round((model.xp / Math.max(1, model.xpNeed)) * 100);
+    if (this.last.xpPct !== xpPct) {
+      this.last.xpPct = xpPct;
+      this.xpFill.style.width = `${xpPct}%`;
     }
 
     this.setCrosshair(model.bloom, model.moving, settings);

@@ -256,6 +256,85 @@ export const BOMB = {
   SHAKE: 1.6,
 } as const;
 
+/**
+ * XP orbs. A kill drops one, worth its kind's `VALUE` — a tank pays what a tank
+ * is worth. Inside `RADIUS` the orb slides toward the player and is banked at
+ * `COLLECT`.
+ */
+export const XP = {
+  /** Pull the orb toward the player when it is within this radius. */
+  RADIUS: 2.4,
+  /** Distance at which the orb is collected. */
+  COLLECT: 0.8,
+  /** Points per orb, by enemy kind. */
+  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8 },
+  /** How fast the orb slides toward the player while magnetised. */
+  PULL_SPEED: 7,
+  /** Visual-only: how high the orb floats and how fast it bobs. */
+  BOB_H: 0.55,
+  BOB_HZ: 2.4,
+} as const;
+
+/**
+ * Player levels. The meter needs `FIRST_NEED × GROWTH^(level−1)` XP to advance,
+ * and each level pays `HEAL` integrity over time. Skills are not built yet —
+ * they will read `level` off `XpMeter`.
+ */
+export const XP_LEVEL = {
+  FIRST_NEED: 60,
+  GROWTH: 1.3,
+  HEAL: 15,
+} as const;
+
+/**
+ * The meteor shower: a random set-piece that bleeds the sky red and drops rocks
+ * around the player. `WARN_T` telegraphs it, `DURATION` bounds it, and the
+ * dormant gap keeps it from becoming wallpaper. Anything inside `RADIUS` of an
+ * impact takes damage — the player and the mobs alike.
+ */
+export const METEOR = {
+  /** Grace period at the start of a run before the first shower can roll. */
+  FIRST_DELAY: 40,
+  /** Dormant gap between showers: `DORMANT_MIN + rng × DORMANT_SPAN` seconds. */
+  DORMANT_MIN: 60,
+  DORMANT_SPAN: 80,
+  /** Sky bleed before the first stone — the "look up" warning. */
+  WARN_T: 3,
+  /** How long stones keep falling. */
+  DURATION: 14,
+  /** Seconds the sky takes to bleed red, and to heal once the stones stop. */
+  SKY_IN: 1.2,
+  SKY_OUT: 2.5,
+  SKY_COLOR: 0x7a0c0c,
+  /** Peak blend toward `SKY_COLOR`, and how far the hemisphere light dips. */
+  SKY_MIX: 0.7,
+  SKY_DIM: 0.35,
+  /** Mean seconds between stones, ± `JITTER`. */
+  STONE_EVERY: 0.45,
+  STONE_JITTER: 0.25,
+  /** Fall time of a stone: the lifetime of its ground marker. */
+  FALL_T: 1.4,
+  /** Height a stone starts at, world units up. */
+  SPAWN_Y: 46,
+  /** Impact ring around the player: near enough to matter, far enough to dodge. */
+  TARGET_MIN: 2.5,
+  TARGET_MAX: 8,
+  /** Ring points tried per stone before giving up on a clear spot. */
+  TARGET_ATTEMPTS: 8,
+  /** Clearance a target needs, so a stone never lands inside a maze wall. */
+  CLEAR_R: 1.1,
+  /** Blast radius of one impact. */
+  RADIUS: 2,
+  PLAYER_DMG: 26,
+  ENEMY_DMG: 60,
+  /** An impact only booms audibly within this range of the player. */
+  SOUND_R: 18,
+  /** Camera shake applied by an impact. */
+  SHAKE: 0.8,
+  /** Radius of the falling rock mesh. */
+  ROCK_R: 0.34,
+} as const;
+
 export const FX = {
   PARTICLE_MAX: 2200,
   PARTICLE_SIZE: 0.14,

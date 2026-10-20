@@ -290,6 +290,10 @@ so the spec re-declares the shapes it uses.
   neighbours. `config.test.ts` asserts this.
 - Adding to `ENEMY_TYPES` means touching `WAVES.HP_PER_WAVE`, `composition()`,
   and the `Object.entries(ENEMY_TYPES)` assertions in `config.test.ts`.
+- Orbs are XP, not score: `Game.updateXps()` feeds `XpMeter`, and a level up pays
+  `XP_LEVEL.HEAL` through the same `healLeft` pool the capture uses.
+- The meteor shower is pure in `game/meteor.ts`; `Game` supplies the ground
+  height and the blocked test, and `Arena.setSkyTint(tint)` drives the sky.
 - The dark-warehouse look comes from background, fog and the floor/wall palette.
   Do not get moody by starving the ambient/hemisphere lights — below roughly
   `1.0` hemisphere the enemy `MeshStandardMaterial`s lose their body colour and

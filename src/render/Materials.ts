@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BOMB } from '../game/config';
+import { BOMB, METEOR } from '../game/config';
 
 /**
  * Lazily-created, shared geometry and materials.
@@ -27,6 +27,8 @@ let gAccent: THREE.BoxGeometry | undefined;
 let gBomb: THREE.SphereGeometry | undefined;
 let gBombRing: THREE.RingGeometry | undefined;
 let gXpOrb: THREE.IcosahedronGeometry | undefined;
+let gRock: THREE.DodecahedronGeometry | undefined;
+let gMeteorRing: THREE.RingGeometry | undefined;
 
 export const GEO = {
   body: () => (gBody ??= new THREE.BoxGeometry(0.66, 0.85, 0.4)),
@@ -41,6 +43,10 @@ export const GEO = {
   bombRing: () => (gBombRing ??= new THREE.RingGeometry(BOMB.RADIUS - 0.15, BOMB.RADIUS, 48)),
   /** The XP pickup orb. Shared: a dead enemy must never add a geometry to the scene. */
   xpOrb: () => (gXpOrb ??= new THREE.IcosahedronGeometry(0.16, 0)),
+  /** A meteor: a chipped rock, shared by every stone in the sky. */
+  rock: () => (gRock ??= new THREE.DodecahedronGeometry(METEOR.ROCK_R, 0)),
+  /** The ground marker under a falling stone. */
+  meteorRing: () => (gMeteorRing ??= new THREE.RingGeometry(METEOR.RADIUS - 0.2, METEOR.RADIUS, 40)),
 };
 
 let mEye: THREE.MeshBasicMaterial | undefined;
@@ -61,6 +67,7 @@ let mGunMetal: THREE.MeshStandardMaterial | undefined;
 let mGunDark: THREE.MeshStandardMaterial | undefined;
 let mMuzzleFlash: THREE.MeshBasicMaterial | undefined;
 let mBombRing: THREE.MeshBasicMaterial | undefined;
+let mRock: THREE.MeshStandardMaterial | undefined;
 
 export const MAT = {
   eye: () => (mEye ??= new THREE.MeshBasicMaterial({ color: 0xffe08a })),
@@ -142,4 +149,6 @@ export const MAT = {
       side: THREE.DoubleSide,
       depthWrite: false,
     })),
+  /** The falling rock: dark stone, lit by the scene. */
+  rock: () => (mRock ??= new THREE.MeshStandardMaterial({ color: 0x3a2f2c, roughness: 0.9, metalness: 0.1 })),
 };

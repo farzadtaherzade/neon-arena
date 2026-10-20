@@ -153,6 +153,21 @@ function exposeTestApi(game: Game) {
     /** Jump straight to a wave, to exercise the sapper without a long run. */
     forceWave: (n: number) => game.forceWave(n),
 
+    /** Player progression: level, XP banked, and what the next level needs. */
+    xpStats: () => ({ level: game.meter.level, xp: game.meter.xp, need: game.meter.need }),
+
+    /** Bank XP without waiting for a pickup. */
+    grantXp: (n: number) => game.grantXp(n),
+
+    /** The meteor shower: phase, sky tint and stones in flight. */
+    meteor: () => game.meteorStats,
+
+    /** Start a shower now instead of waiting for the dice. */
+    forceMeteor: () => game.forceMeteor(),
+
+    /** Drop a stone on an exact spot. */
+    dropStone: (x: number, z: number) => game.dropStone(x, z),
+
     crosshair: () => {
       const v = game.settings.values;
       return {

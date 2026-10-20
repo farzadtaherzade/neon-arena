@@ -46,6 +46,16 @@ interface CrosshairSettings {
   lineLen: number;
   color: string;
 }
+interface XpStats {
+  level: number;
+  xp: number;
+  need: number;
+}
+interface MeteorStats {
+  phase: string;
+  tint: number;
+  stones: number;
+}
 
 const stats = (page: Page) => page.evaluate(() => window.__NEON.stats() as Stats);
 const enemies = (page: Page) => page.evaluate(() => window.__NEON.enemyPos() as EnemyPos[]);
@@ -54,6 +64,8 @@ const renderInfo = (page: Page) => page.evaluate(() => window.__NEON.renderInfo(
 const setCrosshair = (page: Page, patch: Record<string, unknown>) =>
   page.evaluate((p) => window.__NEON.setCrosshair(p) as CrosshairSettings, patch);
 const crosshair = (page: Page) => page.evaluate(() => window.__NEON.crosshair() as CrosshairSettings);
+const xpStats = (page: Page) => page.evaluate(() => window.__NEON.xpStats() as XpStats);
+const meteor = (page: Page) => page.evaluate(() => window.__NEON.meteor() as MeteorStats);
 
 /**
  * Point the camera at the nearest enemy's torso. The camera's forward vector is
@@ -338,6 +350,66 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(await page.evaluate(() => document.getElementById('bombWarn')?.classList.contains('on'))).toBe(
     false,
   );
+
+  // --- xp: orbs are xp, and a level up pays a repair --------------------------
+  const xpStart = await xpStats(page);
+  expect(xpStart.level).toBe(1);
+  expect(xpStart.need).toBe(60);
+  // The orbs drop where the mobs die and the player never walks over them in
+  // this run, so bank the xp directly and check the bar and the level.
+  await page.evaluate(() => window.__NEON.grantXp(30));
+  await page.waitForTimeout(250);
+  const xpHalf = await xpStats(page);
+  expect(xpHalf.xp).toBe(30);
+  const fillWidth = await page.evaluate(
+    () => (document.getElementById('xpFill') as HTMLElement).getBoundingClientRect().width,
+  );
+  expect(fillWidth).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 1');
+
+  // A level up pays out over time like a capture, so the player needs room for
+  // the repair to show.
+  await page.evaluate(() => {
+    const s = window.__NEON.stats() as Stats;
+    // `hurt` takes a damage amount, so this is the delta that lands on 60.
+    window.__NEON.hurt(s.hp - 60);
+  });
+  await page.waitForTimeout(150);
+  expect((await stats(page)).hp).toBeCloseTo(60, 3);
+  await page.evaluate(() => window.__NEON.grantXp(30)); // crosses the threshold
+  await page.waitForFunction(() => (window.__NEON.stats() as Stats).hp > 60, undefined, { timeout: 20_000 });
+  expect((await xpStats(page)).level).toBe(2);
+  expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 2');
+
+  // --- the meteor shower: a red sky and stones to dodge ------------------------
+  // Headroom first: the shower aims at the player, and a chain of stones would
+  // otherwise end the run in the middle of the check.
+  await page.evaluate(() => window.__NEON.hurt(-300));
+  await page.evaluate(() => window.__NEON.teleportEnemies(30));
+  await page.evaluate(() => window.__NEON.forceMeteor());
+  await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint > 0, undefined, {
+    timeout: 30_000,
+  });
+  const storm = await meteor(page);
+  expect(['warning', 'active']).toContain(storm.phase);
+  expect(storm.tint).toBeGreaterThan(0);
+
+  // A stone on the player's head hurts.
+  const hpBeforeStone = (await stats(page)).hp;
+  const here = await cam(page);
+  await page.evaluate((pos) => window.__NEON.dropStone(pos.px, pos.pz), here);
+  await page.waitForFunction((hp) => (window.__NEON.stats() as Stats).hp < hp, hpBeforeStone, {
+    timeout: 30_000,
+  });
+  expect((await stats(page)).hp).toBeLessThan(hpBeforeStone);
+
+  // The sky goes back to normal when the shower ends.
+  await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint === 0, undefined, {
+    timeout: 180_000,
+  });
+  const calm = await meteor(page);
+  expect(calm.phase).toBe('dormant');
+  expect(calm.tint).toBe(0);
 
   // --- the sapper joins from wave 5 ------------------------------------------
   await page.evaluate(() => window.__NEON.forceWave(5));
