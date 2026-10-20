@@ -51,6 +51,11 @@ interface XpStats {
   xp: number;
   need: number;
 }
+interface SettingsBundle {
+  crosshair: { shape: string; lines: boolean; lineLen: number; color: string };
+  game: { sensitivity: number; invertY: boolean; fov: number; mute: boolean };
+  video: { quality: number; shadows: boolean; fog: boolean };
+}
 interface MeteorStats {
   phase: string;
   tint: number;
@@ -243,6 +248,12 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   });
   await page.keyboard.up('f');
 
+  // The suite stands still for minutes at a time while mobs grind on the
+  // player, and a death freezes the simulation — which then fails the checks
+  // that follow for reasons that have nothing to do with them. So the run is
+  // given a health pool big enough to sit out the whole suite.
+  await page.evaluate(() => window.__NEON.hurt(-20000));
+
   // --- GPU resources converge instead of growing forever ---------------------
   const warm = await killEnemies(page, 4, 120_000);
   await warmUp(page);
@@ -312,6 +323,33 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     return lit;
   });
   expect(minimapLit).toBeGreaterThan(500);
+
+  // --- the tactical map (M and Tab both open it) ----------------------------
+  // A canvas that is wired up but never painted is the failure this catches.
+  await page.keyboard.press('KeyM');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => document.getElementById('mapScreen')?.classList.contains('visible'))).toBe(
+    true,
+  );
+  expect((await stats(page)).state).toBe('paused');
+  const mapLit = await page.evaluate(() => {
+    const c = document.getElementById('mapCanvas') as HTMLCanvasElement | null;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return -1;
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let lit = 0;
+    for (let i = 3; i < d.length; i += 4) if ((d[i] ?? 0) > 8) lit++;
+    return lit;
+  });
+  expect(mapLit).toBeGreaterThan(500);
+
+  // Tab is the second binding for the same screen.
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => document.getElementById('mapScreen')?.classList.contains('visible'))).toBe(
+    false,
+  );
+  expect((await stats(page)).state).toBe('playing');
 
   // Headroom: the bomb checks below stand still on purpose.
   await page.evaluate(() => window.__NEON.hurt(-50));
@@ -392,10 +430,11 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 2');
 
   // --- the meteor shower: a red sky and stones to dodge ------------------------
-  // Headroom first: the shower aims at the player, and a chain of stones would
-  // otherwise end the run in the middle of the check.
-  await page.evaluate(() => window.__NEON.hurt(-300));
+  // Headroom first: the level up above paid out a repair and capped the run
+  // back to full, so the pool is refilled before the long wait below.
+  await page.evaluate(() => window.__NEON.hurt(-20000));
   await page.evaluate(() => window.__NEON.teleportEnemies(30));
+  expect((await stats(page)).state).toBe('playing');
   await page.evaluate(() => window.__NEON.forceMeteor());
   await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint > 0, undefined, {
     timeout: 30_000,
@@ -417,6 +456,9 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint === 0, undefined, {
     timeout: 180_000,
   });
+  // A dead player stops the simulation, so a shower that never faded means the
+  // run ended during the wait rather than a sky bug.
+  expect((await stats(page)).state).toBe('playing');
   const calm = await meteor(page);
   expect(calm.phase).toBe('dormant');
   expect(calm.tint).toBe(0);
@@ -435,7 +477,10 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   const shot = await page.screenshot();
   expect(new Set(shot).size).toBeGreaterThan(3); // not a uniformly black frame
 
-  await page.evaluate(() => window.__NEON.hurt(999));
+  await page.evaluate(() => {
+    const s = window.__NEON.stats() as Stats;
+    window.__NEON.hurt(s.hp + 10); // the run is on a health pool; go past it
+  });
   await page.waitForTimeout(300);
   expect((await stats(page)).state).toBe('gameover');
   expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(false);
@@ -454,7 +499,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
   expect(painted).toEqual(['#ff0000', '#ff0000']);
 
-  expect(await page.evaluate(() => localStorage.getItem('neon.crosshair'))).toContain('"circle"');
+  expect(await page.evaluate(() => localStorage.getItem('neon.settings'))).toContain('"circle"');
 
   const clamped = await setCrosshair(page, { lineLen: 9999, shape: 'nope', color: 'red' });
   expect(clamped.lineLen).toBe(30);
@@ -470,10 +515,65 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   const preview = await crosshair(page);
   expect(preview.color).toBe('#46e0ff');
 
+  // --- the panel has three tabs, and the other two are their own -----------
+  const tabs = await page.evaluate(() => ({
+    on: document.querySelector('#settingsTabs .tab.on')?.getAttribute('data-tab'),
+    gameHidden: document.querySelector('.tabpane[data-pane="game"]')?.hasAttribute('hidden'),
+    videoHidden: document.querySelector('.tabpane[data-pane="video"]')?.hasAttribute('hidden'),
+  }));
+  expect(tabs.on).toBe('crosshair');
+  expect(tabs.gameHidden).toBe(true);
+  expect(tabs.videoHidden).toBe(true);
+
+  await page.click('#settingsTabs [data-tab="game"]');
+  await page.waitForTimeout(200);
+  expect(
+    await page.evaluate(() => document.querySelector('#settingsTabs .tab.on')?.getAttribute('data-tab')),
+  ).toBe('game');
+  expect(
+    await page.evaluate(() => document.querySelector('.tabpane[data-pane="game"]')?.hasAttribute('hidden')),
+  ).toBe(false);
+
+  // A value changed in the game tab reaches the game and is written down.
+  await page.evaluate(() => window.__NEON.setGame({ sensitivity: 2.5 }));
+  const game = await page.evaluate(() => window.__NEON.settings() as SettingsBundle);
+  expect(game.game.sensitivity).toBe(2.5);
+  expect(await page.evaluate(() => localStorage.getItem('neon.settings'))).toContain('"sensitivity":2.5');
+
+  await page.click('#settingsTabs [data-tab="video"]');
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.__NEON.setVideo({ shadows: false }));
+  const video = await page.evaluate(() => window.__NEON.settings() as SettingsBundle);
+  expect(video.video.shadows).toBe(false);
+  expect(video.video.quality).toBe(2);
+
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   const closedVisible = await page.evaluate(() =>
     document.getElementById('settingsScreen')?.classList.contains('visible'),
   );
   expect(closedVisible).toBe(false);
+});
+
+test('opens on the main menu', async ({ page }) => {
+  // Without ?test the game waits on the menu instead of dropping straight in.
+  await page.goto('/');
+  await page.waitForTimeout(2000);
+
+  expect(
+    await page.evaluate(() => document.getElementById('menuScreen')?.classList.contains('visible')),
+  ).toBe(true);
+  expect((await stats(page)).state).toBe('menu');
+
+  // The controls list is hidden until it is asked for.
+  expect(await page.evaluate(() => document.getElementById('menuKeys')?.hasAttribute('hidden'))).toBe(true);
+  await page.click('#menuControls');
+  expect(await page.evaluate(() => document.getElementById('menuKeys')?.hasAttribute('hidden'))).toBe(false);
+
+  // Settings are reachable from the menu, without a pointer lock in sight.
+  await page.click('#menuScreen [data-settings]');
+  await page.waitForTimeout(300);
+  expect(
+    await page.evaluate(() => document.getElementById('settingsScreen')?.classList.contains('visible')),
+  ).toBe(true);
 });

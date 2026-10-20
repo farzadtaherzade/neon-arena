@@ -16,6 +16,7 @@ import {
   SCREEN,
   START_HP,
   STATE,
+  VIDEO,
   WAVES,
   WEAPON,
   WORLD,
@@ -217,9 +218,22 @@ describe('config', () => {
     expect(MAX_DT).toBeGreaterThan(FIXED_STEP);
   });
 
+  it('keeps the video options inside sane bounds', () => {
+    // The pixel ratio caps must ascend: index 0 is the cheapest setting.
+    const caps = [...VIDEO.QUALITY_PIXELS];
+    expect(caps.length).toBeGreaterThan(1);
+    for (let i = 1; i < caps.length; i++) {
+      expect(caps[i]).toBeGreaterThan(caps[i - 1] ?? 0);
+    }
+    expect(caps[0]).toBeGreaterThan(0);
+    // The field of view range has to contain the default camera fov.
+    expect(VIDEO.FOV_MIN).toBeLessThan(CAMERA.FOV);
+    expect(VIDEO.FOV_MAX).toBeGreaterThan(CAMERA.FOV);
+  });
+
   it('names every state and screen exactly once', () => {
     expect(Object.values(STATE)).toEqual(['menu', 'playing', 'paused', 'gameover']);
-    expect(Object.values(SCREEN)).toEqual(['none', 'start', 'pause', 'gameover']);
+    expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover']);
     expect(new Set(Object.values(STATE)).size).toBe(4);
   });
 });

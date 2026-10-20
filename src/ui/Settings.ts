@@ -1,15 +1,23 @@
 /**
- * Crosshair settings: presets, live tuning and persistence.
+ * Settings: crosshair, game and video, in three tabs.
  *
  * The panel is reachable from every screen (SETTINGS buttons, or the C key),
  * and its preview is a second instance of the exact markup the HUD uses, so
  * `renderCrosshair` below is the only place that knows what a crosshair is.
+ *
+ * Everything is stored as one bundle under `neon.settings`. The old flat
+ * crosshair blob under `neon.crosshair` is migrated on first read, so a player
+ * who already tuned their crosshair keeps it.
  */
 
-const KEY = 'neon.crosshair';
+import { CAMERA, VIDEO } from '../game/config';
+
+const KEY = 'neon.settings';
+const LEGACY_KEY = 'neon.crosshair';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export type CrosshairShape = 'none' | 'circle' | 'triangle' | 'square' | 'diamond';
+export type TabName = 'crosshair' | 'game' | 'video';
 
 export interface CrosshairSettings {
   lines: boolean;
@@ -26,17 +34,37 @@ export interface CrosshairSettings {
   outlineColor: string;
   bloom: boolean;
   dimStill: boolean;
-  /** Stop all game audio. */
-  mute: boolean;
+}
+
+export interface GameSettings {
   /** Multiplier applied to mouse look (1 = default). */
   sensitivity: number;
+  /** Flip the vertical look axis. */
+  invertY: boolean;
+  /** Field of view in degrees. */
+  fov: number;
+  /** Stop all game audio. */
+  mute: boolean;
   /** Alias for `sensitivity` (some code calls it this). */
   mouseSensitivity?: number;
   mouseSens?: number;
   lookSensitivity?: number;
 }
 
-export const DEFAULTS: CrosshairSettings = {
+export interface VideoSettings {
+  /** 0 = low, 1 = medium, 2 = high. */
+  quality: number;
+  shadows: boolean;
+  fog: boolean;
+}
+
+export interface SettingsBundle {
+  crosshair: CrosshairSettings;
+  game: GameSettings;
+  video: VideoSettings;
+}
+
+export const CROSSHAIR_DEFAULTS: CrosshairSettings = {
   lines: true,
   lineLen: 10,
   lineThick: 2,
@@ -51,8 +79,19 @@ export const DEFAULTS: CrosshairSettings = {
   outlineColor: '#000000',
   bloom: true,
   dimStill: true,
-  mute: false,
+};
+
+export const GAME_DEFAULTS: GameSettings = {
   sensitivity: 1,
+  invertY: false,
+  fov: CAMERA.FOV,
+  mute: false,
+};
+
+export const VIDEO_DEFAULTS: VideoSettings = {
+  quality: 2,
+  shadows: true,
+  fog: true,
 };
 
 const PRESETS: { name: string; values: Partial<CrosshairSettings> }[] = [
@@ -67,36 +106,32 @@ const PRESETS: { name: string; values: Partial<CrosshairSettings> }[] = [
 
 const SWATCHES = ['#46e0ff', '#3dffa0', '#ff3b4e', '#ffc53d', '#ffffff', '#ff5ce0'];
 
-const LIMITS = {
+const CROSSHAIR_LIMITS = {
   lineLen: [2, 30],
   lineThick: [1, 8],
   gap: [0, 40],
   dotSize: [1, 12],
   shapeSize: [10, 80],
   outlineWidth: [1, 4],
-  sensitivity: [0.1, 5],
 } as const satisfies Record<string, readonly [number, number]>;
 
-const TOGGLES = [
-  'lines',
-  'dot',
-  'outline',
-  'bloom',
-  'dimStill',
-  'mute',
-] as const satisfies readonly (keyof CrosshairSettings)[];
+const GAME_LIMITS = {
+  sensitivity: [0.1, 5],
+  fov: [VIDEO.FOV_MIN, VIDEO.FOV_MAX],
+} as const satisfies Record<string, readonly [number, number]>;
+
 const SHAPES: readonly CrosshairShape[] = ['none', 'circle', 'triangle', 'square', 'diamond'];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Field names that historically describe the same mouse-look multiplier. */
 const SENSITIVITY_ALIASES = ['sensitivity', 'mouseSensitivity', 'mouseSens', 'lookSensitivity'] as const;
 
-function withSensitivityAliases(s: CrosshairSettings): CrosshairSettings {
+function withSensitivityAliases(s: GameSettings): GameSettings {
   for (const a of SENSITIVITY_ALIASES) {
     if (a === 'sensitivity') continue;
     Object.defineProperty(s, a, {
       get() {
-        return (this as CrosshairSettings).sensitivity;
+        return (this as GameSettings).sensitivity;
       },
       enumerable: false,
       configurable: true,
@@ -105,87 +140,138 @@ function withSensitivityAliases(s: CrosshairSettings): CrosshairSettings {
   return s;
 }
 
-type NumericKey = keyof typeof LIMITS;
+// ------------------------------------------------------------------ sanitising
 
-/** Every knob in the TUNE section. `type` picks the control, `key` the field. */
-type Control =
-  | { key: NumericKey; label: string; type: 'number'; min: readonly [number, number] }
-  | { key: (typeof TOGGLES)[number]; label: string; type: 'toggle' }
-  | { key: 'shape'; label: string; type: 'select'; options: readonly CrosshairShape[] }
-  | { key: 'color' | 'outlineColor'; label: string; type: 'color' };
-
-const CONTROLS: Control[] = [
-  { key: 'lines', label: 'Lines', type: 'toggle' },
-  { key: 'lineLen', label: 'Length', type: 'number', min: LIMITS.lineLen },
-  { key: 'lineThick', label: 'Thickness', type: 'number', min: LIMITS.lineThick },
-  { key: 'gap', label: 'Gap', type: 'number', min: LIMITS.gap },
-  { key: 'dot', label: 'Centre Dot', type: 'toggle' },
-  { key: 'dotSize', label: 'Dot Size', type: 'number', min: LIMITS.dotSize },
-  { key: 'shape', label: 'Shape', type: 'select', options: SHAPES },
-  { key: 'shapeSize', label: 'Shape Size', type: 'number', min: LIMITS.shapeSize },
-  { key: 'outline', label: 'Outline', type: 'toggle' },
-  { key: 'outlineWidth', label: 'Outline Width', type: 'number', min: LIMITS.outlineWidth },
-  { key: 'color', label: 'Colour', type: 'color' },
-  { key: 'outlineColor', label: 'Outline Colour', type: 'color' },
-  { key: 'bloom', label: 'Bloom Spread', type: 'toggle' },
-  { key: 'dimStill', label: 'Dim When Still', type: 'toggle' },
-  { key: 'mute', label: 'Mute Audio', type: 'toggle' },
-  { key: 'sensitivity', label: 'Mouse Sensitivity', type: 'number', min: LIMITS.sensitivity },
-];
-
-/**
- * Fold untrusted input onto DEFAULTS. localStorage is user-writable and may be
- * absent, corrupt, or from an older version, so every field is re-checked.
- */
-export function sanitizeSettings(raw: unknown): CrosshairSettings {
-  const src = (raw ?? {}) as Record<string, unknown>;
-  const s: CrosshairSettings = { ...DEFAULTS };
-
-  for (const [key, [lo, hi]] of Object.entries(LIMITS)) {
-    const v = Number(src[key]);
-    if (Number.isFinite(v)) (s as unknown as Record<string, number>)[key] = Math.min(hi, Math.max(lo, v));
-  }
-  // Any alias may carry the mouse-look multiplier, even from older storage.
-  const [lo, hi] = LIMITS.sensitivity;
-  for (const a of SENSITIVITY_ALIASES) {
-    const v = Number(src[a]);
-    if (Number.isFinite(v)) s.sensitivity = Math.min(hi, Math.max(lo, v));
-  }
-  for (const key of TOGGLES) if (typeof src[key] === 'boolean') s[key] = src[key] as boolean;
-  if (SHAPES.includes(src.shape as CrosshairShape)) s.shape = src.shape as CrosshairShape;
-  for (const key of ['color', 'outlineColor'] as const) {
-    if (HEX.test(String(src[key]))) s[key] = String(src[key]);
-  }
-  return withSensitivityAliases(s);
+function rec(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-export function readSettings(store: Pick<Storage, 'getItem'>): CrosshairSettings {
+function num(v: unknown, min: number, max: number, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+}
+
+function bool(v: unknown, fallback: boolean): boolean {
+  return typeof v === 'boolean' ? v : fallback;
+}
+
+function hex(v: unknown, fallback: string): string {
+  return typeof v === 'string' && HEX.test(v) ? v : fallback;
+}
+
+export function sanitizeCrosshair(raw: unknown): CrosshairSettings {
+  const o = rec(raw);
+  const d = CROSSHAIR_DEFAULTS;
+  const shape = SHAPES.includes(o.shape as CrosshairShape) ? (o.shape as CrosshairShape) : d.shape;
+  return {
+    lines: bool(o.lines, d.lines),
+    lineLen: num(o.lineLen, CROSSHAIR_LIMITS.lineLen[0], CROSSHAIR_LIMITS.lineLen[1], d.lineLen),
+    lineThick: num(o.lineThick, CROSSHAIR_LIMITS.lineThick[0], CROSSHAIR_LIMITS.lineThick[1], d.lineThick),
+    gap: num(o.gap, CROSSHAIR_LIMITS.gap[0], CROSSHAIR_LIMITS.gap[1], d.gap),
+    dot: bool(o.dot, d.dot),
+    dotSize: num(o.dotSize, CROSSHAIR_LIMITS.dotSize[0], CROSSHAIR_LIMITS.dotSize[1], d.dotSize),
+    shape,
+    shapeSize: num(o.shapeSize, CROSSHAIR_LIMITS.shapeSize[0], CROSSHAIR_LIMITS.shapeSize[1], d.shapeSize),
+    outline: bool(o.outline, d.outline),
+    outlineWidth: num(
+      o.outlineWidth,
+      CROSSHAIR_LIMITS.outlineWidth[0],
+      CROSSHAIR_LIMITS.outlineWidth[1],
+      d.outlineWidth,
+    ),
+    color: hex(o.color, d.color),
+    outlineColor: hex(o.outlineColor, d.outlineColor),
+    bloom: bool(o.bloom, d.bloom),
+    dimStill: bool(o.dimStill, d.dimStill),
+  };
+}
+
+export function sanitizeGame(raw: unknown): GameSettings {
+  const o = rec(raw);
+  const d = GAME_DEFAULTS;
+  const sens = num(
+    o.sensitivity ?? o.mouseSensitivity ?? o.mouseSens ?? o.lookSensitivity,
+    GAME_LIMITS.sensitivity[0],
+    GAME_LIMITS.sensitivity[1],
+    d.sensitivity,
+  );
+  return withSensitivityAliases({
+    sensitivity: sens,
+    invertY: bool(o.invertY, d.invertY),
+    fov: num(o.fov, GAME_LIMITS.fov[0], GAME_LIMITS.fov[1], d.fov),
+    mute: bool(o.mute, d.mute),
+  });
+}
+
+export function sanitizeVideo(raw: unknown): VideoSettings {
+  const o = rec(raw);
+  const d = VIDEO_DEFAULTS;
+  return {
+    quality: num(o.quality, 0, VIDEO.QUALITY_PIXELS.length - 1, d.quality),
+    shadows: bool(o.shadows, d.shadows),
+    fog: bool(o.fog, d.fog),
+  };
+}
+
+export function sanitizeAll(raw: unknown): SettingsBundle {
+  const o = rec(raw);
+  return {
+    crosshair: sanitizeCrosshair(o.crosshair),
+    game: sanitizeGame(o.game),
+    video: sanitizeVideo(o.video),
+  };
+}
+
+function parse(raw: string | null): unknown {
+  if (!raw) return null;
   try {
-    return sanitizeSettings(JSON.parse(store.getItem(KEY) || 'null'));
+    return JSON.parse(raw);
   } catch {
-    return withSensitivityAliases({ ...DEFAULTS });
+    return null;
   }
 }
 
-export function writeSettings(store: Pick<Storage, 'setItem'>, values: CrosshairSettings): void {
+export function readSettings(store: Pick<Storage, 'getItem'>): SettingsBundle {
+  try {
+    const current = parse(store.getItem(KEY));
+    if (current && typeof current === 'object') return sanitizeAll(current);
+    // Migrate the old flat crosshair blob so an existing crosshair is not lost.
+    const legacy = rec(parse(store.getItem(LEGACY_KEY)));
+    if (Object.keys(legacy).length > 0) {
+      return sanitizeAll({
+        crosshair: legacy,
+        game: { sensitivity: legacy.sensitivity, mute: legacy.mute },
+      });
+    }
+  } catch {
+    // Storage is unavailable (private mode): fall through to the defaults.
+  }
+  return sanitizeAll({});
+}
+
+export function writeSettings(store: Pick<Storage, 'setItem'>, values: SettingsBundle): void {
   try {
     store.setItem(KEY, JSON.stringify(values));
   } catch {
-    // Private mode / storage full — settings just won't persist.
+    // Private mode / quota: the settings simply do not persist.
   }
 }
 
-/** Builds a child element; the crosshair is plain `<i>` tags, styled in CSS. */
+// -------------------------------------------------------------------- drawing
+
 function el(tag: string, cls?: string): HTMLElement {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
   return node;
 }
 
-/**
- * Paints one crosshair element from a settings object. Called on every change
- * (cheap) and never per frame — the HUD only animates --gap on top of this.
- */
+const SHAPE_SVG: Record<Exclude<CrosshairShape, 'none'>, string> = {
+  circle: '<circle cx="50" cy="50" r="47"/>',
+  triangle: '<polygon points="50,3 97,97 3,97"/>',
+  square: '<rect x="3" y="3" width="94" height="94"/>',
+  diamond: '<polygon points="50,3 97,50 50,97 3,50"/>',
+};
+
+/** Paint a crosshair into any element that carries the `.ch` markup. */
 export function renderCrosshair(node: HTMLElement, s: CrosshairSettings): void {
   node.style.setProperty('--gap', `${s.gap}px`);
   node.style.setProperty('--len', `${s.lineLen}px`);
@@ -195,13 +281,9 @@ export function renderCrosshair(node: HTMLElement, s: CrosshairSettings): void {
   node.style.setProperty('--color', s.color);
   node.style.setProperty('--outline-w', `${s.outlineWidth}px`);
   node.style.setProperty('--outline-color', s.outlineColor);
-
-  node.className =
-    `ch shape-${s.shape}` +
-    (s.lines ? '' : ' no-lines') +
-    (s.dot ? '' : ' no-dot') +
-    (s.outline ? ' outline' : '');
-
+  node.className = `ch shape-${s.shape}${s.lines ? '' : ' no-lines'}${s.dot ? '' : ' no-dot'}${
+    s.outline ? ' outline' : ''
+  }`;
   node.replaceChildren();
   if (s.shape !== 'none') {
     const svg = document.createElementNS(SVG_NS, 'svg');
@@ -211,49 +293,81 @@ export function renderCrosshair(node: HTMLElement, s: CrosshairSettings): void {
   }
   if (s.dot) node.appendChild(el('i', 'dot'));
   if (s.lines) {
-    for (const side of ['h l', 'h r', 'v t', 'v b']) node.appendChild(el('i', `line ${side}`));
+    node.appendChild(el('i', 'line h l'));
+    node.appendChild(el('i', 'line h r'));
+    node.appendChild(el('i', 'line v t'));
+    node.appendChild(el('i', 'line v b'));
   }
 }
 
-/**
- * Hollow outlines for the optional outer shape — SVG strokes stay crisp and
- * hollow at any size, which clip-path fills can't do against a 3D background.
- */
-const SHAPE_SVG: Record<Exclude<CrosshairShape, 'none'>, string> = {
-  circle: '<circle cx="50" cy="50" r="47"/>',
-  triangle: '<polygon points="50,3 97,97 3,97"/>',
-  square: '<rect x="3" y="3" width="94" height="94"/>',
-  diamond: '<polygon points="50,3 97,50 50,97 3,50"/>',
-};
+// ------------------------------------------------------------------- controls
 
-/** True when `values` is still exactly the preset on top of DEFAULTS. */
-function same(values: Partial<CrosshairSettings>, current: CrosshairSettings): boolean {
-  return (Object.keys(DEFAULTS) as (keyof CrosshairSettings)[]).every(
-    (k) => (values[k] ?? DEFAULTS[k]) === current[k],
-  );
+type Value = string | number | boolean;
+
+interface Row {
+  key: string;
+  label: string;
+  type: 'number' | 'toggle' | 'select' | 'color';
+  min?: readonly [number, number];
+  step?: number;
+  options?: readonly string[];
+  /** Extra text shown next to the value, e.g. a unit. */
+  suffix?: string;
 }
+
+const CROSSHAIR_ROWS: readonly Row[] = [
+  { key: 'lines', label: 'CROSSHAIR LINES', type: 'toggle' },
+  { key: 'lineLen', label: 'LINE LENGTH', type: 'number', min: [2, 30] },
+  { key: 'lineThick', label: 'LINE THICKNESS', type: 'number', min: [1, 8] },
+  { key: 'gap', label: 'CENTRE GAP', type: 'number', min: [0, 40] },
+  { key: 'dot', label: 'CENTRE DOT', type: 'toggle' },
+  { key: 'dotSize', label: 'DOT SIZE', type: 'number', min: [1, 12] },
+  { key: 'shape', label: 'SHAPE', type: 'select', options: SHAPES },
+  { key: 'shapeSize', label: 'SHAPE SIZE', type: 'number', min: [10, 80] },
+  { key: 'outline', label: 'OUTLINE', type: 'toggle' },
+  { key: 'outlineWidth', label: 'OUTLINE WIDTH', type: 'number', min: [1, 4] },
+  { key: 'color', label: 'COLOUR', type: 'color' },
+  { key: 'outlineColor', label: 'OUTLINE COLOUR', type: 'color' },
+  { key: 'bloom', label: 'SPREAD BLOOM', type: 'toggle' },
+  { key: 'dimStill', label: 'DIM WHEN STILL', type: 'toggle' },
+];
+
+const GAME_ROWS: readonly Row[] = [
+  { key: 'sensitivity', label: 'MOUSE SENSITIVITY', type: 'number', min: [0.1, 5], step: 0.1 },
+  { key: 'invertY', label: 'INVERT Y AXIS', type: 'toggle' },
+  { key: 'fov', label: 'FIELD OF VIEW', type: 'number', min: [VIDEO.FOV_MIN, VIDEO.FOV_MAX] },
+  { key: 'mute', label: 'MUTE AUDIO', type: 'toggle' },
+];
+
+const VIDEO_ROWS: readonly Row[] = [
+  { key: 'quality', label: 'RENDER QUALITY', type: 'number', min: [0, VIDEO.QUALITY_PIXELS.length - 1] },
+  { key: 'shadows', label: 'SHADOWS', type: 'toggle' },
+  { key: 'fog', label: 'FOG', type: 'toggle' },
+];
+
+const QUALITY_NAMES = ['LOW', 'MEDIUM', 'HIGH'];
 
 interface Bound {
   input: HTMLInputElement | HTMLSelectElement;
   out: HTMLElement;
-  control: Control;
+  row: Row;
 }
 
 export interface SettingsHooks {
   /** Called when the panel opens — the game drops pointer lock, which pauses. */
   onOpen(): void;
-  onChange(values: CrosshairSettings): void;
+  onChange(values: SettingsBundle): void;
 }
 
 export class Settings {
-  values: CrosshairSettings;
+  values: SettingsBundle;
   private panel = document.getElementById('settingsScreen')!;
   private presetList = document.getElementById('presetList')!;
-  private tuneList = document.getElementById('tuneList')!;
   private targets: HTMLElement[];
   private inputs = new Map<string, Bound>();
   private presetButtons: HTMLElement[] = [];
   private thumbnails: HTMLElement[] = [];
+  private active: TabName = 'crosshair';
 
   constructor(
     hudCrosshair: HTMLElement,
@@ -264,7 +378,15 @@ export class Settings {
     this.targets = [hudCrosshair, document.getElementById('previewCross')!];
 
     this.buildPresets();
-    this.buildTune();
+    this.buildRows(document.getElementById('tuneList')!, CROSSHAIR_ROWS, (k, v) =>
+      this.setCrosshair({ [k]: v } as Partial<CrosshairSettings>),
+    );
+    this.buildRows(document.getElementById('gameList')!, GAME_ROWS, (k, v) =>
+      this.setGame({ [k]: v } as Partial<GameSettings>),
+    );
+    this.buildRows(document.getElementById('videoList')!, VIDEO_ROWS, (k, v) =>
+      this.setVideo({ [k]: v } as Partial<VideoSettings>),
+    );
     this.bind();
     this.apply();
   }
@@ -285,7 +407,7 @@ export class Settings {
       this.thumbnails.push(mini);
       btn.append(name, mini);
       btn.addEventListener('click', () => {
-        this.values = sanitizeSettings({ ...DEFAULTS, ...preset.values });
+        this.values.crosshair = sanitizeCrosshair({ ...CROSSHAIR_DEFAULTS, ...preset.values });
         this.commit();
       });
       this.presetList.appendChild(btn);
@@ -293,55 +415,64 @@ export class Settings {
     });
   }
 
-  private buildTune(): void {
-    for (const c of CONTROLS) {
-      const row = el('div', 'trow');
+  /**
+   * Build one row per control.
+   *
+   * `read`/`write` are supplied per group so the same row builder serves the
+   * crosshair, the game options and the video options.
+   */
+  private buildRows(
+    host: HTMLElement,
+    rows: readonly Row[],
+    write: (key: string, value: Value) => void,
+  ): void {
+    for (const row of rows) {
+      const line = el('div', 'trow');
       const label = el('label', 'tk');
-      label.textContent = c.label;
-      row.appendChild(label);
+      label.textContent = row.label;
+      line.appendChild(label);
 
       let input: HTMLInputElement | HTMLSelectElement;
-      if (c.type === 'toggle') {
+      if (row.type === 'toggle') {
         input = el('input', 'toggle') as HTMLInputElement;
         input.type = 'checkbox';
-      } else if (c.type === 'select') {
+      } else if (row.type === 'select') {
         input = el('select') as HTMLSelectElement;
-        for (const o of c.options) {
+        for (const o of row.options ?? []) {
           const opt = el('option') as HTMLOptionElement;
           opt.value = o;
           opt.textContent = o.toUpperCase();
           input.appendChild(opt);
         }
-      } else if (c.type === 'color') {
+      } else if (row.type === 'color') {
         input = el('input', 'swatchInput') as HTMLInputElement;
         input.type = 'color';
-        for (const hex of SWATCHES) {
+        for (const swatch of SWATCHES) {
           const sw = el('button', 'swatch');
           sw.setAttribute('type', 'button');
-          sw.style.background = hex;
-          sw.addEventListener('click', () => this.set({ [c.key]: hex }));
-          row.appendChild(sw);
+          sw.style.background = swatch;
+          sw.addEventListener('click', () => write(row.key, swatch));
+          line.appendChild(sw);
         }
       } else {
         input = el('input', 'range') as HTMLInputElement;
         input.type = 'range';
-        input.min = String(c.min[0]);
-        input.max = String(c.min[1]);
-        input.step = c.key === 'sensitivity' ? '0.1' : '1';
+        input.min = String(row.min?.[0] ?? 0);
+        input.max = String(row.min?.[1] ?? 1);
+        input.step = String(row.step ?? 1);
       }
 
-      const read = (): CrosshairSettings[keyof CrosshairSettings] => {
-        if (c.type === 'toggle') return (input as HTMLInputElement).checked;
-        if (c.type === 'color' || c.type === 'select') return input.value;
-        return Number(input.value);
+      const value = (): Value => {
+        if (row.type === 'toggle') return (input as HTMLInputElement).checked;
+        if (row.type === 'number') return Number(input.value);
+        return input.value;
       };
-
-      input.addEventListener('input', () => this.set({ [c.key]: read() }));
+      input.addEventListener('input', () => write(row.key, value()));
 
       const out = el('span', 'tv');
-      row.append(input, out);
-      this.tuneList.appendChild(row);
-      this.inputs.set(c.key, { input, out, control: c });
+      line.append(input, out);
+      host.appendChild(line);
+      this.inputs.set(`${row.key}`, { input, out, row });
     }
   }
 
@@ -353,17 +484,30 @@ export class Settings {
         this.open();
       });
     }
+    for (const btn of document.querySelectorAll('#settingsTabs [data-tab]')) {
+      btn.addEventListener('click', () => this.showTab(btn.getAttribute('data-tab') as TabName));
+    }
     document.getElementById('settingsClose')!.addEventListener('click', () => this.close());
     document.getElementById('settingsReset')!.addEventListener('click', () => {
-      this.values = sanitizeSettings({ ...DEFAULTS });
+      this.values = sanitizeAll({});
       this.commit();
     });
   }
 
   // ------------------------------------------------------------------ values
 
-  set(patch: Partial<CrosshairSettings>): void {
-    this.values = sanitizeSettings({ ...this.values, ...patch });
+  setCrosshair(patch: Partial<CrosshairSettings>): void {
+    this.values.crosshair = sanitizeCrosshair({ ...this.values.crosshair, ...patch });
+    this.commit();
+  }
+
+  setGame(patch: Partial<GameSettings>): void {
+    this.values.game = sanitizeGame({ ...this.values.game, ...patch });
+    this.commit();
+  }
+
+  setVideo(patch: Partial<VideoSettings>): void {
+    this.values.video = sanitizeVideo({ ...this.values.video, ...patch });
     this.commit();
   }
 
@@ -373,27 +517,56 @@ export class Settings {
   }
 
   private apply(): void {
-    for (const target of this.targets) renderCrosshair(target, this.values);
-    for (const { input, out, control } of this.inputs.values()) {
-      const v = this.values[control.key];
-      if (control.type === 'toggle') (input as HTMLInputElement).checked = v as boolean;
-      else input.value = String(v);
-      out.textContent =
-        control.type === 'select' ? '' : control.type === 'toggle' ? (v ? 'ON' : 'OFF') : String(v);
+    for (const target of this.targets) renderCrosshair(target, this.values.crosshair);
+    for (const { input, out, row } of this.inputs.values()) {
+      const raw = this.readValue(row.key);
+      if (row.type === 'toggle') (input as HTMLInputElement).checked = raw === true;
+      else input.value = String(raw);
+      out.textContent = this.label(row, raw);
     }
     // Preset thumbnails paint the preset's own values, and the highlight only
     // claims a preset while nothing has been hand-tuned on top of it.
     this.presetButtons.forEach((btn, i) => {
-      renderCrosshair(this.thumbnails[i]!, sanitizeSettings({ ...DEFAULTS, ...PRESETS[i]!.values }));
-      btn.classList.toggle('on', same(PRESETS[i]!.values, this.values));
+      const preset = PRESETS[i]!;
+      renderCrosshair(this.thumbnails[i]!, sanitizeCrosshair({ ...CROSSHAIR_DEFAULTS, ...preset.values }));
+      btn.classList.toggle('on', same(preset.values, this.values.crosshair));
     });
     this.hooks.onChange(this.values);
   }
 
+  /** Current value of a control, from whichever group owns it. */
+  private readValue(key: string): Value {
+    if (key in this.values.crosshair) {
+      return (this.values.crosshair as unknown as Record<string, Value>)[key] ?? '';
+    }
+    if (key in this.values.game) {
+      return (this.values.game as unknown as Record<string, Value>)[key] ?? '';
+    }
+    return (this.values.video as unknown as Record<string, Value>)[key] ?? '';
+  }
+
+  private label(row: Row, value: Value): string {
+    if (row.type === 'toggle') return value ? 'ON' : 'OFF';
+    if (row.type === 'select') return '';
+    if (row.key === 'quality') return QUALITY_NAMES[Number(value)] ?? '';
+    return String(value);
+  }
+
   // ------------------------------------------------------------------ screen
+
+  showTab(name: TabName): void {
+    this.active = name;
+    for (const btn of document.querySelectorAll('#settingsTabs [data-tab]')) {
+      btn.classList.toggle('on', btn.getAttribute('data-tab') === name);
+    }
+    for (const pane of document.querySelectorAll('#settingsScreen .tabpane')) {
+      pane.toggleAttribute('hidden', pane.getAttribute('data-pane') !== name);
+    }
+  }
 
   open(): void {
     this.panel.classList.add('visible');
+    this.showTab(this.active);
     this.hooks.onOpen();
   }
 
@@ -407,5 +580,12 @@ export class Settings {
   }
 }
 
+/** True when `values` is still exactly the preset on top of the defaults. */
+function same(values: Partial<CrosshairSettings>, current: CrosshairSettings): boolean {
+  return (Object.keys(CROSSHAIR_DEFAULTS) as (keyof CrosshairSettings)[]).every(
+    (k) => (values[k] ?? CROSSHAIR_DEFAULTS[k]) === current[k],
+  );
+}
+
 // Expose alias names on the default object too (non-enumerable, so equality stays clean).
-withSensitivityAliases(DEFAULTS);
+withSensitivityAliases(GAME_DEFAULTS);

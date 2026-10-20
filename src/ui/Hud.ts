@@ -78,7 +78,7 @@ export class Hud {
   private static MAX_FEED = 3;
 
   private screens: Record<Exclude<ScreenName, 'none'>, HTMLElement> = {
-    [SCREEN.START]: $('startScreen'),
+    [SCREEN.MENU]: $('menuScreen'),
     [SCREEN.PAUSE]: $('pauseScreen'),
     [SCREEN.GAMEOVER]: $('gameOverScreen'),
   };
@@ -220,7 +220,9 @@ export class Hud {
 
     if (this.last.hp !== hp) {
       this.last.hp = hp;
-      this.healthFill.style.width = `${hp}%`;
+      // The bar is a fraction of its track: healing past the max must not
+      // push it out of the panel.
+      this.healthFill.style.width = `${Math.min(100, hp)}%`;
       this.healthText.textContent = String(Math.min(100, Math.ceil(hp)));
       this.healthFill.style.background =
         hp > 50

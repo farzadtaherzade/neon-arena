@@ -48,27 +48,36 @@
       <div id="minimapWrap"><canvas id="minimap"></canvas></div>
     </div>
 
-    <div class="screen visible" id="startScreen">
+    <div class="screen visible" id="menuScreen">
       <h1>NEON <span>ARENA</span></h1>
       <h2>3D ARENA SHOOTER</h2>
-      <div class="keys">
+      <div class="menu">
+        <button class="btn primary" type="button" id="menuDeploy">DEPLOY</button>
+        <button class="btn" type="button" data-settings>SETTINGS</button>
+        <button class="btn" type="button" id="menuControls">CONTROLS</button>
+      </div>
+      <div class="keys" id="menuKeys" hidden>
         <div class="pair"><span class="cap">W</span><span class="cap">A</span><span class="cap">S</span><span class="cap">D</span><span class="lbl">MOVE</span></div>
         <div class="pair"><span class="cap">Mouse1</span><span class="cap">F</span><span class="cap">V</span><span class="lbl">SHOOT</span></div>
         <div class="pair"><span class="cap">Mouse2</span><span class="lbl">AIM</span></div>
         <div class="pair"><span class="cap">R</span><span class="lbl">RELOAD</span></div>
         <div class="pair"><span class="cap">Shift</span><span class="lbl">SPRINT</span></div>
         <div class="pair"><span class="cap">Space</span><span class="lbl">JUMP</span></div>
+        <div class="pair"><span class="cap">C</span><span class="lbl">SETTINGS</span></div>
+        <div class="pair"><span class="cap">M</span><span class="cap">Tab</span><span class="lbl">MAP</span></div>
       </div>
       <div class="tip">SURVIVE THE WAVES — HEADSHOTS DEAL 2.5× DAMAGE — CLEARING A WAVE RESTORES 25 HP — HOLD THE GLOWING DECK TO REPAIR</div>
       <div id="bestRecord" class="best-record"></div>
-      <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>
-      <div class="go">CLICK TO DEPLOY</div>
     </div>
 
     <div class="screen" id="pauseScreen">
       <h1>PAUSED</h1>
       <h2>TACTICAL STANDBY</h2>
-      <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>
+      <div class="menu">
+        <button class="btn primary" type="button" id="pauseResume">RESUME</button>
+        <button class="btn" type="button" data-settings>SETTINGS</button>
+        <button class="btn" type="button" id="pauseMenu">MAIN MENU</button>
+      </div>
       <div class="go">CLICK TO RESUME</div>
       <div class="shint">TOUCHPAD USERS: F / V ALSO FIRE — AND DISABLE 'TOUCHPAD WHILE TYPING' + PALM REJECTION</div>
     </div>
@@ -77,26 +86,56 @@
       <h1>MISSION FAILED</h1>
       <div id="finalStats"></div>
       <div id="newBestBadge" class="new-best" style="display:none">★ NEW BEST SCORE</div>
-      <button class="btn" type="button" data-settings>CROSSHAIR SETTINGS</button>
+      <div class="menu">
+        <button class="btn primary" type="button" id="overRetry">RETRY</button>
+        <button class="btn" type="button" data-settings>SETTINGS</button>
+        <button class="btn" type="button" id="overMenu">MAIN MENU</button>
+      </div>
       <div class="go">CLICK TO RETRY</div>
     </div>
 
     <div class="screen panel" id="settingsScreen">
       <div class="sbox">
-        <h1>CROSSHAIR</h1>
-        <div id="preview"><div id="previewCross" class="ch"></div></div>
+        <h1>SETTINGS</h1>
+        <div id="settingsTabs">
+          <button class="tab on" type="button" data-tab="crosshair">CROSSHAIR</button>
+          <button class="tab" type="button" data-tab="game">GAME</button>
+          <button class="tab" type="button" data-tab="video">VIDEO</button>
+        </div>
 
-        <h3>PRESETS</h3>
-        <div id="presetList"></div>
+        <div class="tabpane" data-pane="crosshair">
+          <div id="preview"><div id="previewCross" class="ch"></div></div>
 
-        <h3>CUSTOMIZE</h3>
-        <div id="tuneList"></div>
+          <h3>PRESETS</h3>
+          <div id="presetList"></div>
+
+          <h3>CUSTOMIZE</h3>
+          <div id="tuneList"></div>
+        </div>
+
+        <div class="tabpane" data-pane="game" hidden>
+          <h3>GAMEPLAY</h3>
+          <div id="gameList"></div>
+        </div>
+
+        <div class="tabpane" data-pane="video" hidden>
+          <h3>VIDEO</h3>
+          <div id="videoList"></div>
+        </div>
 
         <div class="srow">
           <button class="btn" type="button" id="settingsReset">RESET TO DEFAULTS</button>
           <button class="btn" type="button" id="settingsClose">CLOSE (ESC)</button>
         </div>
         <div class="shint">C OPENS THESE SETTINGS AT ANY TIME — YOUR CHOICES ARE SAVED</div>
+      </div>
+    </div>
+
+    <div class="screen" id="mapScreen">
+      <div class="mapbox">
+        <h1>ARENA MAP</h1>
+        <canvas id="mapCanvas" width="720" height="720"></canvas>
+        <div class="shint">M OR TAB CLOSES THE MAP — THE RUN IS PAUSED WHILE IT IS OPEN</div>
       </div>
     </div>
 

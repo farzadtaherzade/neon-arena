@@ -17,6 +17,7 @@ export interface InputHooks {
   onLockChange(locked: boolean): void;
   onToggleSettings(): void;
   onCloseSettings(): void;
+  onToggleMap(): void;
 }
 
 export interface MoveInput {
@@ -108,6 +109,11 @@ export class Input {
       }
       if (e.code === 'KeyR') hooks.onReload();
       if (e.code === 'KeyC') hooks.onToggleSettings();
+      if (e.code === 'KeyM' || e.code === 'Tab') {
+        // Tab would otherwise move the focus to the next control.
+        e.preventDefault();
+        if (!e.repeat && !hooks.isSettingsOpen()) hooks.onToggleMap();
+      }
       // Esc never reaches keydown while pointer-locked (the browser eats it to
       // exit the lock), so it only closes the settings panel.
       if (e.code === 'Escape') hooks.onCloseSettings();
@@ -236,6 +242,11 @@ export class Input {
    */
   get trigger(): boolean {
     return this.firing || fireKeyDown(this.keys);
+  }
+
+  /** Is the pointer captured right now? Unlike `locked` this does not lag. */
+  get hasPointerLock(): boolean {
+    return document.pointerLockElement === this.canvas;
   }
 
   lock(): void {

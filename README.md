@@ -74,12 +74,17 @@ built from primitives at boot, then merged into a handful of shared GPU buffers.
 - **Meteor shower** — every so often the sky bleeds red and the floor starts filling with warning rings: a stone is about to land there. The blast hurts you (less the further you run) and the mobs around it, shakes the screen and throws debris. The sky fades back to normal when the shower ends
 - **XP and levels** — every kill drops an orb; get close and it is magnetised to you. The bar under the integrity bar fills towards the next level, and each level up pays a 15 HP repair — deliberately less than a capture, so a secured deck stays the premium heal. Orbs are XP only: the score comes from kills, headshots and defused bombs
 - **Minimap** — top-right radar: you at the centre pointing up, enemies blipped in their own colours, live bombs shown with their blast radius, gatehouses marked (red pulse while their alarm is up)
+- **Tactical map** — `M` or `Tab` opens a full-screen map of the whole arena: the maze, the ramps, the decks, the reactor, the clock tower, live bombs and every hostile. The game pauses while it is open
 - **Wave system** — enemy count, HP and speed scale per wave; clearing a wave restores 25 HP
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
 - **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter, reload progress, deck-capture bar
-- **Crosshair settings** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still. Opens from any screen with `C`, and your choices are saved to `localStorage`
+- **Settings, in three tabs** — `C` opens the panel from any screen, and everything is saved to `localStorage`:
+  - **Crosshair** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still
+  - **Game** — mouse sensitivity, invert Y, field of view, mute
+  - **Video** — render quality (pixel ratio), shadows, fog
+- **Main menu** — the game waits on a menu with DEPLOY, SETTINGS and CONTROLS, and the pause and game-over screens both offer a way back to it
 - **Pause / game over / restart** flow
 
 ---
@@ -106,8 +111,8 @@ npm run dev
 
 Vite prints a URL (default <http://localhost:5173>) and hot-reloads on save.
 
-> Click **CLICK TO DEPLOY** to start. The game requests mouse pointer lock —
-> accept it, or aiming won't work. `Esc` pauses and releases the cursor.
+> Click **DEPLOY** on the main menu to start. The game requests mouse pointer
+> lock — accept it, or aiming won't work. `Esc` pauses and releases the cursor.
 
 ### Production build
 
@@ -146,7 +151,8 @@ npm run check      # tsc --noEmit + biome + vitest
 | `R` | Reload |
 | `Shift` | Sprint |
 | `Space` | Jump |
-| `C` | Crosshair settings (any time) |
+| `C` | Settings panel (any time) |
+| `M` or `Tab` | Tactical map — the game pauses while it is open |
 | `Esc` | Pause / release cursor — or close the settings panel |
 
 ---
@@ -188,6 +194,7 @@ neon-arena/
 │   │       └── layout.ts     maze/deck/ramp tables + starfield generation
 │   ├── render/               the Three.js adapter — the only place that imports it
 │   │   ├── Arena.ts          renderer, scene, camera rig, world meshes
+│   │   ├── ClockTower.ts     the clock tower landmark and its live readout
 │   │   ├── CapturePad.ts     a gatehouse top: pad, mast, alarm beacon
 │   │   ├── Pick.ts           one raycast per shot
 │   │   ├── Gun.ts            first-person viewmodel
@@ -207,8 +214,9 @@ neon-arena/
 │   └── ui/
 │       ├── Hud.ts            all DOM reads/writes
 │       ├── Minimap.ts        canvas radar drawing
+│       ├── MapScreen.ts      the full-screen tactical map
 │       ├── Records.ts        best score/wave in localStorage
-│       ├── Settings.ts       crosshair presets, live tuning, localStorage
+│       ├── Settings.ts       crosshair / game / video tabs, localStorage
 │       └── Input.ts          keyboard, mouse, pointer lock
 └── tests/
     ├── unit/                 Vitest — pure logic, runs in Node
@@ -248,7 +256,8 @@ neon-arena/
 
 Everything a designer is likely to change is in `src/game/config.ts`, grouped by
 concern — `WORLD`, `WEAPON`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`, `ENEMY`,
-`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`, `XP_LEVEL`, `METEOR`, `FX`.
+`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`, `XP_LEVEL`, `METEOR`, `VIDEO`,
+`FX`.
 Each group is `as const`, so a typo is a compile error rather than an `undefined`
 at 3 a.m. Mesh-local dimensions (a wall's thickness, a barrel's length) stay in
 the module that owns that mesh.
@@ -286,7 +295,8 @@ npm test
 - `collision` — walls clamp, obstacles push out, embedded circles escape by the
   nearest face; ramps interpolate and block only where they are a wall; the
   layout fits inside the arena, every ramp lands on a deck face, and the spawn
-  plaza is free of cover
+  plaza is free of cover. The ramp mesh rotation is checked too: the wedge has
+  to point at the same up vector as its collider
 - `player` — gravity, jumping, damping, diagonal normalisation, no tunnelling,
   ramp ascent, and "no climbing a deck from the ground"
 - `weapon` — fire rate, auto-reload, dry fire, bloom clamp and decay, headshot damage
@@ -305,7 +315,8 @@ npm test
   tint ramp, stones that never land inside geometry or outside the arena, and a
   landing that is reported exactly once
 - `fx` — pool wrap-around, gravity, floor bounce, fade, tracer ring reuse
-- `settings` — clamping, colour validation, persistence, corrupt storage
+- `settings` — clamping, colour validation, the three groups staying separate,
+  persistence, the migration from the old single-group save, corrupt storage
 - `config` — the tuning table is present, ordered and in range
 
 ### End-to-end test (Playwright)
@@ -318,8 +329,8 @@ npm run test:e2e
 It builds the app, serves `dist/` with `vite preview`, and drives the real
 browser: boot with no console errors, wave spawn, look, shoot, reload, GPU
 resource convergence (the old code leaked two geometries per enemy), damage,
-death, the XP bar and a level up, the meteor shower and its stones, and the
-crosshair panel. Waits are condition-based, so it works on
+death, the XP bar and a level up, the meteor shower and its stones, the
+tactical map, the settings tabs and the main menu. Waits are condition-based, so it works on
 software rendering as well as a GPU. On the maze map the harness lines its
 targets up down an open lane with `faceEnemies()` rather than scattering them on
 a ring that cover would hide them behind.
@@ -345,8 +356,11 @@ __NEON.forceWave(n)       // jump straight to wave n
 __NEON.capture()          // live deck, hold progress, readiness, cooldowns
 __NEON.alarm()            // is each tower's alarm lit
 __NEON.inputStats()       // rejected look deltas, lock losses, warm-up drops
+__NEON.settings()         // the whole bundle: { crosshair, game, video }
 __NEON.crosshair()        // current crosshair settings
 __NEON.setCrosshair(patch)// merge a partial change, e.g. { shape: 'circle', color: '#ff0000' }
+__NEON.setGame(patch)     // merge a partial game change, e.g. { sensitivity: 2.5 }
+__NEON.setVideo(patch)    // merge a partial video change, e.g. { shadows: false }
 __NEON.xpStats()          // { level, xp, need }
 __NEON.grantXp(n)        // bank XP without walking over an orb
 __NEON.meteor()           // { phase, tint, stones } — the shower's state

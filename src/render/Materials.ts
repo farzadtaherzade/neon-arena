@@ -128,10 +128,12 @@ export const MAT = {
       blending: THREE.AdditiveBlending,
     })),
 
+  // The viewmodel sits against a dark arena: near-black metal read as a
+  // silhouette, so the body is lifted well above the background.
   gunMetal: () =>
-    (mGunMetal ??= new THREE.MeshStandardMaterial({ color: 0x1f2430, roughness: 0.5, metalness: 0.15 })),
+    (mGunMetal ??= new THREE.MeshStandardMaterial({ color: 0x5a6478, roughness: 0.45, metalness: 0.2 })),
   gunDark: () =>
-    (mGunDark ??= new THREE.MeshStandardMaterial({ color: 0x161a22, roughness: 0.65, metalness: 0.1 })),
+    (mGunDark ??= new THREE.MeshStandardMaterial({ color: 0x2e3442, roughness: 0.6, metalness: 0.15 })),
   muzzleFlash: () =>
     (mMuzzleFlash ??= new THREE.MeshBasicMaterial({
       color: 0xffd27a,
