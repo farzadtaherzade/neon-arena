@@ -20,6 +20,7 @@
         <div><span class="k">SCORE</span><span class="v" id="scoreVal">0</span></div>
         <div><span class="k">WAVE</span><span class="v" id="waveVal">–</span></div>
         <div><span class="k">HOSTILES</span><span class="v warn" id="enemyVal">0</span></div>
+        <div><span class="k">CREDITS</span><span class="v gold" id="creditVal">0</span></div>
       </div>
       <div class="panel" id="healthWrap">
         <div id="healthLabel">INTEGRITY <span id="healthText">100</span></div>
@@ -102,6 +103,7 @@
           <button class="tab on" type="button" data-tab="crosshair">CROSSHAIR</button>
           <button class="tab" type="button" data-tab="game">GAME</button>
           <button class="tab" type="button" data-tab="video">VIDEO</button>
+          <button class="tab" type="button" data-tab="skins">SKINS</button>
         </div>
 
         <div class="tabpane" data-pane="crosshair">
@@ -122,6 +124,12 @@
         <div class="tabpane" data-pane="video" hidden>
           <h3>VIDEO</h3>
           <div id="videoList"></div>
+        </div>
+
+        <div class="tabpane" data-pane="skins" hidden>
+          <h3>SKINS</h3>
+          <div class="skrow">CREDITS <span id="creditBalance">0</span></div>
+          <div id="skinList"></div>
         </div>
 
         <div class="srow">

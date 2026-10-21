@@ -13,6 +13,7 @@ import {
   BOMB,
   CAMERA,
   CAPTURE,
+  CREDITS,
   ENEMY,
   FEEDBACK,
   type GameState,
@@ -48,7 +49,9 @@ import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
+import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
+import { Skins } from '../ui/Skins';
 
 interface Hostile {
   enemy: Enemy;
@@ -111,6 +114,9 @@ export class Game {
   readonly settings: Settings;
   readonly weapon: Weapon;
   readonly hostiles: Hostile[] = [];
+  /** The credits wallet and the loadout. The credits survive a death. */
+  readonly profile = new Profile();
+  private skins: Skins;
   private hash = new SpatialHash();
   /** Reused each step: the broadphase rebuild must not allocate an array per tick. */
   private enemyScratch: Enemy[] = [];
@@ -192,6 +198,7 @@ export class Game {
     level: 1,
     xp: 0,
     xpNeed: 1,
+    credits: 0,
   };
 
   constructor(readonly test = false) {
@@ -209,6 +216,13 @@ export class Game {
     this.arena.camera.add(this.knifeView.group);
     this.pick.add(...this.arena.solids);
 
+    this.skins = new Skins({
+      getProfile: () => this.profile.data,
+      onBuy: (id) => this.buySkin(id),
+      onEquip: (id) => this.equipSkin(id),
+    });
+    this.applySkins();
+
     this.settings = new Settings(this.hud.crosshair, {
       onOpen: () => {
         // Dropping pointer lock pauses the run through the normal lock flow, so
@@ -221,6 +235,9 @@ export class Game {
         this.music.setMuted(values.game.mute);
         this.baseFov = values.game.fov;
         this.arena.setVideo(values.video);
+      },
+      onShowTab: (tab) => {
+        if (tab === 'skins') this.skins.refresh();
       },
     });
     this.player.sens = this.settings.values.game.sensitivity;
@@ -531,6 +548,31 @@ export class Game {
     }
   }
 
+  // --------------------------------------------------------------------- shop
+
+  /** Buy a skin with credits. False when it is unknown, owned or too dear. */
+  buySkin(id: string): boolean {
+    const bought = this.profile.buy(id);
+    if (bought) this.skins.refresh();
+    return bought;
+  }
+
+  /** Equip an owned skin and put it on the viewmodel. */
+  equipSkin(id: string): boolean {
+    const equipped = this.profile.equip(id);
+    if (equipped) {
+      this.applySkins();
+      this.skins.refresh();
+    }
+    return equipped;
+  }
+
+  /** Wear the equipped skins. */
+  private applySkins(): void {
+    this.gun.applySkin(this.profile.equippedSkin('rifle'));
+    this.knifeView.applySkin(this.profile.equippedSkin('knife'));
+  }
+
   private killEnemy(enemy: Enemy, headshot: boolean): void {
     const hostile = this.hostiles.find((h) => h.enemy === enemy);
     if (!hostile || !enemy.kill()) return;
@@ -543,6 +585,8 @@ export class Game {
     this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z, XP.VALUE[enemy.kind]);
     // The mob's rounds go into the reserve, so a wave of them is a resupply.
     this.weapon.addAmmo(AMMO.DROP[enemy.kind]);
+    // A knife kill pays the same as a gun kill.
+    this.profile.addCredits(CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0));
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
@@ -725,6 +769,7 @@ export class Game {
 
     if (cap.justCaptured) {
       this.healLeft = CAPTURE.HEAL;
+      this.profile.addCredits(CREDITS.CAPTURE);
       this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
       this.sfx.xpCollect();
     }
@@ -942,6 +987,7 @@ export class Game {
 
     if (result.cleared && !this.waveClearPending) {
       this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
+      this.profile.addCredits(CREDITS.WAVE);
       this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
       this.sfx.wave();
       this.waveClearPending = true;
@@ -1083,6 +1129,7 @@ export class Game {
     m.level = this.meter.level;
     m.xp = this.meter.xp;
     m.xpNeed = this.meter.need;
+    m.credits = this.profile.data.credits;
 
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);

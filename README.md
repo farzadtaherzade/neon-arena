@@ -80,11 +80,13 @@ built from primitives at boot, then merged into a handful of shared GPU buffers.
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
-- **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter with the remaining reserve, reload progress, deck-capture bar. When the rifle runs dry the reload hint turns into "Q — KNIFE"
-- **Settings, in three tabs** — `C` opens the panel from any screen, and everything is saved to `localStorage`:
+- **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter with the remaining reserve, reload progress, deck-capture bar, and the credit balance. When the rifle runs dry the reload hint turns into "Q — KNIFE"
+- **Settings, in four tabs** — `C` opens the panel from any screen, and everything is saved to `localStorage`:
   - **Crosshair** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still
   - **Game** — mouse sensitivity, invert Y, field of view, mute
   - **Video** — render quality (pixel ratio), shadows, fog
+  - **Skins** — the shop (see below)
+- **Skins and credits** — kills pay credits (10 for a grunt up to 40 for a tank, +5 for a headshot, +50 per wave cleared, +40 per capture) into a wallet that lives next to your best record, so it survives your death. The shop is a fourth tab in the settings panel: eight swatch cards — four themes, each a rifle skin and a knife skin at the same price (300 / 900 / 2000 / 4500) — and every skin recolours the weapon *and* swaps a part: the rifle swaps its optic (iron / red dot / holo / scope), the knife swaps its blade (straight / cleaver / saw / hook). The rifle and the knife are equipped separately, so the themes mix
 - **Main menu** — the game waits on a menu with DEPLOY, SETTINGS and CONTROLS, and the pause and game-over screens both offer a way back to it
 - **Pause / game over / restart** flow
 
@@ -220,7 +222,9 @@ neon-arena/
 │       ├── Minimap.ts        canvas radar drawing
 │       ├── MapScreen.ts      the full-screen tactical map
 │       ├── Records.ts        best score/wave in localStorage
-│       ├── Settings.ts       crosshair / game / video tabs, localStorage
+│       ├── Profile.ts        the credit wallet + the loadout, in localStorage
+│       ├── Skins.ts          the shop: one swatch card per skin
+│       ├── Settings.ts       crosshair / game / video / skins tabs, localStorage
 │       └── Input.ts          keyboard, mouse, pointer lock
 └── tests/
     ├── unit/                 Vitest — pure logic, runs in Node
@@ -261,7 +265,7 @@ neon-arena/
 Everything a designer is likely to change is in `src/game/config.ts`, grouped by
 concern — `WORLD`, `WEAPON`, `AMMO`, `KNIFE`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`,
 `ENEMY`, `RUNNER`, `TANK`, `WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`,
-`XP_LEVEL`, `METEOR`, `VIDEO`, `FX`.
+`XP_LEVEL`, `METEOR`, `SKINS`, `CREDITS`, `VIDEO`, `FX`.
 Each group is `as const`, so a typo is a compile error rather than an `undefined`
 at 3 a.m. Mesh-local dimensions (a wall's thickness, a barrel's length) stay in
 the module that owns that mesh.
@@ -328,6 +332,9 @@ npm test
 - `fx` — pool wrap-around, gravity, floor bounce, fade, tracer ring reuse
 - `settings` — clamping, colour validation, the three groups staying separate,
   persistence, the migration from the old single-group save, corrupt storage
+- `profile` — the wallet and the loadout: a round-trip through storage, a
+  corrupt save, buying what you cannot afford, equipping what you do not own,
+  and the two weapon slots staying separate
 - `config` — the tuning table is present, ordered and in range
 
 ### End-to-end test (Playwright)
@@ -342,7 +349,7 @@ browser: boot with no console errors, wave spawn, look, shoot, reload, the reser
 counter, the knife swing, the dry-rifle hint, GPU
 resource convergence (the old code leaked two geometries per enemy), damage,
 death, the XP bar and a level up, the meteor shower and its stones, the
-tactical map, the settings tabs and the main menu. Waits are condition-based, so it works on
+tactical map, the settings tabs, the skin shop (buy and equip) and the main menu. Waits are condition-based, so it works on
 software rendering as well as a GPU. On the maze map the harness lines its
 targets up down an open lane with `faceEnemies()` rather than scattering them on
 a ring that cover would hide them behind.
@@ -382,6 +389,11 @@ __NEON.ammo()             // { mag, reserve, dry }
 __NEON.setAmmo(mag, reserve) // set the magazine and the reserve directly
 __NEON.knife()            // { ready, swingT } — the blade's cooldown
 __NEON.swingKnife()       // swing the blade right now
+__NEON.profile()          // the wallet and the loadout: { credits, unlocked, equipped }
+__NEON.credits()          // the credit balance
+__NEON.grantCredits(n)    // bank credits, for testing the shop
+__NEON.buySkin(id)        // buy a skin by id, e.g. 'scrap-rifle'
+__NEON.equipSkin(id)      // equip an owned skin on its weapon slot
 ```
 
 ---

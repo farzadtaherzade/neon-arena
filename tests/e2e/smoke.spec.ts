@@ -328,10 +328,57 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForTimeout(200);
   expect((await crosshair(page)).shape).toBe('circle'); // the preset click landed
 
+  // --- the skins shop --------------------------------------------------------
+  // The shop lives in the settings panel, so it is only ever reachable outside
+  // a live run: opening the panel pauses the game, which is that state.
+  const wallet = await page.evaluate(() => {
+    const before = window.__NEON.credits() as number;
+    window.__NEON.grantCredits(1000);
+    return { before, after: window.__NEON.credits() as number };
+  });
+  expect(wallet.after).toBe(wallet.before + 1000);
+
+  await page.keyboard.press('KeyC');
+  await page.waitForTimeout(250);
+  await page.locator('#settingsTabs [data-tab="skins"]').click();
+  await page.waitForTimeout(250);
+  // Eight swatch cards, four per weapon.
+  expect(await page.locator('#skinList .skincard').count()).toBe(8);
+  // The card shows what the wallet holds.
+  const shown = await page.evaluate(() => ({
+    dom: document.getElementById('creditBalance')?.textContent,
+    live: window.__NEON.credits() as number,
+  }));
+  expect(Number(shown.dom)).toBe(shown.live);
+
+  const scrap = page.locator('#skinList .skincard').filter({ hasText: 'SCRAP RIFLE' });
+  await expect(scrap.locator('.btn')).toHaveText('BUY');
+  await scrap.locator('.btn').click();
+  await page.waitForTimeout(200);
+  await expect(scrap.locator('.btn')).toHaveText('EQUIP');
+  await scrap.locator('.btn').click();
+  await page.waitForTimeout(200);
+  await expect(scrap.locator('.btn')).toHaveText('EQUIPPED');
+  // The loadout is remembered, on the rifle's own slot.
+  const loadout = await page.evaluate(
+    () => (window.__NEON.profile() as { equipped: { rifle: string; knife: string } }).equipped,
+  );
+  expect(loadout.rifle).toBe('scrap-rifle');
+  expect(loadout.knife).toBe('');
+  // Leave the panel on its default tab: it remembers the last one, and the
+  // settings check further down expects the crosshair tab.
+  await page.locator('#settingsTabs [data-tab="crosshair"]').click();
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+
   // Resume the way a player does — a bare click re-acquires the pointer lock.
+  // The browser grants the lock asynchronously, and under software rendering
+  // that can take longer than a fixed pause, so wait for the state instead.
   await page.mouse.click(640, 360);
-  await page.waitForTimeout(300);
-  expect((await stats(page)).state).toBe('playing');
+  await page.waitForFunction(() => (window.__NEON.stats() as Stats).state === 'playing', undefined, {
+    timeout: 15_000,
+  });
   expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(true);
 
   // --- minimap ---------------------------------------------------------------

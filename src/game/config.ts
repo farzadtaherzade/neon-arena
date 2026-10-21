@@ -117,6 +117,126 @@ export const VIDEO = {
   FOV_MAX: 110,
 } as const;
 
+// ------------------------------------------------------------------ skins
+
+export type SkinWeapon = 'rifle' | 'knife';
+/** The rifle skin swaps the optic; the knife skin swaps the blade. */
+export type RifleOptic = 'iron' | 'reddot' | 'holo' | 'scope';
+export type KnifeBlade = 'straight' | 'cleaver' | 'saw' | 'hook';
+
+export interface SkinPalette {
+  readonly metal: number;
+  readonly dark: number;
+  readonly glow: number;
+  readonly hazard: number;
+}
+
+export interface SkinDef {
+  readonly id: string;
+  readonly weapon: SkinWeapon;
+  readonly name: string;
+  readonly flavour: string;
+  readonly price: number;
+  readonly palette: SkinPalette;
+  readonly part: RifleOptic | KnifeBlade;
+}
+
+/** What the weapons look like before anything is bought. */
+export const STANDARD_SKIN = {
+  metal: 0x5a6478,
+  dark: 0x2e3442,
+  glow: 0x46e0ff,
+  hazard: 0xf2b21e,
+} as const satisfies SkinPalette;
+
+/**
+ * The shop. Four themes, each a rifle skin and a knife skin at the same
+ * price, so a theme bought whole is a matching loadout. Buying them
+ * separately costs more — there is no bundle discount.
+ */
+export const SKINS = [
+  {
+    id: 'scrap-rifle',
+    weapon: 'rifle',
+    name: 'SCRAP RIFLE',
+    flavour: 'Bolted together from what the depot had left. It shoots straight.',
+    price: 300,
+    palette: { metal: 0x6a6f78, dark: 0x353a42, glow: 0xffc53d, hazard: 0xff8a1e },
+    part: 'iron',
+  },
+  {
+    id: 'scrap-knife',
+    weapon: 'knife',
+    name: 'SCRAP BLADE',
+    flavour: 'A sharpened piece of hull plate. Ugly, and it opens anything.',
+    price: 300,
+    palette: { metal: 0x6a6f78, dark: 0x353a42, glow: 0xffc53d, hazard: 0xff8a1e },
+    part: 'straight',
+  },
+  {
+    id: 'hazard-rifle',
+    weapon: 'rifle',
+    name: 'HAZARD MK2',
+    flavour: 'Refurbished against a live reactor. The paint is a warning.',
+    price: 900,
+    palette: { metal: 0x8a6a1e, dark: 0x3a2a12, glow: 0xff3b4e, hazard: 0xf2b21e },
+    part: 'reddot',
+  },
+  {
+    id: 'hazard-knife',
+    weapon: 'knife',
+    name: 'HAZARD EDGE',
+    flavour: 'A wide slab for cutting through the things that wear plating.',
+    price: 900,
+    palette: { metal: 0x8a6a1e, dark: 0x3a2a12, glow: 0xff3b4e, hazard: 0xf2b21e },
+    part: 'cleaver',
+  },
+  {
+    id: 'midnight-rifle',
+    weapon: 'rifle',
+    name: 'MIDNIGHT',
+    flavour: 'Black on black. You only see it when the light hits the edges.',
+    price: 2000,
+    palette: { metal: 0x2a3350, dark: 0x151a28, glow: 0x46e0ff, hazard: 0x8f6bff },
+    part: 'holo',
+  },
+  {
+    id: 'midnight-knife',
+    weapon: 'knife',
+    name: 'MIDNIGHT FANG',
+    flavour: 'A serrated spine that does not need a second swing.',
+    price: 2000,
+    palette: { metal: 0x2a3350, dark: 0x151a28, glow: 0x46e0ff, hazard: 0x8f6bff },
+    part: 'saw',
+  },
+  {
+    id: 'void-rifle',
+    weapon: 'rifle',
+    name: 'VOID',
+    flavour: 'Scoped for a range that does not exist. It still hits.',
+    price: 4500,
+    palette: { metal: 0x1d1f26, dark: 0x0d0e12, glow: 0xff3ba8, hazard: 0xff3ba8 },
+    part: 'scope',
+  },
+  {
+    id: 'void-knife',
+    weapon: 'knife',
+    name: 'VOID HOOK',
+    flavour: 'It curves back on itself. The pull is the killing part.',
+    price: 4500,
+    palette: { metal: 0x1d1f26, dark: 0x0d0e12, glow: 0xff3ba8, hazard: 0xff3ba8 },
+    part: 'hook',
+  },
+] as const satisfies readonly SkinDef[];
+
+/** What a kill is worth. A knife kill pays the same as a gun kill. */
+export const CREDITS = {
+  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25 },
+  HEADSHOT: 5,
+  WAVE: 50,
+  CAPTURE: 40,
+} as const;
+
 export const FEEDBACK = {
   HITMARK_DECAY: 6,
   VIGNETTE_DECAY: 1.1,

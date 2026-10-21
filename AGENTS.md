@@ -58,7 +58,9 @@ src/ui/          DOM-facing
   Input.ts       keyboard/mouse/pointer-lock bookkeeping
   Minimap.ts     the canvas radar
   MapScreen.ts   the full-screen tactical map (M / Tab)
-  Settings.ts    crosshair / game / video tabs + tuning panel
+  Profile.ts     the credit wallet + the loadout, in localStorage
+  Skins.ts       the shop: one swatch card per skin
+  Settings.ts    crosshair / game / video / skins tabs + tuning panel
 src/app/Game.ts  composition root, state machine, per-frame wiring
 src/main.ts      bootstrap, fixed-step loop, test API
 ```
@@ -281,7 +283,8 @@ The game has a headless entry point for automation:
   `teleportPlayer(x, z, y?)`, `settings()`, `setGame(patch)`,
   `setVideo(patch)`, `xpStats()`, `grantXp(n)`, `meteor()`, `forceMeteor()`,
   `dropStone(x, z)`, `ammo()`, `setAmmo(mag, reserve)`, `knife()`,
-  `swingKnife()`.
+  `swingKnife()`, `profile()`, `credits()`, `grantCredits(n)`, `buySkin(id)`,
+  `equipSkin(id)`.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -332,6 +335,18 @@ so the spec re-declares the shapes it uses.
 - The knife is a **cone query**, not a second raycast: `game/knife.ts` tests the
   arc, the reach and a vertical gate against every mob in front of the player.
   It cannot defuse a bomb.
+- **A skin owns its materials.** `Gun.ts` and `Knife.ts` build their own
+  `MeshStandardMaterial`/`MeshBasicMaterial` set instead of taking the shared
+  `MAT.gunMetal()` etc., because a shared material cannot be recoloured per
+  skin. That is a deliberate exception to "shared materials are never
+  disposed": a viewmodel that owns a material must dispose it. The skin's
+  palette lives in `config.ts` under `SKINS`, and a skin also swaps a part —
+  the rifle's optic or the knife's blade.
+- **The credits wallet is a career, the score is a run.** `Profile` (in
+  `ui/Profile.ts`) lives in local storage next to the best record, so credits
+  survive death; the run score does not. Every payout (`Game.killEnemy`, the
+  capture, the wave clear) writes through `Profile.addCredits`, which flushes
+  to storage each time, so a crash loses nothing.
 - The E2E takes ~2 minutes and has a 15-minute ceiling. Budget new waits
   deliberately rather than raising the timeout.
 - Ramps, platforms, enemy siege behaviour and deck capture are one system with

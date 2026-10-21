@@ -31,6 +31,8 @@ export interface HudModel {
   level: number;
   xp: number;
   xpNeed: number;
+  /** The credits wallet — it survives a death, so it is shown, not spent. */
+  credits: number;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -62,6 +64,7 @@ export class Hud {
   private scoreVal = $('scoreVal');
   private waveVal = $('waveVal');
   private enemyVal = $('enemyVal');
+  private creditVal = $('creditVal');
   private reloadBar = $('reloadBar');
   private reloadFill = $('reloadFill');
   private staminaFill = $('staminaFill');
@@ -266,6 +269,11 @@ export class Hud {
     if (this.last.hostiles !== hostiles) {
       this.last.hostiles = hostiles;
       this.enemyVal.textContent = String(hostiles);
+    }
+
+    if (this.last.credits !== model.credits) {
+      this.last.credits = model.credits;
+      this.creditVal.textContent = String(model.credits);
     }
 
     // Hide/show on transition; the fill width is refreshed only while active.

@@ -202,6 +202,21 @@ function exposeTestApi(game: Game) {
       game.settings.setVideo(patch as never);
       return game.settings.values.video;
     },
+
+    /** The credits wallet and the loadout. */
+    profile: () => game.profile.data,
+
+    /** The credit balance. */
+    credits: () => game.profile.data.credits,
+
+    /** Bank credits, for testing the shop. */
+    grantCredits: (n: number) => game.profile.addCredits(n),
+
+    /** Buy a skin with credits. */
+    buySkin: (id: string) => game.buySkin(id),
+
+    /** Equip an owned skin. */
+    equipSkin: (id: string) => game.equipSkin(id),
   };
 }
 

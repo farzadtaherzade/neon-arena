@@ -907,3 +907,94 @@ input.toggle {
     opacity: 0.35;
   }
 }
+
+/* ------------------------------------------------------------------- skins */
+
+#stats .gold {
+  color: var(--gold, #ffc53d);
+}
+.skrow {
+  margin: 0 0 12px;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #9aa7bd;
+}
+.skrow #creditBalance {
+  color: #ffc53d;
+  font-weight: 700;
+}
+#skinList {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.skincard {
+  padding: 10px;
+  background: #0d131e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.skincard.equipped {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(70, 224, 255, 0.25);
+}
+.skincard.locked {
+  opacity: 0.55;
+}
+.skinhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.skname {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #fff;
+}
+.skweap {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #7f8ba0;
+}
+.skflav {
+  margin: 6px 0 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #9aa7bd;
+}
+.skchips {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.skchips i {
+  width: 22px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.skinfoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skpart {
+  flex: 1;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #7f8ba0;
+}
+.skprice {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 11px;
+  color: #ffc53d;
+}
+.skinfoot .btn {
+  padding: 4px 10px;
+  font-size: 10px;
+}

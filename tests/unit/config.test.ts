@@ -5,6 +5,7 @@ import {
   BOMB,
   CAMERA,
   CAPTURE,
+  CREDITS,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
@@ -17,6 +18,7 @@ import {
   RUNNER,
   SAPPER,
   SCREEN,
+  SKINS,
   START_HP,
   STATE,
   TANK,
@@ -291,5 +293,52 @@ describe('config', () => {
     expect(TANK.ARMOUR_CUT).toBeGreaterThan(0);
     expect(TANK.ARMOUR_CUT).toBeLessThan(ENEMY.SHIELD_CUT);
     expect(TANK.WINDUP).toBeGreaterThan(ENEMY.WINDUP);
+  });
+
+  it('keeps the shop coherent', () => {
+    // Four rifle skins and four knife skins, every id unique.
+    expect(SKINS).toHaveLength(8);
+    expect(SKINS.filter((s) => s.weapon === 'rifle')).toHaveLength(4);
+    expect(SKINS.filter((s) => s.weapon === 'knife')).toHaveLength(4);
+    expect(new Set(SKINS.map((s) => s.id)).size).toBe(SKINS.length);
+    // Every skin is named, priced and has a part the viewmodel can build.
+    for (const skin of SKINS) {
+      expect(skin.name.length).toBeGreaterThan(0);
+      expect(skin.flavour.length).toBeGreaterThan(0);
+      expect(skin.price).toBeGreaterThan(0);
+      if (skin.weapon === 'rifle') expect(['iron', 'reddot', 'holo', 'scope']).toContain(skin.part);
+      else expect(['straight', 'cleaver', 'saw', 'hook']).toContain(skin.part);
+    }
+    // The four tiers, cheapest first.
+    const prices = [...new Set(SKINS.map((s) => s.price))].sort((a, b) => a - b);
+    expect(prices).toEqual([300, 900, 2000, 4500]);
+    // Every palette colour is a real colour, and the two weapons of a theme match.
+    for (const skin of SKINS) {
+      for (const colour of Object.values(skin.palette)) {
+        expect(Number.isInteger(colour)).toBe(true);
+        expect(colour).toBeGreaterThanOrEqual(0);
+        expect(colour).toBeLessThanOrEqual(0xffffff);
+      }
+    }
+    for (const rifle of SKINS.filter((s) => s.weapon === 'rifle')) {
+      const knife = SKINS.find((s) => s.weapon === 'knife' && s.id === rifle.id.replace('rifle', 'knife'));
+      expect(knife).toBeDefined();
+      expect(knife?.price).toBe(rifle.price);
+      expect(knife?.palette).toEqual(rifle.palette);
+    }
+  });
+
+  it('keeps the credit economy coherent', () => {
+    // Every mob is worth something, and a tank is worth the most.
+    expect(Object.keys(CREDITS.KILL).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
+    for (const value of Object.values(CREDITS.KILL)) expect(value).toBeGreaterThan(0);
+    expect(CREDITS.KILL.tank).toBeGreaterThan(CREDITS.KILL.grunt);
+    expect(CREDITS.HEADSHOT).toBeGreaterThan(0);
+    expect(CREDITS.WAVE).toBeGreaterThan(0);
+    expect(CREDITS.CAPTURE).toBeGreaterThan(0);
+    // A wave's worth of kills plus the wave bonus must reach the cheapest skin
+    // in a reasonable number of waves, or the shop is dead on arrival.
+    const waveWorth = CREDITS.KILL.grunt * 3 + CREDITS.WAVE;
+    expect(waveWorth * 10).toBeGreaterThan(300);
   });
 });
