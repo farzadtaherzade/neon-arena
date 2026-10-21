@@ -17,15 +17,23 @@ import { MAT } from '../Materials';
  */
 
 const C = {
-  body: 0x2b3552,
-  light: 0x40527a,
-  dark: 0x1a2233,
+  body: 0x38456a,
+  light: 0x55699b,
+  dark: 0x232d45,
   panel: 0xa06d1a,
   panelDark: 0x5b3f16,
   hazard: 0xf2b21e,
   cyan: 0x2aa5c4,
   magenta: 0xff3ba8,
 } as const;
+
+/**
+ * Painted trim colours for the maze blocks.
+ *
+ * The crates were all one blue, which made the maze read as a flat slab. Each
+ * block now gets one of these so the lanes have colour landmarks to aim at.
+ */
+export const COVER_ACCENTS = [C.cyan, C.hazard, C.light, C.panel, C.cyan, C.magenta] as const;
 
 interface ColoredPart {
   geo: THREE.BufferGeometry;
@@ -130,7 +138,7 @@ function assemble(body: ColoredPart[], glow: ColoredPart[]): StructureAsset {
  * vents and a hazard-painted top rail. The silhouette stays within the collision
  * box except for a few centimetres of trim.
  */
-export function makeCover(w: number, h: number, d: number): StructureAsset {
+export function makeCover(w: number, h: number, d: number, accent: number = C.cyan): StructureAsset {
   const body: ColoredPart[] = [];
   const glow: ColoredPart[] = [];
   const hw = w / 2;
@@ -167,8 +175,12 @@ export function makeCover(w: number, h: number, d: number): StructureAsset {
   box(glow, C.hazard, w, 0.05, 0.08, 0, h + 0.03, hd);
   box(glow, C.hazard, 0.08, 0.05, d, -hw, h + 0.03, 0);
   box(glow, C.hazard, 0.08, 0.05, d, hw, h + 0.03, 0);
-  box(glow, C.cyan, w * 0.22, 0.045, 0.03, 0, h * 0.8, hd + 0.045);
-  box(glow, C.cyan, 0.04, 0.18, 0.03, hw - 0.32, h * 0.28, hd + 0.045);
+  box(glow, accent, w * 0.22, 0.045, 0.03, 0, h * 0.8, hd + 0.045);
+  box(glow, accent, 0.04, 0.18, 0.03, hw - 0.32, h * 0.28, hd + 0.045);
+
+  // Accent stripes on the long faces, so every block reads as its own landmark.
+  box(glow, accent, 0.14, h * 0.62, 0.03, hw - 0.45, h * 0.44, hd + 0.05);
+  box(glow, accent, 0.14, h * 0.62, 0.03, -(hw - 0.45), h * 0.44, hd + 0.05);
 
   return assemble(body, glow);
 }
@@ -387,4 +399,69 @@ export function makeRamp(width: number, length: number, height: number): RampAss
   ribs.castShadow = false;
   group.add(ribs);
   return { group, solid, length };
+}
+
+/**
+ * A clock tower: plinth, tapering shaft, clock housing, spire.
+ *
+ * The clock face is a live canvas rather than geometry, so it is not built
+ * here — `render/ClockTower.ts` hangs two readable faces off the housing.
+ */
+export function makeClockTower(): StructureAsset {
+  const body: ColoredPart[] = [];
+  const glow: ColoredPart[] = [];
+
+  // Plinth.
+  box(body, C.dark, 10, 0.4, 10, 0, 0.2, 0);
+  box(body, C.body, 9, 1.2, 9, 0, 1, 0);
+  for (const [ax, az] of [
+    [4.45, 0],
+    [-4.45, 0],
+    [0, 4.45],
+    [0, -4.45],
+  ] as const) {
+    box(glow, C.cyan, ax === 0 ? 0.12 : 9.1, 0.07, az === 0 ? 9.1 : 0.12, ax, 1.64, az);
+  }
+
+  // Shaft: three tapering sections, ribbed at the corners, lit windows.
+  const sections = [
+    { y: 1.6, h: 4, w: 7.2 },
+    { y: 5.6, h: 4, w: 6.4 },
+    { y: 9.6, h: 4, w: 5.6 },
+  ];
+  for (const s of sections) {
+    box(body, C.body, s.w, s.h, s.w, 0, s.y + s.h / 2, 0);
+    for (const sx of [-1, 1] as const) {
+      for (const sz of [-1, 1] as const) {
+        box(body, C.light, 0.55, s.h, 0.55, sx * (s.w / 2 - 0.27), s.y + s.h / 2, sz * (s.w / 2 - 0.27));
+      }
+    }
+    // Window slots on the two faces that face the arena.
+    for (let i = 0; i < 3; i++) {
+      const x = (i - 1) * (s.w * 0.26);
+      box(glow, C.cyan, 0.5, 1.3, 0.05, x, s.y + s.h * 0.55, s.w / 2 + 0.03);
+      box(glow, C.cyan, 0.05, 1.3, 0.5, s.w / 2 + 0.03, s.y + s.h * 0.55, x);
+    }
+  }
+
+  // Clock housing: a wide drum the faces sit on.
+  box(body, C.body, 9.4, 6, 9.4, 0, 16.6, 0);
+  box(body, C.light, 10, 0.5, 10, 0, 19.85, 0);
+  box(body, C.dark, 8.6, 0.4, 8.6, 0, 19.35, 0);
+  for (const [ax, az] of [
+    [4.75, 0],
+    [-4.75, 0],
+    [0, 4.75],
+    [0, -4.75],
+  ] as const) {
+    box(glow, C.hazard, ax === 0 ? 0.14 : 9.5, 0.09, az === 0 ? 9.5 : 0.14, ax, 20.15, az);
+  }
+
+  // Spire.
+  box(body, C.body, 6, 1.6, 6, 0, 21, 0);
+  box(body, C.light, 4, 1.4, 4, 0, 22.5, 0);
+  box(body, C.dark, 2, 1.2, 2, 0, 23.8, 0);
+  box(glow, C.magenta, 0.5, 0.5, 0.5, 0, 24.6, 0);
+
+  return assemble(body, glow);
 }

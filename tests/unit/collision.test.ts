@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
 import { WORLD } from '../../src/game/config';
 import { type Aabb, CollisionWorld, type Ramp, rampHeight } from '../../src/game/world/collision';
-import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, starfieldPositions } from '../../src/game/world/layout';
+import {
+  OBSTACLES,
+  PLATFORM_H,
+  PLATFORMS,
+  RAMPS,
+  rampRotation,
+  starfieldPositions,
+} from '../../src/game/world/layout';
 
 const BOX: Aabb = { minX: -2, maxX: 2, minZ: -2, maxZ: 2 };
 
@@ -272,5 +279,27 @@ describe('layout', () => {
     expect(Array.from(starfieldPositions(new Rng(3), 8))).toEqual(
       Array.from(starfieldPositions(new Rng(3), 8)),
     );
+  });
+});
+
+describe('ramp mesh orientation', () => {
+  // The wedge mesh climbs along its local +x axis, and `render/Arena.ts` turns
+  // the group by `rampRotation` to aim it at the ramp's up vector. When the
+  // two disagree the wedge points sideways and the ramp reads as broken.
+  it('aims the uphill face along the up vector', () => {
+    for (const [, , , , upX, upZ] of RAMPS) {
+      const theta = rampRotation(upX, upZ);
+      // A yaw of theta maps local +x to (cos theta, -sin theta).
+      expect(Math.cos(theta)).toBeCloseTo(upX, 10);
+      expect(-Math.sin(theta)).toBeCloseTo(upZ, 10);
+    }
+  });
+
+  it('keeps the ramp width perpendicular to the climb', () => {
+    for (const [, , , , upX, upZ] of RAMPS) {
+      const theta = rampRotation(upX, upZ);
+      // Local +z maps to (sin theta, cos theta).
+      expect(Math.sin(theta) * upX + Math.cos(theta) * upZ).toBeCloseTo(0, 10);
+    }
   });
 });

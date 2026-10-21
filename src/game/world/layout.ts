@@ -48,6 +48,13 @@ export const RAMPS: readonly (readonly [number, number, number, number, number, 
 export const REACTOR = { x: 0, z: 0, w: 9, h: 5.5, d: 9 } as const;
 
 /**
+ * The clock tower: a tall landmark in the north-west corner, clear of the maze.
+ * Its face shows the wave and the countdown, so it has to be visible from the
+ * far side of the arena.
+ */
+export const CLOCK_TOWER = { x: -36, z: -36, w: 10, d: 10, h: 24 } as const;
+
+/**
  * One quadrant of the maze, as `[x, z, width, height, depth]` with x and z
  * negative. `OBSTACLES` mirrors each entry four ways, which is what guarantees
  * the map is fair: every lane has a twin across the centre.
@@ -77,6 +84,15 @@ export const OBSTACLES: readonly (readonly [number, number, number, number, numb
         [-x, -z, w, h, d],
       ] as const,
   );
+
+/**
+ * The Y rotation that points a ramp's uphill face (its local +x axis) along
+ * the given up vector. The wedge mesh is built climbing along +x, so mesh and
+ * collider only agree when this is right.
+ */
+export function rampRotation(upX: number, upZ: number): number {
+  return Math.atan2(-upZ, upX);
+}
 
 export const STAR_COUNT = 420;
 export const STAR_RADIUS = 130;

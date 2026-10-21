@@ -43,6 +43,7 @@ src/game/        simulation — pure logic, no Three.js, no DOM
 src/render/      everything that owns meshes
   Arena.ts       renderer, scene, camera rig, lights, floor, walls, cover
   CapturePad.ts  the live deck's ring, progress disc and beacon beam
+  ClockTower.ts  the clock tower landmark and its live canvas readout
   EnemyView.ts   an enemy's meshes + health bar
   BombView.ts    a bomb's meshes + blink
   Gun.ts         the first-person viewmodel
@@ -54,7 +55,8 @@ src/ui/          DOM-facing
   Hud.ts         HUD elements, screens, banners, threat warning
   Input.ts       keyboard/mouse/pointer-lock bookkeeping
   Minimap.ts     the canvas radar
-  Settings.ts    crosshair presets + tuning panel
+  MapScreen.ts   the full-screen tactical map (M / Tab)
+  Settings.ts    crosshair / game / video tabs + tuning panel
 src/app/Game.ts  composition root, state machine, per-frame wiring
 src/main.ts      bootstrap, fixed-step loop, test API
 ```
@@ -274,7 +276,9 @@ The game has a headless entry point for automation:
   `aim(yaw, pitch)`, `enemyPos()`, `camState()`, `renderInfo()`,
   `gunVisible()`, `inputStats()`, `capture()`, `alarm()`, `bombs()`,
   `spawnBomb(x, z)`, `forceWave(n)`, `crosshair()`, `setCrosshair(patch)`,
-  `teleportPlayer(x, z, y?)`.
+  `teleportPlayer(x, z, y?)`, `settings()`, `setGame(patch)`,
+  `setVideo(patch)`, `xpStats()`, `grantXp(n)`, `meteor()`, `forceMeteor()`,
+  `dropStone(x, z)`.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -294,6 +298,19 @@ so the spec re-declares the shapes it uses.
   `XP_LEVEL.HEAL` through the same `healLeft` pool the capture uses.
 - The meteor shower is pure in `game/meteor.ts`; `Game` supplies the ground
   height and the blocked test, and `Arena.setSkyTint(tint)` drives the sky.
+- **Settings are one bundle.** `localStorage` key `neon.settings` holds
+  `{ crosshair, game, video }`; the old flat `neon.crosshair` blob is migrated
+  once on first read. `Settings.setCrosshair/setGame/setVideo` each patch one
+  group and then re-apply the whole bundle, so a new group only needs a
+  sanitisers, a row list and a line in `Game`'s `onChange` hook.
+- **The map is a screen, not a HUD widget.** `M` and `Tab` both toggle it;
+  opening it pauses the game and releases the pointer, and closing it re-locks.
+  `Input` calls `preventDefault()` on `Tab` so the browser does not steal the
+  focus, and the settings panel swallows the key while it is open.
+- The ramp mesh turns by `rampRotation(upX, upZ)` from `game/world/layout.ts`.
+  The wedge is built climbing along its local +x, so the rotation has to come
+  from the up vector — a `PI` flip only works for the westward ramp and left
+  the north and south ramps pointing sideways.
 - The dark-warehouse look comes from background, fog and the floor/wall palette.
   Do not get moody by starving the ambient/hemisphere lights — below roughly
   `1.0` hemisphere the enemy `MeshStandardMaterial`s lose their body colour and

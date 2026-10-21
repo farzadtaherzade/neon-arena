@@ -168,25 +168,24 @@ function exposeTestApi(game: Game) {
     /** Drop a stone on an exact spot. */
     dropStone: (x: number, z: number) => game.dropStone(x, z),
 
-    crosshair: () => {
-      const v = game.settings.values;
-      return {
-        ...v,
-        mouseSensitivity: v.sensitivity,
-        mouseSens: v.sensitivity,
-        lookSensitivity: v.sensitivity,
-      };
-    },
+    /** The whole settings bundle: crosshair, game and video. */
+    settings: () => game.settings.values,
+
+    crosshair: () => game.settings.values.crosshair,
 
     setCrosshair: (patch: Record<string, unknown>) => {
-      game.settings.set(patch as never);
-      const v = game.settings.values;
-      return {
-        ...v,
-        mouseSensitivity: v.sensitivity,
-        mouseSens: v.sensitivity,
-        lookSensitivity: v.sensitivity,
-      };
+      game.settings.setCrosshair(patch as never);
+      return game.settings.values.crosshair;
+    },
+
+    setGame: (patch: Record<string, unknown>) => {
+      game.settings.setGame(patch as never);
+      return game.settings.values.game;
+    },
+
+    setVideo: (patch: Record<string, unknown>) => {
+      game.settings.setVideo(patch as never);
+      return game.settings.values.video;
     },
   };
 }

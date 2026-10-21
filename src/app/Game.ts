@@ -42,6 +42,7 @@ import { Pick } from '../render/Pick';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
+import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
 import { Settings } from '../ui/Settings';
 
@@ -109,6 +110,15 @@ export class Game {
   private bombs: Bomb[] = [];
   private bombViews = new Map<Bomb, BombView>();
   private minimap: Minimap;
+  /** The full-screen tactical map, and whether it is open right now. */
+  private map: MapScreen;
+  private mapOpen = false;
+  /**
+   * Set while the map holds a pointer lock it released itself. The unlock is
+   * reported asynchronously, and it can land *after* the map closed — which
+   * would re-pause a run the map had just resumed.
+   */
+  private mapLockRelease = false;
 
   /** XP orbs on the floor and the meshes backing them. */
   private xps: Xp[] = [];
@@ -126,7 +136,9 @@ export class Game {
   /** Reused minimap blips, mutated each frame instead of reallocated. */
   private readonly mapTowers: MapTower[] = [];
   /** Current camera FOV, lerped toward the ADS target so it never pops. */
-  private fov = CAMERA.FOV;
+  private fov: number = CAMERA.FOV;
+  /** Base FOV from the settings panel; the ADS target is a fraction of it. */
+  private baseFov: number = CAMERA.FOV;
 
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
@@ -179,6 +191,7 @@ export class Game {
     }
     this.fx = new Fx(this.arena.scene);
     this.minimap = new Minimap();
+    this.map = new MapScreen();
     this.arena.camera.add(this.gun.group);
     this.pick.add(...this.arena.solids);
 
@@ -189,14 +202,19 @@ export class Game {
         if (this.state === STATE.PLAYING) this.input.release();
       },
       onChange: (values) => {
-        this.player.sens = values.sensitivity;
-        this.sfx.setMuted(values.mute);
-        this.music.setMuted(values.mute);
+        this.player.sens = values.game.sensitivity;
+        this.sfx.setMuted(values.game.mute);
+        this.music.setMuted(values.game.mute);
+        this.baseFov = values.game.fov;
+        this.arena.setVideo(values.video);
       },
     });
-    this.player.sens = this.settings.values.sensitivity;
-    this.sfx.setMuted(this.settings.values.mute);
-    this.music.setMuted(this.settings.values.mute);
+    this.player.sens = this.settings.values.game.sensitivity;
+    this.sfx.setMuted(this.settings.values.game.mute);
+    this.music.setMuted(this.settings.values.game.mute);
+    this.baseFov = this.settings.values.game.fov;
+    this.fov = this.baseFov;
+    this.arena.setVideo(this.settings.values.video);
 
     this.weapon = new Weapon({
       onShot: () => this.resolveShot(),
@@ -213,11 +231,15 @@ export class Game {
         isSettingsOpen: () => this.settings.isOpen,
         onJump: () => this.player.queueJump(),
         onReload: () => this.weapon.startReload(),
-        onLook: (dx, dy) => this.player.look(dx, dy, this.settings.values.sensitivity),
+        onLook: (dx, dy) => {
+          const g = this.settings.values.game;
+          this.player.look(dx, g.invertY ? -dy : dy, g.sensitivity);
+        },
         onLockRequest: () => this.input.lock(),
         onLockChange: (locked) => this.onLockChange(locked),
         onToggleSettings: () => this.settings.toggle(),
         onCloseSettings: () => this.settings.close(),
+        onToggleMap: () => this.toggleMap(),
       },
       test,
     );
@@ -247,8 +269,61 @@ export class Game {
       plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
     };
 
-    document.getElementById('startScreen')!.addEventListener('click', () => this.start(false));
+    document.getElementById('menuDeploy')!.addEventListener('click', () => this.start(false));
+    document.getElementById('menuControls')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('menuKeys')!.toggleAttribute('hidden');
+    });
+    document.getElementById('pauseResume')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.input.lock();
+    });
+    document.getElementById('pauseMenu')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toMenu();
+    });
+    document.getElementById('overRetry')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.start(false);
+    });
+    document.getElementById('overMenu')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toMenu();
+    });
     document.getElementById('gameOverScreen')!.addEventListener('click', () => this.start(false));
+  }
+
+  /** Back to the main menu, from the pause or the game-over screen. */
+  toMenu(): void {
+    this.state = STATE.MENU;
+    this.input.firing = false;
+    this.input.release();
+    this.hud.setVisible(false);
+    this.hud.showScreen(SCREEN.MENU);
+    this.music.stop();
+  }
+
+  /**
+   * Open or close the tactical map.
+   *
+   * The run is paused while the map is open, so the map itself owns the state
+   * change rather than waiting for the pointer-lock flow.
+   */
+  toggleMap(): void {
+    if (this.mapOpen) {
+      this.mapOpen = false;
+      this.map.hide();
+      this.state = STATE.PLAYING;
+      if (!this.test) this.input.lock();
+      return;
+    }
+    this.mapOpen = true;
+    this.state = STATE.PAUSED;
+    this.input.firing = false;
+    this.map.show();
+    // Only a lock we actually hold produces an unlock report to swallow.
+    this.mapLockRelease = this.input.hasPointerLock;
+    this.input.release();
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -256,7 +331,7 @@ export class Game {
   start(skipLock = false): void {
     this.sfx.init();
     this.music.init();
-    this.music.setMuted(this.settings.values.mute);
+    this.music.setMuted(this.settings.values.game.mute);
     this.music.start();
     this.reset();
     this.beginWave(1);
@@ -320,10 +395,16 @@ export class Game {
   }
 
   private onLockChange(locked: boolean): void {
+    if (!locked && this.mapLockRelease) {
+      // The map took the pointer lock away on purpose; that is not a pause.
+      this.mapLockRelease = false;
+      return;
+    }
+    if (locked) this.mapLockRelease = false;
     if (!locked && this.state === STATE.PLAYING) {
       this.state = STATE.PAUSED;
       this.input.firing = false;
-      if (!this.test) this.hud.showScreen(SCREEN.PAUSE);
+      if (!this.test && !this.mapOpen) this.hud.showScreen(SCREEN.PAUSE);
     } else if (locked && this.state === STATE.PAUSED) {
       this.state = STATE.PLAYING;
       if (!this.test) this.hud.showScreen(SCREEN.NONE);
@@ -858,6 +939,7 @@ export class Game {
 
     this.arena.camera.getWorldQuaternion(this.camQuat);
     this.arena.update(this.elapsed);
+    this.arena.setClock(this.wave, this.waves.intermission, this.aliveCount);
     for (const h of this.hostiles) h.view.sync(player.position, this.camQuat);
 
     // Bombs blink, and the closest live one drives the HUD warning.
@@ -904,7 +986,7 @@ export class Game {
     this.fx.update(dt);
 
     // ADS zoom: ease the camera FOV to its target instead of popping.
-    const fovTarget = this.weapon.aiming ? CAMERA.FOV * CAMERA.AIM_FOV_SCALE : CAMERA.FOV;
+    const fovTarget = this.weapon.aiming ? this.baseFov * CAMERA.AIM_FOV_SCALE : this.baseFov;
     if (Math.abs(this.fov - fovTarget) > 0.05) {
       this.fov += (fovTarget - this.fov) * Math.min(1, dt * 9);
       this.arena.camera.fov = this.fov;
@@ -937,11 +1019,14 @@ export class Game {
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
     }
+    if (this.mapOpen) {
+      this.map.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed);
+    }
 
     this.hud.setHitmark(this.feedback.hitT);
     this.hud.setVignette(m, this.elapsed);
     this.hud.setADS(this.weapon.aiming);
-    if (this.state === STATE.PLAYING) this.hud.update(m, this.settings.values);
+    if (this.state === STATE.PLAYING) this.hud.update(m, this.settings.values.crosshair);
   }
 }
 

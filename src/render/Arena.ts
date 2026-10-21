@@ -1,12 +1,32 @@
 import * as THREE from 'three';
 import type { Rng } from '../core/rng';
-import { CAMERA, METEOR, WORLD } from '../game/config';
+import { CAMERA, METEOR, VIDEO, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
-import { OBSTACLES, PLATFORM_H, PLATFORMS, RAMPS, REACTOR, starfieldPositions } from '../game/world/layout';
+import {
+  OBSTACLES,
+  PLATFORM_H,
+  PLATFORMS,
+  RAMPS,
+  REACTOR,
+  rampRotation,
+  starfieldPositions,
+} from '../game/world/layout';
 import { CapturePad } from './CapturePad';
+import { ClockTower } from './ClockTower';
 import { mobWarmup } from './models/MobModel';
-import { makeCover, makeDeck, makeRamp, makeReactor, makeWall } from './models/StructureKit';
+import { COVER_ACCENTS, makeCover, makeDeck, makeRamp, makeReactor, makeWall } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
+
+/** Where the corner accent lights sit, and where the clock tower stands. */
+const CORNER_LIGHTS: readonly (readonly [number, number])[] = [
+  [-40, -40],
+  [-40, 40],
+  [40, -40],
+  [40, 40],
+];
+
+/** The clock tower stands in the north-west corner, clear of the maze. */
+const CLOCK_TOWER: readonly [number, number] = [-36, -36];
 
 /**
  * Renderer, scene, lights and every static mesh.
@@ -28,18 +48,27 @@ export class Arena {
   private pitchObj = new THREE.Group();
 
   /** The sky. Mutated in place by `setSkyTint`, so the renderer sees the change. */
-  private readonly bg = new THREE.Color(0x07090f);
-  private readonly skyBase = new THREE.Color(0x07090f);
+  // The arena reads as a lit industrial yard, not a black void: the sky is a
+  // deep blue rather than black, and the fog reaches past the far wall so the
+  // maze fades into haze instead of into nothing.
+  private readonly bg = new THREE.Color(0x0c1222);
+  private readonly skyBase = new THREE.Color(0x0c1222);
   private readonly skyStorm = new THREE.Color(METEOR.SKY_COLOR);
-  private readonly fog = new THREE.Fog(0x07090f, 34, 150);
+  private readonly fog = new THREE.Fog(0x0c1222, 52, 210);
   private hemi!: THREE.HemisphereLight;
-  private readonly hemiBase = 1.15;
+  private readonly hemiBase = 1.35;
   /** Last applied sky tint, so the sky is only re-coloured when it changes. */
   private tint = -1;
   private reactorRings: THREE.Group[] = [];
   private reactorCore: THREE.Mesh | null = null;
   private reactorLight: THREE.PointLight | null = null;
   private mobWarmupGroup: THREE.Group | null = null;
+
+  /** The clock tower landmark, with its live face. */
+  clock: ClockTower | null = null;
+
+  /** Video options from the settings panel, and the values they currently hold. */
+  private video = { quality: 2, shadows: true, fog: true };
 
   constructor(
     private readonly collision: CollisionWorld,
@@ -71,6 +100,7 @@ export class Arena {
     this.reactor();
     this.platforms();
     this.ramps();
+    this.clockTower();
     this.capturePads();
     this.stars(rng);
     this.mobWarmupGroup = mobWarmup();
@@ -81,6 +111,40 @@ export class Arena {
 
   get rig(): { yawObj: THREE.Group; pitchObj: THREE.Group } {
     return { yawObj: this.yawObj, pitchObj: this.pitchObj };
+  }
+
+  /**
+   * Apply the video options.
+   *
+   * Only the values that actually changed are touched: switching the shadow map
+   * on or off forces every material to recompile, which is far too expensive
+   * to do on every settings change.
+   */
+  setVideo(video: { quality: number; shadows: boolean; fog: boolean }): void {
+    if (video.shadows !== this.video.shadows) {
+      this.video.shadows = video.shadows;
+      this.renderer.shadowMap.enabled = video.shadows;
+      // The renderer compiles materials per shadow setting, so they need a nudge.
+      this.scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        const mat = mesh.material;
+        if (!mat) return;
+        if (Array.isArray(mat))
+          mat.forEach((m) => {
+            m.needsUpdate = true;
+          });
+        else mat.needsUpdate = true;
+      });
+    }
+    if (video.fog !== this.video.fog) {
+      this.video.fog = video.fog;
+      this.scene.fog = video.fog ? this.fog : null;
+    }
+    if (video.quality !== this.video.quality) {
+      this.video.quality = video.quality;
+      const cap = VIDEO.QUALITY_PIXELS[video.quality] ?? 2;
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, cap));
+    }
   }
 
   resize(): void {
@@ -133,7 +197,14 @@ export class Arena {
     // enemies keep their body colours instead of reading as black silhouettes.
     this.hemi = new THREE.HemisphereLight(0x6f86b0, 0x2a3040, this.hemiBase);
     this.scene.add(this.hemi);
-    this.scene.add(new THREE.AmbientLight(0x2e3448, 0.7));
+    this.scene.add(new THREE.AmbientLight(0x2e3448, 0.85));
+    // Corner uplights: the maze corners sat in pure shadow, which is what made
+    // the arena read as flat. Four cheap point lights give them depth.
+    for (const [x, z] of CORNER_LIGHTS) {
+      const lamp = new THREE.PointLight(0x2aa5c4, 26, 52, 2);
+      lamp.position.set(x, 7, z);
+      this.scene.add(lamp);
+    }
 
     const sun = new THREE.DirectionalLight(0xffd9a0, 2.2);
     sun.position.set(36, 58, 22);
@@ -187,8 +258,8 @@ export class Arena {
   }
 
   private cover(): void {
-    for (const [x, z, w, h, d] of OBSTACLES) {
-      const asset = makeCover(w, h, d);
+    for (const [i, [x, z, w, h, d]] of OBSTACLES.entries()) {
+      const asset = makeCover(w, h, d, COVER_ACCENTS[i % COVER_ACCENTS.length]);
       asset.group.position.set(x, 0, z);
       this.scene.add(asset.group);
       this.blockAt(asset.solid, x, z, w / 2, d / 2, h);
@@ -224,6 +295,27 @@ export class Arena {
    * collider, so the pad is something you circle rather than stand on dead
    * centre. Only the wave's live pad is drawn — the beacons carry the rest.
    */
+  /** The clock tower: a landmark you can read the wave from across the map. */
+  private clockTower(): void {
+    const tower = new ClockTower(CLOCK_TOWER[0], CLOCK_TOWER[1]);
+    this.scene.add(tower.group);
+    this.clock = tower;
+    this.blockAt(tower.solid, CLOCK_TOWER[0], CLOCK_TOWER[1], 5, 5, 24);
+  }
+
+  /**
+   * Write the clock face: the wave, the countdown to the next one and what is
+   * still alive. Nothing is redrawn until the readout changes.
+   */
+  setClock(wave: number, intermission: number, hostiles: number): void {
+    if (!this.clock) return;
+    if (intermission > 0) {
+      this.clock.setReadout('NEXT', `${Math.ceil(intermission)}s`, `WAVE ${wave + 1}`);
+    } else {
+      this.clock.setReadout('WAVE', String(wave), `HOSTILES ${hostiles}`);
+    }
+  }
+
   private capturePads(): void {
     for (const [x, z] of PLATFORMS) {
       const pad = new CapturePad({ x, z, y: PLATFORM_H });
@@ -243,9 +335,10 @@ export class Arena {
     for (const [x, z, width, length, upX, upZ] of RAMPS) {
       const asset = makeRamp(width, length, PLATFORM_H);
       asset.group.position.set(x, 0, z);
-      // Build in local +x and mirror the whole ramp for the -x / -z cases, so
-      // there is one geometry path instead of two mirrored ones.
-      if (upX < 0 || upZ < 0) asset.group.rotation.y = Math.PI;
+      // The wedge is built climbing along local +x, so the mesh is turned to
+      // point at the up vector. A PI flip only works for the -x ramp: it left
+      // the north and south ramps rotated 90° off their own collider.
+      asset.group.rotation.y = rampRotation(upX, upZ);
       this.scene.add(asset.group);
       this.solids.push(asset.solid);
 

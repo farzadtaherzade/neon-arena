@@ -103,6 +103,18 @@ export const CAMERA = {
   AIM_FOV_SCALE: 0.82,
 } as const;
 
+/**
+ * Video options exposed by the settings panel.
+ *
+ * `QUALITY_PIXELS` is the device-pixel-ratio cap per quality level, so "low"
+ * renders at 1× and "high" at the retina cap.
+ */
+export const VIDEO = {
+  QUALITY_PIXELS: [1, 1.5, 2],
+  FOV_MIN: 60,
+  FOV_MAX: 110,
+} as const;
+
 export const FEEDBACK = {
   HITMARK_DECAY: 6,
   VIGNETTE_DECAY: 1.1,
@@ -356,7 +368,7 @@ export const STATE = {
 
 export const SCREEN = {
   NONE: 'none',
-  START: 'start',
+  MENU: 'menu',
   PAUSE: 'pause',
   GAMEOVER: 'gameover',
 } as const;
