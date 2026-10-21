@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { WEAPON } from '../../src/game/config';
+import { AMMO, WEAPON } from '../../src/game/config';
 import { Weapon, type WeaponHooks } from '../../src/game/weapon';
 
 function makeWeapon() {
@@ -127,8 +127,63 @@ describe('Weapon', () => {
     w.startReload();
     w.reset();
     expect(w.ammo).toBe(WEAPON.MAG);
+    expect(w.reserve).toBe(AMMO.RESERVE_START);
     expect(w.reloading).toBe(false);
     expect(w.bloom).toBe(0);
     expect(w.flashT).toBe(0);
+  });
+
+  it('reloads out of the reserve', () => {
+    w.ammo = 2;
+    w.reserve = 30;
+    w.startReload();
+    expect(w.reloading).toBe(true);
+    for (let i = 0; i < 120 && w.reloading; i++) w.update(1 / 60, 0, false);
+    expect(w.ammo).toBe(WEAPON.MAG);
+    expect(w.reserve).toBe(30 - (WEAPON.MAG - 2));
+  });
+
+  it('cannot reload with an empty reserve', () => {
+    w.ammo = 2;
+    w.reserve = 0;
+    w.startReload();
+    expect(w.reloading).toBe(false);
+  });
+
+  it('goes dry when the magazine and the reserve are both empty', () => {
+    w.ammo = 0;
+    w.reserve = 0;
+    expect(w.isDry).toBe(true);
+    w.update(1 / 60, 0, true);
+    expect(events).toContain('dry');
+    expect(w.ammo).toBe(0);
+  });
+
+  it('is not dry while there is still a round in the magazine', () => {
+    w.ammo = 1;
+    w.reserve = 0;
+    expect(w.isDry).toBe(false);
+  });
+
+  it('clicks at most once every DRY_CLICK_T', () => {
+    w.ammo = 0;
+    w.reserve = 0;
+    w.reloading = false;
+    let t = 0;
+    for (let i = 0; i < 10; i++) {
+      t += 1 / 60;
+      w.update(1 / 60, t, true);
+    }
+    expect(events.filter((e) => e === 'dry')).toHaveLength(1);
+    w.update(1 / 60, t + WEAPON.DRY_CLICK_T, true);
+    expect(events.filter((e) => e === 'dry')).toHaveLength(2);
+  });
+
+  it('picks up ammo and clamps it at the reserve maximum', () => {
+    w.reserve = 0;
+    w.addAmmo(4);
+    expect(w.reserve).toBe(4);
+    w.addAmmo(1000);
+    expect(w.reserve).toBe(AMMO.RESERVE_MAX);
   });
 });

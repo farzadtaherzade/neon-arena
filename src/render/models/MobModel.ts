@@ -190,8 +190,11 @@ function grunt(): MobGeos {
   box(p.head, 0.08, 0.16, 0.28, 0.23, -0.02, 0);
   box(p.head, 0.18, 0.08, 0.08, 0, -0.18, 0.2);
 
-  box(p.accent, 0.46, 0.26, 0.08, 0, 0.04, 0.23);
-  box(p.accent, 0.18, 0.06, 0.1, 0, -0.12, 0.25);
+  // The front plate is the grunt's whole identity: it eats most of the damage
+  // that lands on the side it faces, so the player has to get around it.
+  box(p.accent, 0.5, 0.62, 0.08, -0.12, 0, 0.3);
+  box(p.accent, 0.58, 0.07, 0.1, -0.12, 0.32, 0.3);
+  box(p.accent, 0.58, 0.07, 0.1, -0.12, -0.3, 0.3);
   cyl(p.accent, 0.15, 0.15, 0.16, 6, -0.46, 0.27, 0, 0, 0, Math.PI / 2);
   cyl(p.accent, 0.15, 0.15, 0.16, 6, 0.46, 0.27, 0, 0, 0, Math.PI / 2);
   box(p.accent, 0.3, 0.36, 0.12, 0, 0.03, -0.34);
@@ -207,6 +210,8 @@ function grunt(): MobGeos {
   box(p.glow, 0.11, 0.05, 0.04, 0.1, 0.55, 0.21);
   box(p.glow, 0.2, 0.05, 0.03, 0, 0.06, 0.28);
   box(p.glow, 0.04, 0.04, 0.22, 0.16, 0.03, 0.46);
+  // The lit edge of the front plate — the tell that this one is armoured.
+  box(p.glow, 0.04, 0.56, 0.04, 0.14, 0, 0.33);
 
   leg(p.leg);
   arm(p.armL, -1);

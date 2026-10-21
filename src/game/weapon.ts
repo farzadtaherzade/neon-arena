@@ -1,4 +1,4 @@
-import { WEAPON } from './config';
+import { AMMO, WEAPON } from './config';
 
 /** Side effects the weapon needs from outside its own state. */
 export interface WeaponHooks {
@@ -10,8 +10,8 @@ export interface WeaponHooks {
 }
 
 /**
- * Hitscan rifle state: magazine, reload timer, and the recoil/bloom/flash
- * values that drive the viewmodel pose and the crosshair.
+ * Hitscan rifle state: magazine, reserve, reload timer, and the
+ * recoil/bloom/flash values that drive the viewmodel pose and the crosshair.
  *
  * Pure — it never touches the scene graph. `render/Pick.ts` turns `onShot()`
  * into a ray, and `render/Gun.ts` reads `recoil`/`kick`/`flashT` to pose the
@@ -19,11 +19,15 @@ export interface WeaponHooks {
  */
 export class Weapon {
   ammo: number = WEAPON.MAG;
+  /** Rounds left outside the magazine. Mobs drop these; the wave resupply tops them up. */
+  reserve: number = AMMO.RESERVE_START;
   reloading = false;
   /** Right-mouse ADS. Set from outside so the view and shot cone stay in sync. */
   aiming = false;
   reloadT = 0;
   lastShot = -9;
+  /** Last time the empty click played, so it cannot machine-gun. */
+  private lastDry = -9;
   recoil = 0;
   kick = 0;
   bloom = 0;
@@ -33,13 +37,25 @@ export class Weapon {
 
   reset(): void {
     this.ammo = WEAPON.MAG;
+    this.reserve = AMMO.RESERVE_START;
     this.reloading = false;
     this.reloadT = 0;
     this.lastShot = -9;
+    this.lastDry = -9;
     this.recoil = 0;
     this.kick = 0;
     this.bloom = 0;
     this.flashT = 0;
+  }
+
+  /** True when there is nothing left to shoot: no rounds in the gun or the reserve. */
+  get isDry(): boolean {
+    return this.ammo <= 0 && this.reserve <= 0;
+  }
+
+  /** Rounds picked up from a kill or a resupply. */
+  addAmmo(amount: number): void {
+    this.reserve = Math.min(this.reserve + amount, AMMO.RESERVE_MAX);
   }
 
   /** Half-angle of the shot cone, radians. Tighter while aiming down sights. */
@@ -59,7 +75,7 @@ export class Weapon {
   }
 
   startReload(): void {
-    if (this.reloading || this.ammo === WEAPON.MAG) return;
+    if (this.reloading || this.ammo === WEAPON.MAG || this.reserve <= 0) return;
     this.reloading = true;
     this.reloadT = 0;
     this.hooks.onReloadStart();
@@ -71,9 +87,13 @@ export class Weapon {
     if (firing && !this.reloading && elapsed - this.lastShot >= WEAPON.FIRE_T) {
       if (this.ammo > 0) this.shoot(elapsed);
       else {
-        this.hooks.onDry();
-        this.startReload();
         this.lastShot = elapsed;
+        // The click is a warning, not a burst: once every DRY_CLICK_T.
+        if (elapsed - this.lastDry >= WEAPON.DRY_CLICK_T) {
+          this.lastDry = elapsed;
+          this.hooks.onDry();
+        }
+        this.startReload();
       }
     }
     this.decay(dt);
@@ -84,7 +104,9 @@ export class Weapon {
     this.reloadT += dt;
     if (this.reloadT >= WEAPON.RELOAD_T) {
       this.reloading = false;
-      this.ammo = WEAPON.MAG;
+      const take = Math.min(WEAPON.MAG - this.ammo, this.reserve);
+      this.ammo += take;
+      this.reserve -= take;
       this.hooks.onReloadEnd();
     }
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALARM,
+  AMMO,
   BOMB,
   CAMERA,
   CAPTURE,
@@ -10,12 +11,15 @@ import {
   FEEDBACK,
   FIXED_STEP,
   FX,
+  KNIFE,
   MAX_DT,
   METEOR,
+  RUNNER,
   SAPPER,
   SCREEN,
   START_HP,
   STATE,
+  TANK,
   VIDEO,
   WAVES,
   WEAPON,
@@ -235,5 +239,57 @@ describe('config', () => {
     expect(Object.values(STATE)).toEqual(['menu', 'playing', 'paused', 'gameover']);
     expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover']);
     expect(new Set(Object.values(STATE)).size).toBe(4);
+  });
+
+  it('keeps the ammo economy coherent', () => {
+    expect(AMMO.RESERVE_START).toBeGreaterThan(0);
+    expect(AMMO.RESERVE_MAX).toBeGreaterThanOrEqual(AMMO.RESERVE_START);
+    // Every mob drops something, and a tank is worth more than a grunt.
+    expect(Object.keys(AMMO.DROP).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
+    for (const value of Object.values(AMMO.DROP)) expect(value).toBeGreaterThan(0);
+    expect(AMMO.DROP.tank).toBeGreaterThan(AMMO.DROP.grunt);
+    // A wave hands out enough rounds to matter but not enough to replace aim.
+    expect(WAVES.AMMO_PER_WAVE).toBeGreaterThan(0);
+    expect(WAVES.AMMO_PER_WAVE).toBeLessThan(WEAPON.MAG * 3);
+  });
+
+  it('keeps the knife coherent', () => {
+    expect(KNIFE.DAMAGE).toBeGreaterThan(0);
+    expect(KNIFE.RANGE).toBeGreaterThan(0);
+    expect(KNIFE.ARC).toBeGreaterThan(0);
+    expect(KNIFE.ARC).toBeLessThanOrEqual(Math.PI);
+    expect(KNIFE.COOLDOWN).toBeGreaterThan(0);
+    expect(KNIFE.SWING_T).toBeGreaterThan(0);
+    expect(KNIFE.SWING_T).toBeLessThanOrEqual(KNIFE.COOLDOWN);
+    // The knife one-shots a grunt and a runner, and needs three for a tank.
+    expect(KNIFE.DAMAGE).toBeGreaterThanOrEqual(ENEMY_TYPES.runner.hp);
+    expect(KNIFE.DAMAGE).toBeLessThan(ENEMY_TYPES.tank.hp);
+    expect(Math.ceil(ENEMY_TYPES.tank.hp / KNIFE.DAMAGE)).toBe(3);
+  });
+
+  it('keeps the mob verbs coherent', () => {
+    // The shield only covers the front, and it must matter.
+    expect(ENEMY.SHIELD_ARC).toBeGreaterThan(0);
+    expect(ENEMY.SHIELD_ARC).toBeLessThanOrEqual(Math.PI);
+    expect(ENEMY.SHIELD_CUT).toBeGreaterThan(0);
+    expect(ENEMY.SHIELD_CUT).toBeLessThan(1);
+    expect(ENEMY.WINDUP).toBeGreaterThan(0);
+    // A mob turns slower than a player can strafe, or the shield is useless.
+    for (const rate of Object.values(ENEMY.TURN_RATE)) expect(rate).toBeGreaterThan(0);
+    expect(ENEMY.TURN_RATE.tank).toBeLessThan(ENEMY.TURN_RATE.runner);
+
+    // The runner's pounce: a tell, a burst, and a slow patch afterwards.
+    expect(RUNNER.POUNCE_TELL).toBeGreaterThan(0);
+    expect(RUNNER.POUNCE_T).toBeGreaterThan(0);
+    expect(RUNNER.POUNCE_GAIN).toBeGreaterThan(1);
+    expect(RUNNER.RECOVER_GAIN).toBeLessThan(1);
+    expect(RUNNER.POUNCE_MIN).toBeLessThan(RUNNER.POUNCE_MAX);
+
+    // The tank's slam reaches further than a swipe and hits harder.
+    expect(TANK.SLAM_R).toBeGreaterThan(ENEMY.REACH_PAD);
+    expect(TANK.SLAM_MULT).toBeGreaterThan(1);
+    expect(TANK.ARMOUR_CUT).toBeGreaterThan(0);
+    expect(TANK.ARMOUR_CUT).toBeLessThan(ENEMY.SHIELD_CUT);
+    expect(TANK.WINDUP).toBeGreaterThan(ENEMY.WINDUP);
   });
 });

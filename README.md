@@ -61,14 +61,15 @@ built from primitives at boot, then merged into a handful of shared GPU buffers.
 - **The arena** — 84 × 84 of dense maze: 32 cover blocks mirrored four ways around a central reactor, with four gatehouse decks on the mid-edges. Symmetric, so every lane has a twin across the centre
 - **Deck capture** — one gatehouse per wave carries a live pad. Hold it for 4 seconds to repair 30 HP, then that deck cools down for 40; the live pad rotates with the wave, so the objective keeps moving and the climb is never free
 - **Alarm towers** — every gatehouse has a beacon: amber on the deck you can take, dim cyan on the other three, and red with a siren ping and a pulsing radar ring when hostiles mass at its base
-- **Weapon system** — 12-round magazine, infinite reserve, reload, recoil kick, muzzle flash, spread bloom
-- **Four enemy types**
+- **Weapon system** — 12-round magazine and a **finite reserve** (60 rounds to start, 120 max). Kills drop ammo (4–12 rounds by mob type) and every wave resupplies 24 rounds. Reload draws from the reserve; when the magazine *and* the reserve are empty the rifle is dry — it clicks instead of firing
+- **Knife** — `Q` swings a blade at anything in a 110° arc within 2.4 m, for 70 damage. A blade ignores armour, so it one-shots a grunt and a runner, and it is always there when the rifle is dry
+- **Four enemy types**, each with one signature verb
   | Type | HP (wave 1) | Speed | Damage | Score | Behaviour |
   |---|---|---|---|---|---|
-  | Grunt | 60 | 3.4 | 10 | 100 | Standard chaser |
-  | Runner | 30 | 6.2 | 7 | 150 | Fast, fragile |
-  | Tank | 200 | 2.2 | 22 | 300 | Slow, high HP, big damage |
-  | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; charges once fewer than 5 hostiles remain |
+  | Grunt | 60 | 3.4 | 10 | 100 | Carries a front shield: shots from the front lose 60% of their damage. Flank it, headshot it, or stab it |
+  | Runner | 30 | 6.2 | 7 | 150 | Crouches, then pounces at 2.2× speed, and staggers afterwards |
+  | Tank | 200 | 2.2 | 22 | 300 | Ground slam: a 2.6 m shockwave that knocks you back, behind a 40% front plate |
+  | Sapper | 90 | 4.2 | 12 | 250 | Stalks from range and plants bombs; below 35% HP it panics and runs, dropping bombs at its feet |
 - **Four robot silhouettes** — each type is an articulated low-poly rig with its own armour, backpack, weapon and glow accents; the set is generated in code and shared through a per-kind geometry cache
 - **Sapper & bombs** — from wave 5 a sapper stalks you, keeping its distance and planting a fused bomb every 6 seconds (thrown at you from afar, dropped in its tracks up close). Shoot a live bomb to defuse it for bonus points; leave it and the blast hurts you *and* nearby enemies. The tab reddens and a tone sounds when a bomb lands close
 - **Meteor shower** — every so often the sky bleeds red and the floor starts filling with warning rings: a stone is about to land there. The blast hurts you (less the further you run) and the mobs around it, shakes the screen and throws debris. The sky fades back to normal when the shower ends
@@ -79,7 +80,7 @@ built from primitives at boot, then merged into a handful of shared GPU buffers.
 - **Headshots** — deal 2.5× damage and a score bonus
 - **Feedback** — hitmarkers, enemy health bars, damage vignette, screen shake, particles, tracers
 - **Procedural audio** — Web Audio API synth, no sound files needed
-- **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter, reload progress, deck-capture bar
+- **HUD** — score, wave, hostile count, integrity bar, XP bar and level, sprint gauge, ammo counter with the remaining reserve, reload progress, deck-capture bar. When the rifle runs dry the reload hint turns into "Q — KNIFE"
 - **Settings, in three tabs** — `C` opens the panel from any screen, and everything is saved to `localStorage`:
   - **Crosshair** — 7 presets (default, dot, circle, triangle, square, diamond, cross) plus a full tune panel: line length/thickness/gap, dot size, outer shape, outline, colour and outline colour, bloom spread, dim-when-still
   - **Game** — mouse sensitivity, invert Y, field of view, mute
@@ -149,6 +150,7 @@ npm run check      # tsc --noEmit + biome + vitest
 | `Left Mouse` | Shoot |
 | `F` or `V` | Shoot (keyboard trigger — for touchpad players) |
 | `R` | Reload |
+| `Q` | Knife |
 | `Shift` | Sprint |
 | `Space` | Jump |
 | `C` | Settings panel (any time) |
@@ -178,7 +180,8 @@ neon-arena/
 │   ├── game/                 pure simulation — no three, no DOM
 │   │   ├── config.ts         every gameplay tunable; imports nothing
 │   │   ├── player.ts         movement, gravity, look angles, bob
-│   │   ├── weapon.ts         magazine, reload, recoil/bloom/spread
+│   │   ├── weapon.ts         magazine, reserve, reload, recoil/bloom/spread
+│   │   ├── knife.ts          the blade: a cone query, cooldown, swing
 │   │   ├── enemy.ts          one hostile: steering, health, death clock
 │   │   ├── enemies.ts        spatial hash for enemy separation
 │   │   ├── bomb.ts           a planted bomb: fuse, radius, detonation
@@ -198,6 +201,7 @@ neon-arena/
 │   │   ├── CapturePad.ts     a gatehouse top: pad, mast, alarm beacon
 │   │   ├── Pick.ts           one raycast per shot
 │   │   ├── Gun.ts            first-person viewmodel
+│   │   ├── Knife.ts          first-person blade viewmodel
 │   │   ├── EnemyView.ts      one enemy's meshes
 │   │   ├── BombView.ts       a bomb's meshes + blink
 │   │   ├── XpView.ts         an orb's meshes
@@ -255,9 +259,9 @@ neon-arena/
 ## Tuning the Game
 
 Everything a designer is likely to change is in `src/game/config.ts`, grouped by
-concern — `WORLD`, `WEAPON`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`, `ENEMY`,
-`WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`, `XP_LEVEL`, `METEOR`, `VIDEO`,
-`FX`.
+concern — `WORLD`, `WEAPON`, `AMMO`, `KNIFE`, `CAMERA`, `FEEDBACK`, `ENEMY_TYPES`,
+`ENEMY`, `RUNNER`, `TANK`, `WAVES`, `SAPPER`, `BOMB`, `CAPTURE`, `ALARM`, `XP`,
+`XP_LEVEL`, `METEOR`, `VIDEO`, `FX`.
 Each group is `as const`, so a typo is a compile error rather than an `undefined`
 at 3 a.m. Mesh-local dimensions (a wall's thickness, a barrel's length) stay in
 the module that owns that mesh.
@@ -299,11 +303,18 @@ npm test
   to point at the same up vector as its collider
 - `player` — gravity, jumping, damping, diagonal normalisation, no tunnelling,
   ramp ascent, and "no climbing a deck from the ground"
-- `weapon` — fire rate, auto-reload, dry fire, bloom clamp and decay, headshot damage
+- `weapon` — fire rate, auto-reload, dry fire, bloom clamp and decay, headshot damage,
+  the reserve: a reload draws from it, a reload is refused when it is empty, and the
+  rifle is only dry when the magazine *and* the reserve are both empty
+- `knife` — the cone query: what is in front, what is behind, what is out of reach,
+  what is under a deck, and the swing cooldown
 - `enemy` / `enemies` — damage, death clock, attack cooldown, separation. Mobs
   besiege a ramp mouth without climbing, lob bombs onto a deck, and fall off
   ledges. The spatial hash is run against the all-pairs loop it replaced: two
-  identical populations stepped side by side must end up in the same places
+  identical populations stepped side by side must end up in the same places.
+  Armour and tells: a front plate only covers the arc the mob faces, headshots,
+  blades and explosions ignore it, every melee attack winds up first, and the
+  runner crouches before it pounces
 - `capture` — the live deck rotates with the wave, the hold fills and drains,
   the cooldown blocks a second claim, and the floor beneath a deck never counts
 - `alarm` — one siren per rising edge, a hold that survives a mob ducking behind
@@ -327,7 +338,8 @@ npm run test:e2e
 ```
 
 It builds the app, serves `dist/` with `vite preview`, and drives the real
-browser: boot with no console errors, wave spawn, look, shoot, reload, GPU
+browser: boot with no console errors, wave spawn, look, shoot, reload, the reserve
+counter, the knife swing, the dry-rifle hint, GPU
 resource convergence (the old code leaked two geometries per enemy), damage,
 death, the XP bar and a level up, the meteor shower and its stones, the
 tactical map, the settings tabs and the main menu. Waits are condition-based, so it works on
@@ -366,6 +378,10 @@ __NEON.grantXp(n)        // bank XP without walking over an orb
 __NEON.meteor()           // { phase, tint, stones } — the shower's state
 __NEON.forceMeteor()      // start a shower now instead of waiting for the dice
 __NEON.dropStone(x, z)    // drop a stone on an exact spot
+__NEON.ammo()             // { mag, reserve, dry }
+__NEON.setAmmo(mag, reserve) // set the magazine and the reserve directly
+__NEON.knife()            // { ready, swingT } — the blade's cooldown
+__NEON.swingKnife()       // swing the blade right now
 ```
 
 ---

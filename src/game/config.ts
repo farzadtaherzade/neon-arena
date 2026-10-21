@@ -47,6 +47,8 @@ export const WEAPON = {
   MAG: 12,
   RELOAD_T: 1.25,
   FIRE_T: 0.12,
+  /** How often the empty click may play, so it cannot machine-gun. */
+  DRY_CLICK_T: 0.4,
   DMG: 34,
   HEAD_MULT: 2.5,
   HEADSHOT_BONUS: 25,
@@ -144,6 +146,23 @@ export const ENEMY = {
   MOVE_DAMP: 6,
   ATTACK_COOLDOWN: 1.0,
   ATTACK_FLASH: 0.18,
+
+  /**
+   * The grunt's front shield. Hits landing within `SHIELD_ARC` of the direction
+   * it is facing are cut by `SHIELD_CUT`; headshots and hits from behind are
+   * not. Flanking it is the answer.
+   */
+  SHIELD_ARC: 1.2,
+  SHIELD_CUT: 0.6,
+  /** Windup before a melee swing lands — long enough to step out of. */
+  WINDUP: 0.35,
+
+  /**
+   * How fast a mob can turn, radians per second. It is deliberately slower
+   * than a player's mouse: that is what makes flanking possible, and the
+   * front plate only covers what the mob can see.
+   */
+  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2 },
   HIT_FLASH: 0.08,
   HIT_FLASH_COLOR: 0xffffff,
   ATTACK_FLASH_COLOR: 0xff2222,
@@ -189,6 +208,88 @@ export const ALARM = {
   HOLD: 3,
 } as const;
 
+/**
+ * Ammunition economy.
+ *
+ * The magazine is finite and the reserve is finite: a kill is the only way to
+ * get more, so the knife matters. `DROP` is what a mob leaves behind when it
+ * dies, and `WAVES.AMMO_PER_WAVE` is the standing resupply that keeps a long
+ * run from spiralling.
+ */
+export const AMMO = {
+  /** Rounds in the reserve when a run starts. */
+  RESERVE_START: 60,
+  /** The reserve never grows past this. */
+  RESERVE_MAX: 120,
+  /** Rounds dropped by a mob of each kind when it dies. */
+  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6 },
+} as const;
+
+/**
+ * The knife: what you swing when the rifle is dry.
+ *
+ * Pure numbers — the reach and the arc are a cone test in `game/knife.ts`.
+ */
+export const KNIFE = {
+  DAMAGE: 70,
+  /** Reach from the player's feet, in world units. */
+  RANGE: 2.4,
+  /** Half-angle of the swing cone, radians. */
+  ARC: 1.9,
+  /** How far above or below the player's feet a mob can still be stabbed. */
+  VREACH: 1.6,
+  /** Seconds between swings. */
+  COOLDOWN: 0.45,
+  /** How long the blade is out, in seconds. */
+  SWING_T: 0.28,
+} as const;
+
+/**
+ * Runner behaviour: it pounces when it has room to build speed.
+ *
+ * The pounce is a short burst of speed at mid range; the recovery afterwards
+ * is the price of overshooting, and it is the window where a runner is
+ * vulnerable.
+ */
+export const RUNNER = {
+  /** Seconds the pounce lasts. */
+  POUNCE_T: 0.45,
+  /** Speed multiplier while pouncing. */
+  POUNCE_GAIN: 2.2,
+  /** Pounce only starts from at least this far away. */
+  POUNCE_MIN: 5,
+  /** ...and at most this far away. */
+  POUNCE_MAX: 14,
+  /** Seconds of slow movement after a pounce. */
+  RECOVER_T: 0.6,
+  /** Speed multiplier while recovering. */
+  RECOVER_GAIN: 0.45,
+  /** The crouch before it leaps — the tell. */
+  POUNCE_TELL: 0.3,
+  /** Seconds between pounces. */
+  POUNCE_COOLDOWN: 2.5,
+} as const;
+
+/**
+ * Tank behaviour: it slams the ground instead of clawing.
+ *
+ * The slam hits in a radius, so standing next to a tank is worse than
+ * standing in front of it — and its front armour means the rifle is the
+ * answer, not the knife.
+ */
+export const TANK = {
+  /** Radius of the slam shockwave. */
+  SLAM_R: 2.6,
+  /** Damage multiplier for a hit caught by the shockwave. */
+  SLAM_MULT: 1.6,
+  /** Fraction of damage its front armour absorbs. */
+  ARMOUR_CUT: 0.4,
+  /** How hard the slam shoves the player, in extra units per second. */
+  KNOCK: 12,
+  /** Seconds of windup before the slam lands — longer than a grunt's. */
+  WINDUP: 0.5,
+} as const;
+
 export const WAVES = {
   GRUNTS_BASE: 3,
   RUNNERS_FROM: 2,
@@ -203,6 +304,8 @@ export const WAVES = {
 
   HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12 },
   DMG_PER_2_WAVES: 2,
+  /** Rounds handed over at the start of every wave, on top of the mob drops. */
+  AMMO_PER_WAVE: 24,
 } as const;
 
 /**
@@ -251,6 +354,19 @@ export const SAPPER = {
   /** Wander heading wobble, radians per second of its animation phase. */
   WANDER_TURN: 1.2,
   HUNT_SPEED: 8.5,
+
+  /**
+   * Panic: wounded past `PANIC_HP` it stops playing artillery and runs — but
+   * it drops bombs at its feet as it flees, so a wounded sapper is still the
+   * most dangerous thing in the arena.
+   */
+  PANIC_HP: 0.35,
+  /** Seconds between bombs while fleeing. */
+  PANIC_PLANT_T: 2.5,
+  /** How fast it runs while fleeing. */
+  PANIC_SPEED: 5.2,
+  /** Seconds of glow on the bomb rack before a plant — the tell. */
+  TELL: 0.8,
 } as const;
 
 /** The sapper's bomb: a shootable object with a fuse and a blast radius. */

@@ -33,7 +33,8 @@ src/game/        simulation — pure logic, no Three.js, no DOM
   enemy.ts       one enemy: AI, damage, death animation
   enemies.ts     SpatialHash broadphase for separation
   waves.ts       WaveDirector: composition + staggered spawning
-  weapon.ts      ammo, fire cadence, spread bloom, recoil
+  weapon.ts      magazine + reserve, fire cadence, spread bloom, recoil
+  knife.ts       the blade: a cone query, cooldown, swing
   bomb.ts        a planted bomb: fuse, radius, detonation
   capture.ts     the rotating deck objective: hold timer, cooldowns
   alarm.ts       tower alarm rising-edge detection
@@ -47,6 +48,7 @@ src/render/      everything that owns meshes
   EnemyView.ts   an enemy's meshes + health bar
   BombView.ts    a bomb's meshes + blink
   Gun.ts         the first-person viewmodel
+  Knife.ts       the first-person blade viewmodel
   Pick.ts        hitscan raycasting (screen centre → world)
   Fx.ts          pooled Points/Lines on screen
   Materials.ts   shared geometries and materials (lazy, add-only)
@@ -278,7 +280,8 @@ The game has a headless entry point for automation:
   `spawnBomb(x, z)`, `forceWave(n)`, `crosshair()`, `setCrosshair(patch)`,
   `teleportPlayer(x, z, y?)`, `settings()`, `setGame(patch)`,
   `setVideo(patch)`, `xpStats()`, `grantXp(n)`, `meteor()`, `forceMeteor()`,
-  `dropStone(x, z)`.
+  `dropStone(x, z)`, `ammo()`, `setAmmo(mag, reserve)`, `knife()`,
+  `swingKnife()`.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -315,6 +318,20 @@ so the spec re-declares the shapes it uses.
   Do not get moody by starving the ambient/hemisphere lights — below roughly
   `1.0` hemisphere the enemy `MeshStandardMaterial`s lose their body colour and
   read as black silhouettes.
+- **A plate only covers the arc the mob faces.** `Enemy.takeDamage(amount, hit)`
+  cuts the damage by `ENEMY.SHIELD_CUT` / `TANK.ARMOUR_CUT` when the incoming
+  direction is within `ENEMY.SHIELD_ARC` of `enemy.facingYaw`. Headshots, blade
+  hits and explosions (no hit info) are never cut, and mobs turn at a limited
+  rate (`ENEMY.TURN_RATE`), so flanking is the counter-play. `EnemyView` reads
+  `facingYaw` — the sim's real heading — not a heading recomputed from the
+  player, or the plate would cover the wrong side.
+- **The rifle runs dry.** `Weapon` has a magazine *and* a reserve; a reload
+  draws from the reserve, and `isDry` is only true when both are empty. Kills
+  add `AMMO.DROP[kind]`, every wave adds `WAVES.AMMO_PER_WAVE`, and the reserve
+  clamps at `AMMO.RESERVE_MAX`. The HUD hint swaps to "Q — KNIFE" when dry.
+- The knife is a **cone query**, not a second raycast: `game/knife.ts` tests the
+  arc, the reach and a vertical gate against every mob in front of the player.
+  It cannot defuse a bomb.
 - The E2E takes ~2 minutes and has a 15-minute ceiling. Budget new waits
   deliberately rather than raising the timeout.
 - Ramps, platforms, enemy siege behaviour and deck capture are one system with

@@ -61,6 +61,11 @@ interface MeteorStats {
   tint: number;
   stones: number;
 }
+interface AmmoState {
+  mag: number;
+  reserve: number;
+  dry: boolean;
+}
 
 const stats = (page: Page) => page.evaluate(() => window.__NEON.stats() as Stats);
 const enemies = (page: Page) => page.evaluate(() => window.__NEON.enemyPos() as EnemyPos[]);
@@ -71,6 +76,7 @@ const setCrosshair = (page: Page, patch: Record<string, unknown>) =>
 const crosshair = (page: Page) => page.evaluate(() => window.__NEON.crosshair() as CrosshairSettings);
 const xpStats = (page: Page) => page.evaluate(() => window.__NEON.xpStats() as XpStats);
 const meteor = (page: Page) => page.evaluate(() => window.__NEON.meteor() as MeteorStats);
+const ammo = (page: Page) => page.evaluate(() => window.__NEON.ammo() as AmmoState);
 
 /**
  * Point the camera at the nearest enemy's torso. The camera's forward vector is
@@ -237,6 +243,23 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForFunction(() => (window.__NEON.stats() as Stats).ammo === 12, undefined, {
     timeout: 30_000,
   });
+
+  // --- the reserve ----------------------------------------------------------
+  const loaded = await ammo(page);
+  expect(loaded.mag).toBe(12);
+  expect(loaded.reserve).toBeGreaterThan(0);
+  expect(loaded.dry).toBe(false);
+  // The readout shows the reserve, not the old infinity sign.
+  await expect(page.locator('#ammo')).toContainText(String(loaded.reserve));
+
+  // --- the rifle runs dry ---------------------------------------------------
+  await page.evaluate(() => window.__NEON.setAmmo(0, 0));
+  await page.waitForFunction(() => (window.__NEON.ammo() as AmmoState).dry, undefined, {
+    timeout: 10_000,
+  });
+  await expect(page.locator('#reloadHint')).toHaveText('Q — KNIFE');
+  await page.evaluate(() => window.__NEON.setAmmo(12, 60));
+  await expect(page.locator('#reloadHint')).toHaveText('R — RELOAD');
 
   // --- keyboard fire --------------------------------------------------------
   // Touchpad players hold WASD with one hand and cannot also press the pad
@@ -428,6 +451,27 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForFunction(() => (window.__NEON.stats() as Stats).hp > 60, undefined, { timeout: 20_000 });
   expect((await xpStats(page)).level).toBe(2);
   expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 2');
+
+  // --- the knife ------------------------------------------------------------
+  // Q works at any time, not only when the rifle is dry: it is a cone in
+  // front of the player, so the mobs have to be within reach.
+  //
+  // This runs after the xp checks on purpose: the blade kills at arm's length,
+  // so the orbs it drops land on the player's feet and are collected — which
+  // would move the xp total the checks above rely on.
+  await page.evaluate(() => {
+    window.__NEON.aim(Math.PI, 0);
+    window.__NEON.faceEnemies(1.5, 1.0);
+  });
+  const hpBeforeKnife = (await enemies(page)).reduce((a, e) => a + e.hp, 0);
+  await page.keyboard.press('KeyQ');
+  await page.waitForFunction(
+    (before) => (window.__NEON.enemyPos() as EnemyPos[]).reduce((a, e) => a + e.hp, 0) < before,
+    hpBeforeKnife,
+    { timeout: 15_000 },
+  );
+  const hpAfterKnife = (await enemies(page)).reduce((a, e) => a + e.hp, 0);
+  expect(hpAfterKnife).toBeLessThan(hpBeforeKnife);
 
   // --- the meteor shower: a red sky and stones to dodge ------------------------
   // Headroom first: the level up above paid out a repair and capped the run

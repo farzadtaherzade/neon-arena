@@ -417,6 +417,11 @@ canvas {
   margin-top: 6px;
 }
 
+#reloadHint.warn {
+  color: #ffc24a;
+  text-shadow: 0 0 10px rgba(255, 170, 40, 0.55);
+}
+
 #banner {
   position: absolute;
   left: 0;

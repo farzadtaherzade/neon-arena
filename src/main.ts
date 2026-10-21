@@ -54,6 +54,21 @@ function exposeTestApi(game: Game) {
 
     hurt: (d: number) => game.damagePlayer(d),
 
+    ammo: () => ({
+      mag: game.weapon.ammo,
+      reserve: game.weapon.reserve,
+      dry: game.weapon.isDry,
+    }),
+
+    knife: () => ({ ready: game.knife.ready, swingT: game.knife.swingT }),
+
+    swingKnife: () => game.swingKnife(),
+
+    setAmmo: (mag: number, reserve: number) => {
+      game.weapon.ammo = mag;
+      game.weapon.reserve = reserve;
+    },
+
     teleportEnemies: (d: number) => {
       for (const h of game.hostiles) {
         const a = Math.random() * Math.PI * 2;
