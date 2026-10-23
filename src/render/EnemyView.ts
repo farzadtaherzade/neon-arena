@@ -4,6 +4,9 @@ import type { Enemy } from '../game/enemy';
 import { GEO, MAT } from './Materials';
 import { buildMobRig, type MobRig } from './models/MobModel';
 
+/** The colour the sapper's bomb rack turns just before it plants. */
+const TELL_COLOR = new THREE.Color(0xff3b2a);
+
 /**
  * The meshes for one enemy: a merged low-poly robot rig plus a billboarded
  * health bar.
@@ -26,6 +29,10 @@ export class EnemyView {
   private barFg: THREE.Mesh;
   private mats: THREE.MeshStandardMaterial[];
   private glowMat: THREE.MeshBasicMaterial;
+  /** The glow colour this mob normally wears, before a bomb tell tints it. */
+  private baseGlow = new THREE.Color();
+  /** Last bomb-tell value pushed into the glow colour, to avoid touching it. */
+  private lastTell = 0;
 
   constructor(readonly enemy: Enemy) {
     const looks = ENEMY_LOOKS[enemy.kind];
@@ -41,6 +48,7 @@ export class EnemyView {
     const accentMat = new THREE.MeshStandardMaterial({ color: look.accent, roughness: 0.5, metalness: 0.12 });
     const legMat = new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.7, metalness: 0.1 });
     this.glowMat = new THREE.MeshBasicMaterial({ color: look.accent });
+    this.baseGlow.setHex(look.accent);
     this.mats = [bodyMat, headMat, accentMat, legMat];
 
     this.rig = buildMobRig(enemy.kind, {
@@ -71,7 +79,7 @@ export class EnemyView {
   }
 
   /** Pull the pure enemy's state onto the meshes. Called once per rendered frame. */
-  sync(playerPos: { x: number; z: number }, cameraQuat: THREE.Quaternion): void {
+  sync(cameraQuat: THREE.Quaternion): void {
     const g = this.group;
     const { x, y, z } = this.enemy.pos;
 
@@ -80,8 +88,9 @@ export class EnemyView {
       g.rotation.x = (-k * Math.PI * 2 * ENEMY.DEATH_TILT) / 2;
       g.position.y = y - k * ENEMY.DEATH_SINK;
     } else {
-      g.rotation.x = 0;
-      g.rotation.y = this.enemy.facing(playerPos);
+      // The mob turns at a limited rate, so the view reads the heading the
+      // simulation actually has — the front plate only covers what it can see.
+      g.rotation.y = this.enemy.facingYaw;
       // `pos.y` is the enemy's feet: it rises with a ramp and drops off a ledge.
       g.position.y = y + this.enemy.bounce;
 
@@ -89,14 +98,28 @@ export class EnemyView {
       this.rig.legL.rotation.x = swing;
       this.rig.legR.rotation.x = -swing;
 
-      // Arms counter-swing against the legs. The attack flash adds a short
-      // overhead strike, so a melee hit has a tell rather than just a red glow.
+      // Arms counter-swing against the legs. The windup raises them before the
+      // blow lands — that is the tell — and the attack flash adds a short
+      // overhead strike on the hit itself.
       const attack =
         this.enemy.flashT > 0 && this.enemy.flashHex === ENEMY.ATTACK_FLASH_COLOR
           ? Math.sin((1 - this.enemy.flashT / ENEMY.ATTACK_FLASH) * Math.PI) * 0.8
           : 0;
-      this.rig.armL.rotation.x = this.rig.armBaseL + swing * this.rig.armSwing - attack;
-      this.rig.armR.rotation.x = this.rig.armBaseR - swing * this.rig.armSwing - attack;
+      const raise = this.enemy.swingK * (this.enemy.kind === 'tank' ? 2.2 : 1.6) + attack;
+      this.rig.armL.rotation.x = this.rig.armBaseL + swing * this.rig.armSwing - raise;
+      this.rig.armR.rotation.x = this.rig.armBaseR - swing * this.rig.armSwing - raise;
+
+      // The runner crouches before it leaps, and leans into the leap itself.
+      const crouch = this.enemy.pounceK;
+      g.rotation.x = crouch * 0.28 - (this.enemy.pounce > 0 ? 0.3 : 0);
+      g.position.y -= crouch * 0.16 * this.enemy.scale;
+
+      // The sapper's bomb rack lights up just before it plants.
+      const tell = this.enemy.bombTell;
+      if (tell !== this.lastTell) {
+        this.lastTell = tell;
+        this.glowMat.color.copy(this.baseGlow).lerp(TELL_COLOR, tell);
+      }
 
       const on = this.enemy.flashT > 0;
       for (const m of this.mats) m.emissive.setHex(on ? this.enemy.flashHex : 0x000000);

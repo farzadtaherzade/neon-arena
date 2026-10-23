@@ -93,6 +93,14 @@ export class Sfx {
     this.guard((t) => this.osc('square', 950, 700, t, 0.045, 0.12));
   }
 
+  /** The knife: a short whoosh with a metallic edge — no gunshot. */
+  slash(): void {
+    this.guard((t) => {
+      this.noise(t, 0.16, 0.4, 5200);
+      this.osc('sawtooth', 900, 220, t, 0.12, 0.14);
+    });
+  }
+
   reloadStart(): void {
     this.guard((t) => {
       this.osc('square', 420, 380, t, 0.05, 0.16);

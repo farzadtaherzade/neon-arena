@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { ENEMY, ENEMY_TYPES, SAPPER } from '../../src/game/config';
+import { ENEMY, ENEMY_TYPES, RUNNER, SAPPER, TANK } from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
 import { CollisionWorld, type Vec2 } from '../../src/game/world/collision';
@@ -9,6 +9,7 @@ import { PLATFORM_H, PLATFORMS, RAMPS } from '../../src/game/world/layout';
 interface TestWorld extends EnemyWorld {
   hurt: number;
   bombs: { from: Vec2; to: Vec2; thrown: boolean }[];
+  knock: { x: number; z: number; force: number }[];
 }
 
 function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []): TestWorld {
@@ -20,10 +21,14 @@ function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []
     ramps: [],
     hurt: 0,
     bombs: [],
+    knock: [],
     collide: () => {},
     support: () => 0,
     damagePlayer(amount: number) {
       w.hurt += amount;
+    },
+    knockPlayer(x: number, z: number, force: number) {
+      w.knock.push({ x, z, force });
     },
     plantBomb(from: Vec2, to: Vec2, thrown: boolean) {
       w.bombs.push({ from, to, thrown });
@@ -186,13 +191,138 @@ describe('Enemy', () => {
     expect(e.pos.x).toBeCloseTo(ENEMY.KNOCKBACK, 10);
   });
 
-  it('faces the player and animates from its phase', () => {
+  it('turns toward the player at a limited rate and animates from its phase', () => {
     const e = spawn('grunt', 0, 5);
-    expect(e.facing({ x: 0, z: 0 })).toBeCloseTo(Math.PI, 6);
+    // It starts facing south and has to turn — it cannot snap to the player.
+    expect(e.facingYaw).toBe(0);
+    e.update(1 / 60, makeWorld({ x: 0, z: 0 }));
+    expect(e.facingYaw).toBeGreaterThan(0);
+    expect(e.facingYaw).toBeLessThanOrEqual(ENEMY.TURN_RATE.grunt / 60 + 1e-9);
     const bounce0 = e.bounce;
     for (let i = 0; i < 30; i++) e.update(1 / 60, makeWorld({ x: 0, z: 50 }));
     expect(e.bounce).not.toBe(bounce0);
     expect(Math.abs(e.legSwing)).toBeLessThanOrEqual(ENEMY.LEG_SWING + 1e-9);
+  });
+});
+
+describe('Armour and tells', () => {
+  it('cuts a hit that lands on the grunt front plate', () => {
+    const e = spawn('grunt', 0, 0);
+    e.facingYaw = 0; // looking down +z
+    const before = e.hp;
+    // The shooter is in front, so the plate is between the bullet and the grunt.
+    e.takeDamage(100, { dirX: 0, dirZ: 1, headshot: false, melee: false });
+    expect(before - e.hp).toBeCloseTo(100 * (1 - ENEMY.SHIELD_CUT), 6);
+  });
+
+  it('takes a hit from behind in full', () => {
+    const e = spawn('grunt', 0, 0);
+    e.facingYaw = 0;
+    const before = e.hp;
+    e.takeDamage(100, { dirX: 0, dirZ: -1, headshot: false, melee: false });
+    expect(before - e.hp).toBe(100);
+  });
+
+  it('never cuts a headshot, a blade or an explosion', () => {
+    const head = spawn('grunt', 0, 0);
+    head.facingYaw = 0;
+    const hp0 = head.hp;
+    head.takeDamage(100, { dirX: 0, dirZ: 1, headshot: true, melee: false });
+    expect(hp0 - head.hp).toBe(100);
+
+    const stabbed = spawn('grunt', 0, 0);
+    stabbed.facingYaw = 0;
+    const hp1 = stabbed.hp;
+    stabbed.takeDamage(100, { dirX: 0, dirZ: 1, headshot: false, melee: true });
+    expect(hp1 - stabbed.hp).toBe(100);
+
+    const bombed = spawn('grunt', 0, 0);
+    bombed.facingYaw = 0;
+    const hp2 = bombed.hp;
+    bombed.takeDamage(100);
+    expect(hp2 - bombed.hp).toBe(100);
+  });
+
+  it('gives the tank a thinner plate than the grunt shield', () => {
+    const tank = spawn('tank', 0, 0);
+    tank.facingYaw = 0;
+    const before = tank.hp;
+    tank.takeDamage(100, { dirX: 0, dirZ: 1, headshot: false, melee: false });
+    expect(before - tank.hp).toBeCloseTo(100 * (1 - TANK.ARMOUR_CUT), 6);
+  });
+
+  it('leaves the runner and the sapper unarmoured', () => {
+    for (const kind of ['runner', 'sapper'] as const) {
+      const e = spawn(kind, 0, 0);
+      e.facingYaw = 0;
+      const before = e.hp;
+      e.takeDamage(100, { dirX: 0, dirZ: 1, headshot: false, melee: false });
+      expect(before - e.hp).toBe(100);
+    }
+  });
+
+  it('only shields what the mob is looking at', () => {
+    const e = spawn('grunt', 0, 0);
+    e.facingYaw = 0;
+    const before = e.hp;
+    // A hit from the side, outside the shield arc.
+    e.takeDamage(100, { dirX: Math.sin(1.4), dirZ: Math.cos(1.4), headshot: false, melee: false });
+    expect(before - e.hp).toBe(100);
+  });
+
+  it('winds up before the blow lands', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('grunt', 0, 0.4);
+    // The first swing comes after the spawn cooldown.
+    for (let i = 0; i < 120 && e.windup <= 0; i++) e.update(1 / 60, world);
+    expect(e.windup).toBeGreaterThan(0);
+    expect(world.hurt).toBe(0); // the tell is running: nothing has hit yet
+    for (let i = 0; i < Math.ceil(ENEMY.WINDUP * 60) + 2; i++) e.update(1 / 60, world);
+    expect(world.hurt).toBeCloseTo(ENEMY_TYPES.grunt.dmg, 5);
+  });
+
+  it('misses when the player steps out of reach during the tell', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('grunt', 0, 0.4);
+    for (let i = 0; i < 120 && e.windup <= 0; i++) e.update(1 / 60, world);
+    expect(e.windup).toBeGreaterThan(0);
+    world.playerPos = { x: 0, z: 6 };
+    for (let i = 0; i < Math.ceil(ENEMY.WINDUP * 60) + 2; i++) e.update(1 / 60, world);
+    expect(world.hurt).toBe(0);
+  });
+
+  it('slams the ground: more damage and a knockback', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('tank', 0, 2);
+    for (let i = 0; i < 120 && e.windup <= 0; i++) e.update(1 / 60, world);
+    expect(e.windup).toBeGreaterThan(0);
+    for (let i = 0; i < Math.ceil(TANK.WINDUP * 60) + 2; i++) e.update(1 / 60, world);
+    expect(world.hurt).toBeCloseTo(ENEMY_TYPES.tank.dmg * TANK.SLAM_MULT, 5);
+    expect(world.knock).toHaveLength(1);
+    expect(world.knock[0]?.force).toBe(TANK.KNOCK);
+    expect(world.knock[0]?.z).toBeCloseTo(-1, 5); // shoved away from the tank
+  });
+
+  it('crouches, pounces and then slows down', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('runner', 0, 8);
+    e.update(1 / 60, world);
+    expect(e.pounceTell).toBeGreaterThan(0); // the crouch is the tell
+    expect(e.pounce).toBe(0);
+
+    for (let i = 0; i < Math.ceil(RUNNER.POUNCE_TELL * 60) + 2; i++) e.update(1 / 60, world);
+    expect(e.pounce).toBeGreaterThan(0);
+
+    for (let i = 0; i < Math.ceil(RUNNER.POUNCE_T * 60) + 2; i++) e.update(1 / 60, world);
+    expect(e.recover).toBeGreaterThan(0);
+  });
+
+  it('does not pounce from too far away', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('runner', 0, 25);
+    for (let i = 0; i < 30; i++) e.update(1 / 60, world);
+    expect(e.pounceTell).toBe(0);
+    expect(e.pounce).toBe(0);
   });
 });
 
@@ -245,6 +375,30 @@ describe('Sapper', () => {
     expect(e.sapperMode).toBe('hunt');
     expect(Math.hypot(e.pos.x, e.pos.z)).toBeLessThan(20);
     expect(world.hurt).toBe(0);
+  });
+
+  it('panics when wounded: it flees and drops bombs at its feet', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('sapper', 0, 10);
+    e.takeDamage(ENEMY_TYPES.sapper.hp * (1 - SAPPER.PANIC_HP) + 1);
+    const z0 = e.pos.z;
+    for (let i = 0; i < 30; i++) e.update(1 / 60, world);
+    expect(e.sapperMode).toBe('flee');
+    expect(e.pos.z).toBeGreaterThan(z0); // running away
+    expect(world.bombs).toHaveLength(0); // the first bomb comes after the fuse
+
+    for (let i = 0; i < Math.ceil(SAPPER.PANIC_PLANT_T * 60) + 5; i++) e.update(1 / 60, world);
+    expect(world.bombs.length).toBeGreaterThan(0);
+    expect(world.bombs[0]?.thrown).toBe(false);
+  });
+
+  it('lights the bomb rack just before it plants', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('sapper', 0, 20);
+    e.plantT = SAPPER.TELL - 0.3;
+    e.update(1 / 60, world);
+    expect(e.bombTell).toBeGreaterThan(0);
+    expect(e.bombTell).toBeLessThanOrEqual(1);
   });
 });
 

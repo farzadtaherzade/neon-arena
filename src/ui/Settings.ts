@@ -17,7 +17,7 @@ const LEGACY_KEY = 'neon.crosshair';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export type CrosshairShape = 'none' | 'circle' | 'triangle' | 'square' | 'diamond';
-export type TabName = 'crosshair' | 'game' | 'video';
+export type TabName = 'crosshair' | 'game' | 'video' | 'skins';
 
 export interface CrosshairSettings {
   lines: boolean;
@@ -357,6 +357,8 @@ export interface SettingsHooks {
   /** Called when the panel opens — the game drops pointer lock, which pauses. */
   onOpen(): void;
   onChange(values: SettingsBundle): void;
+  /** Called when a tab is shown, so a tab with its own content can refresh. */
+  onShowTab?(tab: TabName): void;
 }
 
 export class Settings {
@@ -562,6 +564,7 @@ export class Settings {
     for (const pane of document.querySelectorAll('#settingsScreen .tabpane')) {
       pane.toggleAttribute('hidden', pane.getAttribute('data-pane') !== name);
     }
+    this.hooks.onShowTab?.(name);
   }
 
   open(): void {

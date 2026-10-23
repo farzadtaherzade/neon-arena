@@ -12,6 +12,7 @@ export interface InputHooks {
   isSettingsOpen(): boolean;
   onJump(): void;
   onReload(): void;
+  onKnife(): void;
   onLook(dx: number, dy: number): void;
   onLockRequest(): void;
   onLockChange(locked: boolean): void;
@@ -108,6 +109,7 @@ export class Input {
         if (!e.repeat) hooks.onJump();
       }
       if (e.code === 'KeyR') hooks.onReload();
+      if (e.code === 'KeyQ' && !e.repeat && hooks.isPlaying()) hooks.onKnife();
       if (e.code === 'KeyC') hooks.onToggleSettings();
       if (e.code === 'KeyM' || e.code === 'Tab') {
         // Tab would otherwise move the focus to the next control.

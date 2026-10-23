@@ -54,6 +54,21 @@ function exposeTestApi(game: Game) {
 
     hurt: (d: number) => game.damagePlayer(d),
 
+    ammo: () => ({
+      mag: game.weapon.ammo,
+      reserve: game.weapon.reserve,
+      dry: game.weapon.isDry,
+    }),
+
+    knife: () => ({ ready: game.knife.ready, swingT: game.knife.swingT }),
+
+    swingKnife: () => game.swingKnife(),
+
+    setAmmo: (mag: number, reserve: number) => {
+      game.weapon.ammo = mag;
+      game.weapon.reserve = reserve;
+    },
+
     teleportEnemies: (d: number) => {
       for (const h of game.hostiles) {
         const a = Math.random() * Math.PI * 2;
@@ -187,6 +202,21 @@ function exposeTestApi(game: Game) {
       game.settings.setVideo(patch as never);
       return game.settings.values.video;
     },
+
+    /** The credits wallet and the loadout. */
+    profile: () => game.profile.data,
+
+    /** The credit balance. */
+    credits: () => game.profile.data.credits,
+
+    /** Bank credits, for testing the shop. */
+    grantCredits: (n: number) => game.profile.addCredits(n),
+
+    /** Buy a skin with credits. */
+    buySkin: (id: string) => game.buySkin(id),
+
+    /** Equip an owned skin. */
+    equipSkin: (id: string) => game.equipSkin(id),
   };
 }
 

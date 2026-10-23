@@ -13,6 +13,7 @@ import {
 } from '../game/world/layout';
 import { CapturePad } from './CapturePad';
 import { ClockTower } from './ClockTower';
+import { GEO, MAT } from './Materials';
 import { mobWarmup } from './models/MobModel';
 import { COVER_ACCENTS, makeCover, makeDeck, makeRamp, makeReactor, makeWall } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
@@ -104,6 +105,18 @@ export class Arena {
     this.capturePads();
     this.stars(rng);
     this.mobWarmupGroup = mobWarmup();
+    // A meteor's rock, its marker ring and a bomb's shell and blast ring upload
+    // to the GPU the first time one is used, which can land in the middle of a
+    // measurement and read as a leak. Warm them with the mobs so the counts
+    // settle before anyone samples them — and so the first stone of a shower
+    // and the first bomb of a panicking sapper never hitch.
+    for (const geo of [GEO.rock(), GEO.meteorRing(), GEO.bombBody(), GEO.bombRing()]) {
+      const mesh = new THREE.Mesh(geo, MAT.eye());
+      mesh.position.set(0, -1000, 0);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.frustumCulled = false;
+      this.mobWarmupGroup.add(mesh);
+    }
     this.scene.add(this.mobWarmupGroup);
 
     addEventListener('resize', () => this.resize());

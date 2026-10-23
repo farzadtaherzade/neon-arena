@@ -1,21 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALARM,
+  AMMO,
   BOMB,
   CAMERA,
   CAPTURE,
+  CREDITS,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
   FEEDBACK,
   FIXED_STEP,
   FX,
+  KNIFE,
   MAX_DT,
   METEOR,
+  RUNNER,
   SAPPER,
   SCREEN,
+  SKINS,
   START_HP,
   STATE,
+  TANK,
   VIDEO,
   WAVES,
   WEAPON,
@@ -235,5 +241,104 @@ describe('config', () => {
     expect(Object.values(STATE)).toEqual(['menu', 'playing', 'paused', 'gameover']);
     expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover']);
     expect(new Set(Object.values(STATE)).size).toBe(4);
+  });
+
+  it('keeps the ammo economy coherent', () => {
+    expect(AMMO.RESERVE_START).toBeGreaterThan(0);
+    expect(AMMO.RESERVE_MAX).toBeGreaterThanOrEqual(AMMO.RESERVE_START);
+    // Every mob drops something, and a tank is worth more than a grunt.
+    expect(Object.keys(AMMO.DROP).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
+    for (const value of Object.values(AMMO.DROP)) expect(value).toBeGreaterThan(0);
+    expect(AMMO.DROP.tank).toBeGreaterThan(AMMO.DROP.grunt);
+    // A wave hands out enough rounds to matter but not enough to replace aim.
+    expect(WAVES.AMMO_PER_WAVE).toBeGreaterThan(0);
+    expect(WAVES.AMMO_PER_WAVE).toBeLessThan(WEAPON.MAG * 3);
+  });
+
+  it('keeps the knife coherent', () => {
+    expect(KNIFE.DAMAGE).toBeGreaterThan(0);
+    expect(KNIFE.RANGE).toBeGreaterThan(0);
+    expect(KNIFE.ARC).toBeGreaterThan(0);
+    expect(KNIFE.ARC).toBeLessThanOrEqual(Math.PI);
+    expect(KNIFE.COOLDOWN).toBeGreaterThan(0);
+    expect(KNIFE.SWING_T).toBeGreaterThan(0);
+    expect(KNIFE.SWING_T).toBeLessThanOrEqual(KNIFE.COOLDOWN);
+    // The knife one-shots a grunt and a runner, and needs three for a tank.
+    expect(KNIFE.DAMAGE).toBeGreaterThanOrEqual(ENEMY_TYPES.runner.hp);
+    expect(KNIFE.DAMAGE).toBeLessThan(ENEMY_TYPES.tank.hp);
+    expect(Math.ceil(ENEMY_TYPES.tank.hp / KNIFE.DAMAGE)).toBe(3);
+  });
+
+  it('keeps the mob verbs coherent', () => {
+    // The shield only covers the front, and it must matter.
+    expect(ENEMY.SHIELD_ARC).toBeGreaterThan(0);
+    expect(ENEMY.SHIELD_ARC).toBeLessThanOrEqual(Math.PI);
+    expect(ENEMY.SHIELD_CUT).toBeGreaterThan(0);
+    expect(ENEMY.SHIELD_CUT).toBeLessThan(1);
+    expect(ENEMY.WINDUP).toBeGreaterThan(0);
+    // A mob turns slower than a player can strafe, or the shield is useless.
+    for (const rate of Object.values(ENEMY.TURN_RATE)) expect(rate).toBeGreaterThan(0);
+    expect(ENEMY.TURN_RATE.tank).toBeLessThan(ENEMY.TURN_RATE.runner);
+
+    // The runner's pounce: a tell, a burst, and a slow patch afterwards.
+    expect(RUNNER.POUNCE_TELL).toBeGreaterThan(0);
+    expect(RUNNER.POUNCE_T).toBeGreaterThan(0);
+    expect(RUNNER.POUNCE_GAIN).toBeGreaterThan(1);
+    expect(RUNNER.RECOVER_GAIN).toBeLessThan(1);
+    expect(RUNNER.POUNCE_MIN).toBeLessThan(RUNNER.POUNCE_MAX);
+
+    // The tank's slam reaches further than a swipe and hits harder.
+    expect(TANK.SLAM_R).toBeGreaterThan(ENEMY.REACH_PAD);
+    expect(TANK.SLAM_MULT).toBeGreaterThan(1);
+    expect(TANK.ARMOUR_CUT).toBeGreaterThan(0);
+    expect(TANK.ARMOUR_CUT).toBeLessThan(ENEMY.SHIELD_CUT);
+    expect(TANK.WINDUP).toBeGreaterThan(ENEMY.WINDUP);
+  });
+
+  it('keeps the shop coherent', () => {
+    // Four rifle skins and four knife skins, every id unique.
+    expect(SKINS).toHaveLength(8);
+    expect(SKINS.filter((s) => s.weapon === 'rifle')).toHaveLength(4);
+    expect(SKINS.filter((s) => s.weapon === 'knife')).toHaveLength(4);
+    expect(new Set(SKINS.map((s) => s.id)).size).toBe(SKINS.length);
+    // Every skin is named, priced and has a part the viewmodel can build.
+    for (const skin of SKINS) {
+      expect(skin.name.length).toBeGreaterThan(0);
+      expect(skin.flavour.length).toBeGreaterThan(0);
+      expect(skin.price).toBeGreaterThan(0);
+      if (skin.weapon === 'rifle') expect(['iron', 'reddot', 'holo', 'scope']).toContain(skin.part);
+      else expect(['straight', 'cleaver', 'saw', 'hook']).toContain(skin.part);
+    }
+    // The four tiers, cheapest first.
+    const prices = [...new Set(SKINS.map((s) => s.price))].sort((a, b) => a - b);
+    expect(prices).toEqual([300, 900, 2000, 4500]);
+    // Every palette colour is a real colour, and the two weapons of a theme match.
+    for (const skin of SKINS) {
+      for (const colour of Object.values(skin.palette)) {
+        expect(Number.isInteger(colour)).toBe(true);
+        expect(colour).toBeGreaterThanOrEqual(0);
+        expect(colour).toBeLessThanOrEqual(0xffffff);
+      }
+    }
+    for (const rifle of SKINS.filter((s) => s.weapon === 'rifle')) {
+      const knife = SKINS.find((s) => s.weapon === 'knife' && s.id === rifle.id.replace('rifle', 'knife'));
+      expect(knife).toBeDefined();
+      expect(knife?.price).toBe(rifle.price);
+      expect(knife?.palette).toEqual(rifle.palette);
+    }
+  });
+
+  it('keeps the credit economy coherent', () => {
+    // Every mob is worth something, and a tank is worth the most.
+    expect(Object.keys(CREDITS.KILL).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
+    for (const value of Object.values(CREDITS.KILL)) expect(value).toBeGreaterThan(0);
+    expect(CREDITS.KILL.tank).toBeGreaterThan(CREDITS.KILL.grunt);
+    expect(CREDITS.HEADSHOT).toBeGreaterThan(0);
+    expect(CREDITS.WAVE).toBeGreaterThan(0);
+    expect(CREDITS.CAPTURE).toBeGreaterThan(0);
+    // A wave's worth of kills plus the wave bonus must reach the cheapest skin
+    // in a reasonable number of waves, or the shop is dead on arrival.
+    const waveWorth = CREDITS.KILL.grunt * 3 + CREDITS.WAVE;
+    expect(waveWorth * 10).toBeGreaterThan(300);
   });
 });

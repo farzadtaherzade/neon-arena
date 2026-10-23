@@ -1,6 +1,6 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, SAPPER, WORLD } from './config';
+import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WORLD } from './config';
 import type { Vec3 } from './player';
 import type { Ramp, Vec2 } from './world/collision';
 
@@ -19,8 +19,20 @@ export interface EnemyWorld {
   /** Ramps in the arena, so a mob can follow the player onto high ground. */
   ramps: readonly Ramp[];
   damagePlayer(amount: number): void;
+  /** Shove the player — the tank's ground slam. */
+  knockPlayer(dirX: number, dirZ: number, force: number): void;
   /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc. */
   plantBomb(from: Vec2, to: Vec2, thrown: boolean): void;
+}
+
+/** Where a hit came from, so the mob can work out what its armour is doing. */
+export interface HitInfo {
+  /** Direction from the mob toward whoever hit it. */
+  dirX: number;
+  dirZ: number;
+  headshot: boolean;
+  /** A blade goes under the plate; a bullet does not. */
+  melee: boolean;
 }
 
 export interface EnemyStats {
@@ -76,10 +88,33 @@ export class Enemy {
   flashHex = 0xffffff;
   deathT = 0;
 
-  /** Sapper only: seconds until the next plant, wander heading, current mode. */
+  /**
+   * The heading the mob actually faces. It turns at a limited rate, so a
+   * grunt can be flanked — and its front plate only covers what it can see.
+   */
+  facingYaw = 0;
+
+  /** Seconds left on a melee windup; 0 when it is not winding up. */
+  windup = 0;
+  /** How long this mob's windup lasts, for the swing animation. */
+  private windupTotal = 0;
+
+  /** Runner only: seconds left on the pounce, and on the recovery after it. */
+  pounce = 0;
+  recover = 0;
+  pounceCd = 0;
+  /** Runner only: seconds left on the crouch that telegraphs the pounce. */
+  pounceTell = 0;
+
+  /** Sapper only: seconds until the next bomb plant while fleeing. */
+  panicT = 0;
+
+  /** Sapper only: seconds left before the herd thins enough to make it charge. */
+  sapperMode: 'lurk' | 'hunt' | 'flee' = 'lurk';
+
+  /** Sapper only: seconds until the next plant, and its wander heading. */
   plantT = 0;
   wanderA = 0;
-  sapperMode: 'lurk' | 'hunt' = 'lurk';
 
   /** Distance of the nearest living neighbour at the last separation pass. */
   private reachPad: number = ENEMY.REACH_PAD;
@@ -144,8 +179,12 @@ export class Enemy {
     if (this.state === 'dying') return this.updateDeath(dt);
 
     this.cool -= dt;
+    this.pounceCd = Math.max(0, this.pounceCd - dt);
     if (this.kind === 'sapper') this.updateSapper(dt, world);
     else this.updateChaser(dt, world);
+
+    // It turns at a limited rate, so the player can get around its front plate.
+    this.turnToward(world.playerPos, ENEMY.TURN_RATE[this.kind] * dt);
 
     this.flashT = Math.max(0, this.flashT - dt);
     this.phase += dt * (3 + this.stats.speed * 1.6);
@@ -153,6 +192,34 @@ export class Enemy {
     world.collide(this.pos, ENEMY.COLLIDE_RADIUS * this.scale, this.pos.y);
     this.followGround(dt, world);
     return false;
+  }
+
+  /** Turn toward a point, at most `maxStep` radians this step. */
+  private turnToward(target: Vec2, maxStep: number): void {
+    const want = Math.atan2(target.x - this.pos.x, target.z - this.pos.z);
+    let d = want - this.facingYaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.facingYaw += Math.sign(d) * Math.min(Math.abs(d), maxStep);
+  }
+
+  /** 0..1 — how far through its windup the mob is. The view raises the arms. */
+  get swingK(): number {
+    if (this.windup <= 0 || this.windupTotal <= 0) return 0;
+    return 1 - this.windup / this.windupTotal;
+  }
+
+  /** 0..1 — how lit the sapper's bomb rack is. It glows just before a plant. */
+  get bombTell(): number {
+    const left = this.sapperMode === 'flee' ? this.panicT : this.plantT;
+    if (left > SAPPER.TELL || left <= 0) return 0;
+    return 1 - left / SAPPER.TELL;
+  }
+
+  /** 0..1 — how far through its crouch the runner is, before it leaps. */
+  get pounceK(): number {
+    if (this.pounceTell <= 0) return 0;
+    return 1 - this.pounceTell / RUNNER.POUNCE_TELL;
   }
 
   /** Bounce height and leg swing for this step. */
@@ -164,48 +231,97 @@ export class Enemy {
     return Math.sin(this.phase) * ENEMY.LEG_SWING;
   }
 
-  /** Yaw that faces the player. */
-  facing(playerPos: Vec2): number {
-    return Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
-  }
-
   /** Chase and melee — grunt, runner and tank. */
   private updateChaser(dt: number, world: EnemyWorld): void {
     const dx = world.playerPos.x - this.pos.x;
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
+    if (this.kind === 'runner') this.updatePounce(dt, dist);
+    // The tank's slam has reach, so it starts its swing from further out.
+    const reach = this.kind === 'tank' ? TANK.SLAM_R : this.reachPad;
     // Melee only works across a small height gap: an enemy at the foot of a
     // platform must not claw at someone standing on top of it.
-    if (dist > this.reachPad || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
-      this.pursue(dt, world, this.stats.speed);
+    if (dist > reach || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
+      this.pursue(dt, world, this.stats.speed * this.speedGain());
     } else {
-      this.attack(world);
+      this.attack(dt, world);
     }
+  }
+
+  /**
+   * The runner's pounce: a crouch to telegraph it, a burst of speed toward the
+   * player, then a slow recovery that leaves it wide open.
+   */
+  private updatePounce(dt: number, dist: number): void {
+    if (this.pounce > 0) {
+      this.pounce -= dt;
+      if (this.pounce <= 0) this.recover = RUNNER.RECOVER_T;
+      return;
+    }
+    if (this.recover > 0) {
+      this.recover = Math.max(0, this.recover - dt);
+      return;
+    }
+    if (this.pounceTell > 0) {
+      this.pounceTell -= dt;
+      if (this.pounceTell <= 0) {
+        this.pounce = RUNNER.POUNCE_T;
+        this.pounceCd = RUNNER.POUNCE_COOLDOWN + RUNNER.POUNCE_T + RUNNER.RECOVER_T;
+      }
+      return;
+    }
+    if (this.pounceCd > 0) return;
+    if (dist < RUNNER.POUNCE_MIN || dist > RUNNER.POUNCE_MAX) return;
+    this.pounceTell = RUNNER.POUNCE_TELL;
+  }
+
+  /** Speed multiplier: pounce burst, recovery, or plain running. */
+  private speedGain(): number {
+    if (this.pounce > 0) return RUNNER.POUNCE_GAIN;
+    if (this.recover > 0) return RUNNER.RECOVER_GAIN;
+    return 1;
   }
 
   /**
    * The sapper. While the herd is healthy it keeps its distance and plants a
    * bomb every `PLANT_T` seconds — throwing one at the player from range, or
    * dropping one in its tracks up close. Once fewer than `HUNT_AT` hostiles
-   * remain it abandons the bombs and charges.
+   * remain it abandons the bombs and charges. Wounded past the panic threshold
+   * it runs instead, dropping bombs at its feet as it flees.
    */
   private updateSapper(dt: number, world: EnemyWorld): void {
     const dx = world.playerPos.x - this.pos.x;
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    const hunting = world.hostileCount < SAPPER.HUNT_AT;
-    this.sapperMode = hunting ? 'hunt' : 'lurk';
+    const inv = 1 / (dist || 1);
 
-    if (hunting) {
+    const wasFleeing = this.sapperMode === 'flee';
+    if (this.stats.hp <= this.stats.maxHp * SAPPER.PANIC_HP) {
+      this.sapperMode = 'flee';
+    } else {
+      this.sapperMode = world.hostileCount < SAPPER.HUNT_AT ? 'hunt' : 'lurk';
+    }
+    if (this.sapperMode === 'flee' && !wasFleeing) this.panicT = SAPPER.PANIC_PLANT_T;
+
+    if (this.sapperMode === 'flee') {
+      this.panicT -= dt;
+      if (this.panicT <= 0) {
+        this.panicT = SAPPER.PANIC_PLANT_T;
+        world.plantBomb(this.pos, this.pos, false);
+      }
+      this.steer(dt, -dx * inv, -dz * inv, SAPPER.PANIC_SPEED, world);
+      return;
+    }
+
+    if (this.sapperMode === 'hunt') {
       if (dist > this.reachPad || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
         this.pursue(dt, world, SAPPER.HUNT_SPEED);
       } else {
-        this.attack(world);
+        this.attack(dt, world);
       }
       return;
     }
 
-    const inv = 1 / (dist || 1);
     // A player on a deck is out of melee reach, so the sapper lobs instead of
     // dropping at its feet: that bomb is what makes high ground a fight.
     const elevated = world.playerY - this.pos.y > ENEMY.ATTACK_RISE;
@@ -230,7 +346,7 @@ export class Enemy {
     this.wanderA += Math.sin(this.phase * 0.7) * SAPPER.WANDER_TURN * dt;
 
     if (dist <= this.reachPad && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
-      this.attack(world);
+      this.attack(dt, world);
     }
   }
 
@@ -342,22 +458,76 @@ export class Enemy {
     this.pos.z += this.vz * dt;
   }
 
-  private attack(world: EnemyWorld): void {
+  /**
+   * A melee attack with a windup. The mob raises its arms — the view reads
+   * `swingK` — and the blow lands at the end of it, so stepping out of reach
+   * during the tell dodges the hit.
+   */
+  private attack(dt: number, world: EnemyWorld): void {
     this.vx *= ENEMY.ARRIVE_DAMP;
     this.vz *= ENEMY.ARRIVE_DAMP;
+    if (this.windup > 0) {
+      this.windup -= dt;
+      if (this.windup <= 0) this.swing(world);
+      return;
+    }
     if (this.cool <= 0) {
-      this.cool = ENEMY.ATTACK_COOLDOWN;
-      this.flash(ENEMY.ATTACK_FLASH_COLOR, ENEMY.ATTACK_FLASH);
-      world.damagePlayer(this.stats.dmg);
+      this.windup = this.windupLength();
+      this.windupTotal = this.windup;
+      this.cool = this.windup + ENEMY.ATTACK_COOLDOWN;
     }
   }
 
-  /** Apply damage. Returns true if this shot killed it. */
-  takeDamage(amount: number): boolean {
+  /** How long this mob's tell runs before the blow lands. */
+  private windupLength(): number {
+    return this.kind === 'tank' ? TANK.WINDUP : ENEMY.WINDUP;
+  }
+
+  /** The blow lands. Grunts swipe; the tank slams the ground. */
+  private swing(world: EnemyWorld): void {
+    this.flash(ENEMY.ATTACK_FLASH_COLOR, ENEMY.ATTACK_FLASH);
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (this.kind === 'tank') {
+      if (dist > TANK.SLAM_R) return;
+      world.damagePlayer(this.stats.dmg * TANK.SLAM_MULT);
+      const inv = 1 / (dist || 1);
+      world.knockPlayer(dx * inv, dz * inv, TANK.KNOCK);
+      return;
+    }
+    if (dist > this.reachPad) return;
+    world.damagePlayer(this.stats.dmg);
+  }
+
+  /**
+   * Apply damage. Returns true if this shot killed it. `hit` says where the
+   * hit came from, so a front plate can soak it.
+   */
+  takeDamage(amount: number, hit?: HitInfo): boolean {
     if (this.state !== 'alive') return false;
-    this.stats.hp -= amount;
+    this.stats.hp -= this.plateCut(amount, hit);
     this.flash(ENEMY.HIT_FLASH_COLOR, ENEMY.HIT_FLASH);
     return this.stats.hp <= 0;
+  }
+
+  /**
+   * What the mob's armour does to a hit. The grunt's shield and the tank's
+   * plate only cover the arc they are facing, a headshot goes over the top and
+   * a blade goes under it. Explosions pass no hit, so they always land.
+   */
+  private plateCut(amount: number, hit: HitInfo | undefined): number {
+    if (!hit || hit.melee || hit.headshot) return amount;
+    const cut = this.kind === 'tank' ? TANK.ARMOUR_CUT : this.kind === 'grunt' ? ENEMY.SHIELD_CUT : 0;
+    if (cut <= 0) return amount;
+    // The shooter is in the direction the hit came from; the plate covers only
+    // what the mob is looking at.
+    const toShooter = Math.atan2(hit.dirX, hit.dirZ);
+    let d = toShooter - this.facingYaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    if (Math.abs(d) > ENEMY.SHIELD_ARC) return amount;
+    return amount * (1 - cut);
   }
 
   /** Shove along the shot direction so hits read as impacts, not just a number. */

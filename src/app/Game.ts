@@ -9,12 +9,15 @@ import { Bomb } from '../game/bomb';
 import { CapturePoints } from '../game/capture';
 import {
   ALARM,
+  AMMO,
   BOMB,
   CAMERA,
   CAPTURE,
+  CREDITS,
   ENEMY,
   FEEDBACK,
   type GameState,
+  KNIFE,
   METEOR,
   SCREEN,
   START_HP,
@@ -26,6 +29,7 @@ import {
 } from '../game/config';
 import { SpatialHash } from '../game/enemies';
 import { Enemy, type EnemyWorld } from '../game/enemy';
+import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
 import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
@@ -37,6 +41,7 @@ import { BombView } from '../render/BombView';
 import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
+import { KnifeView } from '../render/Knife';
 import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
 import { XpView } from '../render/XpView';
@@ -44,7 +49,9 @@ import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
+import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
+import { Skins } from '../ui/Skins';
 
 interface Hostile {
   enemy: Enemy;
@@ -95,11 +102,21 @@ export class Game {
   private hud = new Hud();
   private input: Input;
   private gun = new GunView();
+  private knifeView = new KnifeView();
+  /** The knife: a cone in front of the player, on its own cooldown. */
+  readonly knife = new Knife();
+  /** Reused: the mobs a knife swing caught this frame. */
+  private knifeHits: Enemy[] = [];
+  /** Reused: the live mobs the knife tests against. */
+  private knifeEnemies: Enemy[] = [];
 
   // Public because `main.ts` drives them from the headless E2E suite.
   readonly settings: Settings;
   readonly weapon: Weapon;
   readonly hostiles: Hostile[] = [];
+  /** The credits wallet and the loadout. The credits survive a death. */
+  readonly profile = new Profile();
+  private skins: Skins;
   private hash = new SpatialHash();
   /** Reused each step: the broadphase rebuild must not allocate an array per tick. */
   private enemyScratch: Enemy[] = [];
@@ -167,6 +184,8 @@ export class Game {
     state: '',
     vignetteT: 0,
     ammo: 0,
+    reserve: 0,
+    dry: false,
     reloading: false,
     reloadProgress: 0,
     bloom: 0,
@@ -179,6 +198,7 @@ export class Game {
     level: 1,
     xp: 0,
     xpNeed: 1,
+    credits: 0,
   };
 
   constructor(readonly test = false) {
@@ -193,7 +213,15 @@ export class Game {
     this.minimap = new Minimap();
     this.map = new MapScreen();
     this.arena.camera.add(this.gun.group);
+    this.arena.camera.add(this.knifeView.group);
     this.pick.add(...this.arena.solids);
+
+    this.skins = new Skins({
+      getProfile: () => this.profile.data,
+      onBuy: (id) => this.buySkin(id),
+      onEquip: (id) => this.equipSkin(id),
+    });
+    this.applySkins();
 
     this.settings = new Settings(this.hud.crosshair, {
       onOpen: () => {
@@ -207,6 +235,9 @@ export class Game {
         this.music.setMuted(values.game.mute);
         this.baseFov = values.game.fov;
         this.arena.setVideo(values.video);
+      },
+      onShowTab: (tab) => {
+        if (tab === 'skins') this.skins.refresh();
       },
     });
     this.player.sens = this.settings.values.game.sensitivity;
@@ -231,6 +262,7 @@ export class Game {
         isSettingsOpen: () => this.settings.isOpen,
         onJump: () => this.player.queueJump(),
         onReload: () => this.weapon.startReload(),
+        onKnife: () => this.swingKnife(),
         onLook: (dx, dy) => {
           const g = this.settings.values.game;
           this.player.look(dx, g.invertY ? -dy : dy, g.sensitivity);
@@ -266,6 +298,7 @@ export class Game {
       },
       ramps: this.collision.ramps,
       damagePlayer: (amount) => this.damagePlayer(amount),
+      knockPlayer: (dirX, dirZ, force) => this.knockPlayer(dirX, dirZ, force),
       plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
     };
 
@@ -394,6 +427,12 @@ export class Game {
     }
   }
 
+  /** Shove the player — the tank's ground slam. */
+  private knockPlayer(dirX: number, dirZ: number, force: number): void {
+    this.player.velocity.x += dirX * force;
+    this.player.velocity.z += dirZ * force;
+  }
+
   private onLockChange(locked: boolean): void {
     if (!locked && this.mapLockRelease) {
       // The map took the pointer lock away on purpose; that is not a pause.
@@ -415,6 +454,8 @@ export class Game {
     this.wave = n;
     this.waveClearPending = false;
     this.waves.start(n);
+    // A resupply at the start of every wave, on top of what the mobs drop.
+    this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
     this.hud.showBanner(`WAVE ${n}`, n === 1 ? 'GET READY' : 'HOSTILES INCOMING');
     this.sfx.wave();
   }
@@ -450,11 +491,12 @@ export class Game {
       this.sfx.hit();
 
       const enemy = hit.enemy;
-      if (enemy.takeDamage(this.weapon.damage(headshot))) this.killEnemy(enemy, headshot);
-      else {
-        const dir = this.pick.direction;
-        enemy.knockback(dir.x, dir.z);
-      }
+      const dir = this.pick.direction;
+      // The plate only covers what the mob is facing, so it needs to know where
+      // the shot came from.
+      const from = { dirX: -dir.x, dirZ: -dir.z, headshot, melee: false };
+      if (enemy.takeDamage(this.weapon.damage(headshot), from)) this.killEnemy(enemy, headshot);
+      else enemy.knockback(dir.x, dir.z);
       return;
     }
 
@@ -471,6 +513,66 @@ export class Game {
       .addScaledVector(this.pick.direction, WEAPON.MAX_RANGE);
   }
 
+  /**
+   * The knife. A cone in front of the player: everything in the arc takes the
+   * hit. It never touches a bomb — that stays a rifle job.
+   */
+  swingKnife(): void {
+    if (this.state !== STATE.PLAYING) return;
+    const p = this.player.position;
+    const mobs = this.knifeEnemies;
+    mobs.length = 0;
+    for (const h of this.hostiles) mobs.push(h.enemy);
+    const count = this.knife.swing(p.x, p.y - WORLD.PLAYER_H, p.z, this.player.yaw, mobs, this.knifeHits);
+    if (count === 0) return;
+    this.sfx.slash();
+    for (const enemy of this.knifeHits) {
+      const dx = p.x - enemy.pos.x;
+      const dz = p.z - enemy.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const hit = { dirX: dx / d, dirZ: dz / d, headshot: false, melee: true };
+      this.fx.burst(
+        {
+          x: enemy.pos.x,
+          y: enemy.pos.y + 0.9 * enemy.scale,
+          z: enemy.pos.z,
+          color: 0xff8866,
+          count: 12,
+          speed: 3.5,
+          life: 0.4,
+          gravity: 9,
+        },
+        this.rng,
+      );
+      if (enemy.takeDamage(KNIFE.DAMAGE, hit)) this.killEnemy(enemy, false);
+    }
+  }
+
+  // --------------------------------------------------------------------- shop
+
+  /** Buy a skin with credits. False when it is unknown, owned or too dear. */
+  buySkin(id: string): boolean {
+    const bought = this.profile.buy(id);
+    if (bought) this.skins.refresh();
+    return bought;
+  }
+
+  /** Equip an owned skin and put it on the viewmodel. */
+  equipSkin(id: string): boolean {
+    const equipped = this.profile.equip(id);
+    if (equipped) {
+      this.applySkins();
+      this.skins.refresh();
+    }
+    return equipped;
+  }
+
+  /** Wear the equipped skins. */
+  private applySkins(): void {
+    this.gun.applySkin(this.profile.equippedSkin('rifle'));
+    this.knifeView.applySkin(this.profile.equippedSkin('knife'));
+  }
+
   private killEnemy(enemy: Enemy, headshot: boolean): void {
     const hostile = this.hostiles.find((h) => h.enemy === enemy);
     if (!hostile || !enemy.kill()) return;
@@ -481,6 +583,10 @@ export class Game {
     this.fx.burst({ ...origin, color: 0xff8866, count: 10, speed: 3, life: 0.5, gravity: 9 }, this.rng);
 
     this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z, XP.VALUE[enemy.kind]);
+    // The mob's rounds go into the reserve, so a wave of them is a resupply.
+    this.weapon.addAmmo(AMMO.DROP[enemy.kind]);
+    // A knife kill pays the same as a gun kill.
+    this.profile.addCredits(CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0));
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
@@ -663,6 +769,7 @@ export class Game {
 
     if (cap.justCaptured) {
       this.healLeft = CAPTURE.HEAL;
+      this.profile.addCredits(CREDITS.CAPTURE);
       this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
       this.sfx.xpCollect();
     }
@@ -820,6 +927,7 @@ export class Game {
       this.arena.camera.updateWorldMatrix(true, false);
       this.weapon.aiming = this.input.aiming;
       this.weapon.update(dt, this.elapsed, this.input.trigger);
+      this.knife.update(dt);
       this.updateWaves(dt);
       this.updateBombs(dt);
       this.updateXps(dt);
@@ -879,6 +987,7 @@ export class Game {
 
     if (result.cleared && !this.waveClearPending) {
       this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
+      this.profile.addCredits(CREDITS.WAVE);
       this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
       this.sfx.wave();
       this.waveClearPending = true;
@@ -889,6 +998,7 @@ export class Game {
     // wave look (and announce) like "wave 1 complete" forever.
     if (this.waves.wave > waveBefore) {
       this.wave = this.waves.wave;
+      this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
       this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
       this.sfx.wave();
       this.waveClearPending = false;
@@ -922,6 +1032,7 @@ export class Game {
     // pause overlay, hidden on the title and game-over screens. Driving this
     // from state (not from a transition) is what keeps it alive across resume.
     this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
+    this.knifeView.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
 
     if (this.state === STATE.PLAYING) {
       this.applyCameraPose();
@@ -935,12 +1046,13 @@ export class Game {
       const dip = weapon.reloading ? Math.sin(weapon.reloadProgress * Math.PI) : 0;
       this.gun.pose(player.bobPhase, weapon.kick, dip, this.input.strafe);
       this.gun.decay(dt, weapon.flashT);
+      this.knifeView.pose(this.knife.swingT, player.bobPhase, this.input.strafe);
     }
 
     this.arena.camera.getWorldQuaternion(this.camQuat);
     this.arena.update(this.elapsed);
     this.arena.setClock(this.wave, this.waves.intermission, this.aliveCount);
-    for (const h of this.hostiles) h.view.sync(player.position, this.camQuat);
+    for (const h of this.hostiles) h.view.sync(this.camQuat);
 
     // Bombs blink, and the closest live one drives the HUD warning.
     let nearestD = Number.POSITIVE_INFINITY;
@@ -1003,6 +1115,8 @@ export class Game {
     m.state = this.state;
     m.vignetteT = this.feedback.vignetteT;
     m.ammo = weapon.ammo;
+    m.reserve = weapon.reserve;
+    m.dry = weapon.isDry;
     m.reloading = weapon.reloading;
     m.reloadProgress = weapon.reloadProgress;
     m.bloom = weapon.bloom;
@@ -1015,6 +1129,7 @@ export class Game {
     m.level = this.meter.level;
     m.xp = this.meter.xp;
     m.xpNeed = this.meter.need;
+    m.credits = this.profile.data.credits;
 
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
