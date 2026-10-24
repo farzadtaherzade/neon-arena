@@ -114,7 +114,11 @@ export class Input {
       if (e.code === 'KeyM' || e.code === 'Tab') {
         // Tab would otherwise move the focus to the next control.
         e.preventDefault();
-        if (!e.repeat && !hooks.isSettingsOpen()) hooks.onToggleMap();
+        // Only a live run, or one the map itself paused. From the menu or the
+        // game-over screen the PAUSED → PLAYING round trip would fabricate or
+        // resurrect a run.
+        if (!e.repeat && !hooks.isSettingsOpen() && (hooks.isPlaying() || hooks.isPaused()))
+          hooks.onToggleMap();
       }
       // Esc never reaches keydown while pointer-locked (the browser eats it to
       // exit the lock), so it only closes the settings panel.
