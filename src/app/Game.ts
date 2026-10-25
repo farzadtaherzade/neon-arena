@@ -350,6 +350,9 @@ export class Game {
       if (!this.test) this.input.lock();
       return;
     }
+    // Only a live run can open the map: from the menu or the game-over screen
+    // the PAUSED → PLAYING round trip below would fabricate or resurrect a run.
+    if (this.state !== STATE.PLAYING) return;
     this.mapOpen = true;
     this.state = STATE.PAUSED;
     this.input.firing = false;
@@ -508,9 +511,10 @@ export class Game {
   }
 
   private missEnd(): THREE.Vector3 {
-    return this.tracerEnd
-      .copy(this.arena.camera.position)
-      .addScaledVector(this.pick.direction, WEAPON.MAX_RANGE);
+    // The camera lives inside the yaw/pitch rig, so its local position is a
+    // permanent (0,0,0) — the ray leaves from its world position, not that.
+    this.arena.camera.getWorldPosition(this.tracerEnd);
+    return this.tracerEnd.addScaledVector(this.pick.direction, WEAPON.MAX_RANGE);
   }
 
   /**
@@ -768,7 +772,9 @@ export class Game {
     cap.update(dt, this.wave, p.x, p.z, this.world.playerY);
 
     if (cap.justCaptured) {
-      this.healLeft = CAPTURE.HEAL;
+      // Added, not replaced: a level-up repair mid-payout has to survive the
+      // capture. The START_HP cap below keeps the pool from overhealing.
+      this.healLeft += CAPTURE.HEAL;
       this.profile.addCredits(CREDITS.CAPTURE);
       this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
       this.sfx.xpCollect();
