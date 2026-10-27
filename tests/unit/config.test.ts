@@ -22,6 +22,7 @@ import {
   START_HP,
   STATE,
   TANK,
+  TOUCH,
   VIDEO,
   WAVES,
   WEAPON,
@@ -222,6 +223,17 @@ describe('config', () => {
   it('caps a frame at a sane step', () => {
     expect(FIXED_STEP).toBeCloseTo(1 / 60, 10);
     expect(MAX_DT).toBeGreaterThan(FIXED_STEP);
+  });
+
+  it('keeps the touch stick coherent', () => {
+    expect(TOUCH.STICK_R).toBeGreaterThan(0);
+    // The dead zone must sit inside the sprint threshold, which must sit
+    // inside the stick itself, or sprint would either never fire or always fire.
+    expect(TOUCH.DEAD_ZONE).toBeGreaterThan(0);
+    expect(TOUCH.DEAD_ZONE).toBeLessThan(TOUCH.SPRINT_FRACTION);
+    expect(TOUCH.SPRINT_FRACTION).toBeLessThanOrEqual(1);
+    // Look gain scales WEAPON.SENS; zero would freeze the view.
+    expect(TOUCH.LOOK_GAIN).toBeGreaterThan(0);
   });
 
   it('keeps the video options inside sane bounds', () => {

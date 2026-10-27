@@ -76,6 +76,25 @@ export const WEAPON = {
   FLASH_LIGHT_DECAY: 26,
 } as const;
 
+/**
+ * Touch controls (phones and tablets).
+ *
+ * The stick is invisible until the left thumb lands, then measures its offset
+ * against `STICK_R`. Look drags convert pixels to radians at
+ * `WEAPON.SENS × LOOK_GAIN × settings.touch.touchSensitivity` — the settings
+ * value is the personal multiplier, `LOOK_GAIN` the touch-specific base.
+ */
+export const TOUCH = {
+  /** Radius of the virtual stick, in px. A full push = `WALK` speed. */
+  STICK_R: 60,
+  /** Fraction of the stick inside which the walk vector is zero. */
+  DEAD_ZONE: 0.18,
+  /** Stick fraction at which the run auto-sprints (stamina still applies). */
+  SPRINT_FRACTION: 0.95,
+  /** Touch look gain: multiplies `WEAPON.SENS` before the player's setting. */
+  LOOK_GAIN: 1.6,
+} as const;
+
 export const CAMERA = {
   FOV: 75,
   NEAR: 0.1,

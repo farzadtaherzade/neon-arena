@@ -6,7 +6,9 @@ import {
   sanitizeAll,
   sanitizeCrosshair,
   sanitizeGame,
+  sanitizeTouch,
   sanitizeVideo,
+  TOUCH_DEFAULTS,
   VIDEO_DEFAULTS,
   writeSettings,
 } from '../../src/ui/Settings';
@@ -103,12 +105,36 @@ describe('sanitizeVideo', () => {
   });
 });
 
+describe('sanitizeTouch', () => {
+  it('falls back to the defaults for junk', () => {
+    expect(sanitizeTouch(null)).toEqual(TOUCH_DEFAULTS);
+    expect(sanitizeTouch('nope')).toEqual(TOUCH_DEFAULTS);
+  });
+
+  it('only accepts the two known shoot modes', () => {
+    expect(sanitizeTouch({ shootMode: 'auto' }).shootMode).toBe('auto');
+    expect(sanitizeTouch({ shootMode: 'gyro' }).shootMode).toBe('button');
+  });
+
+  it('clamps the touch sensitivity', () => {
+    expect(sanitizeTouch({ touchSensitivity: 99 }).touchSensitivity).toBe(4);
+    expect(sanitizeTouch({ touchSensitivity: 0 }).touchSensitivity).toBe(0.2);
+  });
+
+  it('only accepts booleans for the run-once flags', () => {
+    expect(sanitizeTouch({ tuned: true }).tuned).toBe(true);
+    expect(sanitizeTouch({ tuned: 'yes' }).tuned).toBe(false);
+    expect(sanitizeTouch({ shootModeChosen: 1 }).shootModeChosen).toBe(false);
+  });
+});
+
 describe('sanitizeAll', () => {
   it('fills every group from junk', () => {
     expect(sanitizeAll(null)).toEqual({
       crosshair: CROSSHAIR_DEFAULTS,
       game: GAME_DEFAULTS,
       video: VIDEO_DEFAULTS,
+      touch: TOUCH_DEFAULTS,
     });
   });
 
@@ -117,10 +143,12 @@ describe('sanitizeAll', () => {
       crosshair: { shape: 'circle' },
       game: { sensitivity: 2 },
       video: { quality: 0 },
+      touch: { shootMode: 'auto' },
     });
     expect(all.crosshair.shape).toBe('circle');
     expect(all.game.sensitivity).toBe(2);
     expect(all.video.quality).toBe(0);
+    expect(all.touch.shootMode).toBe('auto');
     // A crosshair change must not leak into the game group.
     expect(all.game.fov).toBe(GAME_DEFAULTS.fov);
   });

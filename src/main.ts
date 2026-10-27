@@ -7,12 +7,14 @@ import { FIXED_STEP, MAX_DT, WORLD } from './game/config';
 /**
  * Bootstrap: build the game, run the fixed-timestep loop, and expose the
  * automation hook. `?test` skips the title screen and pointer lock so the game
- * can be driven headlessly.
+ * can be driven headlessly. `?touch` forces the touch layer on so the mobile
+ * suite can drive it on a desktop browser.
  */
 
-const TEST = new URLSearchParams(location.search).has('test');
+const PARAMS = new URLSearchParams(location.search);
+const TEST = PARAMS.has('test');
 
-const game = new Game(TEST);
+const game = new Game(TEST, PARAMS.has('touch'));
 const loop = new FixedLoop(FIXED_STEP);
 let last = performance.now();
 
@@ -146,6 +148,15 @@ function exposeTestApi(game: Game) {
 
     /** Rejected mouse deltas / pointer-lock losses — diagnoses aim glitches. */
     inputStats: () => ({ ...game.inputStats }),
+
+    /** Touch layer state: enabled, visible, orientation, trigger, shoot mode. */
+    touch: () => game.touchInfo,
+
+    /** Patch the touch settings (shoot mode, sensitivity) like any other group. */
+    setTouch: (patch: Record<string, unknown>) => {
+      game.settings.setTouch(patch as never);
+      return game.settings.values.touch;
+    },
 
     /** Deck capture: live deck, hold progress and per-deck cooldowns. */
     capture: () => ({

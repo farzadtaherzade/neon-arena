@@ -58,10 +58,29 @@ export interface VideoSettings {
   fog: boolean;
 }
 
+/** How the trigger works on a touch screen. */
+export type ShootMode = 'button' | 'auto';
+
+export interface TouchSettings {
+  /**
+   * `button` = a dedicated hold-to-fire button; `auto` = the rifle fires
+   * whenever the crosshair is over a hostile. Asked once at first launch and
+   * changeable here forever after.
+   */
+  shootMode: ShootMode;
+  /** Multiplier applied to touch look drags (1 = default). */
+  touchSensitivity: number;
+  /** First launch on this device has applied the touch video defaults. */
+  tuned: boolean;
+  /** The player has picked a shoot mode, so the first-launch prompt stops. */
+  shootModeChosen: boolean;
+}
+
 export interface SettingsBundle {
   crosshair: CrosshairSettings;
   game: GameSettings;
   video: VideoSettings;
+  touch: TouchSettings;
 }
 
 export const CROSSHAIR_DEFAULTS: CrosshairSettings = {
@@ -92,6 +111,13 @@ export const VIDEO_DEFAULTS: VideoSettings = {
   quality: 2,
   shadows: true,
   fog: true,
+};
+
+export const TOUCH_DEFAULTS: TouchSettings = {
+  shootMode: 'button',
+  touchSensitivity: 1,
+  tuned: false,
+  shootModeChosen: false,
 };
 
 const PRESETS: { name: string; values: Partial<CrosshairSettings> }[] = [
@@ -212,12 +238,24 @@ export function sanitizeVideo(raw: unknown): VideoSettings {
   };
 }
 
+export function sanitizeTouch(raw: unknown): TouchSettings {
+  const o = rec(raw);
+  const d = TOUCH_DEFAULTS;
+  return {
+    shootMode: o.shootMode === 'auto' ? 'auto' : 'button',
+    touchSensitivity: num(o.touchSensitivity, 0.2, 4, d.touchSensitivity),
+    tuned: bool(o.tuned, d.tuned),
+    shootModeChosen: bool(o.shootModeChosen, d.shootModeChosen),
+  };
+}
+
 export function sanitizeAll(raw: unknown): SettingsBundle {
   const o = rec(raw);
   return {
     crosshair: sanitizeCrosshair(o.crosshair),
     game: sanitizeGame(o.game),
     video: sanitizeVideo(o.video),
+    touch: sanitizeTouch(o.touch),
   };
 }
 
@@ -345,6 +383,13 @@ const VIDEO_ROWS: readonly Row[] = [
   { key: 'fog', label: 'FOG', type: 'toggle' },
 ];
 
+const TOUCH_ROWS: readonly Row[] = [
+  { key: 'shootMode', label: 'TOUCH SHOOT MODE', type: 'select', options: ['button', 'auto'] },
+  { key: 'touchSensitivity', label: 'TOUCH SENSITIVITY', type: 'number', min: [0.2, 4], step: 0.1 },
+];
+
+const SHOOT_MODE_NAMES: Record<ShootMode, string> = { button: 'BUTTON', auto: 'AUTO-FIRE' };
+
 const QUALITY_NAMES = ['LOW', 'MEDIUM', 'HIGH'];
 
 interface Bound {
@@ -385,6 +430,9 @@ export class Settings {
     );
     this.buildRows(document.getElementById('gameList')!, GAME_ROWS, (k, v) =>
       this.setGame({ [k]: v } as Partial<GameSettings>),
+    );
+    this.buildRows(document.getElementById('gameList')!, TOUCH_ROWS, (k, v) =>
+      this.setTouch({ [k]: v } as Partial<TouchSettings>),
     );
     this.buildRows(document.getElementById('videoList')!, VIDEO_ROWS, (k, v) =>
       this.setVideo({ [k]: v } as Partial<VideoSettings>),
@@ -513,6 +561,11 @@ export class Settings {
     this.commit();
   }
 
+  setTouch(patch: Partial<TouchSettings>): void {
+    this.values.touch = sanitizeTouch({ ...this.values.touch, ...patch });
+    this.commit();
+  }
+
   private commit(): void {
     writeSettings(this.store, this.values);
     this.apply();
@@ -544,6 +597,9 @@ export class Settings {
     if (key in this.values.game) {
       return (this.values.game as unknown as Record<string, Value>)[key] ?? '';
     }
+    if (key in this.values.touch) {
+      return (this.values.touch as unknown as Record<string, Value>)[key] ?? '';
+    }
     return (this.values.video as unknown as Record<string, Value>)[key] ?? '';
   }
 
@@ -551,6 +607,7 @@ export class Settings {
     if (row.type === 'toggle') return value ? 'ON' : 'OFF';
     if (row.type === 'select') return '';
     if (row.key === 'quality') return QUALITY_NAMES[Number(value)] ?? '';
+    if (row.key === 'shootMode') return SHOOT_MODE_NAMES[value as ShootMode] ?? '';
     return String(value);
   }
 
