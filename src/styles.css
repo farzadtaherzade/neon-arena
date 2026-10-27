@@ -458,13 +458,21 @@ canvas {
   backdrop-filter: blur(7px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s;
+  /* `visibility` rides the same transition so the fade still plays, and an
+     idle screen drops out of the paint tree — otherwise its backdrop-filter
+     re-blurs the whole viewport every frame even at opacity 0, which under a
+     software rasterizer is real per-frame cost per screen. */
+  transition:
+    opacity 0.3s,
+    visibility 0.3s;
+  visibility: hidden;
   cursor: pointer;
   text-align: center;
 }
 .screen.visible {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 .screen h1 {
   font-size: 72px;
@@ -997,4 +1005,194 @@ input.toggle {
 .skinfoot .btn {
   padding: 4px 10px;
   font-size: 10px;
+}
+
+/* ------------------------------------------------------------------- touch */
+
+/*
+ * The touch layer sits above the canvas but below every screen: it exists only
+ * while a run is live, so screens never fight it for a tap. Buttons are inside
+ * the layer — their handlers stop propagation, because the layer root is the
+ * look-drag surface and a stray click bubbling to `document` would resume a
+ * paused run (see `Input`'s re-lock handler).
+ */
+#touchLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  touch-action: none;
+}
+#touchLayer[hidden] {
+  display: none;
+}
+
+/* Floating stick: invisible until the left thumb lands, then drawn there.
+   The diameter is 2 × TOUCH.STICK_R from config.ts — ui/Touch.ts sets the
+   custom property so the drawing cannot drift from the maths. */
+#stickBase {
+  position: absolute;
+  width: calc(var(--touch-stick-r, 60px) * 2);
+  height: calc(var(--touch-stick-r, 60px) * 2);
+  border-radius: 50%;
+  border: 2px solid rgba(70, 224, 255, 0.35);
+  background: rgba(70, 224, 255, 0.07);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#stickNub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(70, 224, 255, 0.4);
+  box-shadow: 0 0 18px rgba(70, 224, 255, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+.tbtn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+  background: rgba(12, 20, 36, 0.5);
+  border: 2px solid rgba(70, 224, 255, 0.4);
+  box-shadow: 0 0 14px rgba(70, 224, 255, 0.2);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.tbtn:active,
+.tbtn.on {
+  background: rgba(70, 224, 255, 0.3);
+  color: #fff;
+  box-shadow: 0 0 24px rgba(70, 224, 255, 0.5);
+}
+.tbtn.tsmall {
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+/* Right thumb cluster: FIRE under the thumb, the rest fanned around it. */
+#btnFire {
+  width: 96px;
+  height: 96px;
+  right: calc(26px + env(safe-area-inset-right));
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  color: #ff8a93;
+  border-color: rgba(255, 92, 110, 0.55);
+  box-shadow: 0 0 16px rgba(255, 92, 110, 0.25);
+}
+#btnFire:active,
+#btnFire.on {
+  background: rgba(255, 92, 110, 0.35);
+  box-shadow: 0 0 26px rgba(255, 92, 110, 0.5);
+}
+#btnAim {
+  width: 64px;
+  height: 64px;
+  right: calc(140px + env(safe-area-inset-right));
+  bottom: calc(136px + env(safe-area-inset-bottom));
+}
+#btnKnife {
+  width: 64px;
+  height: 64px;
+  right: calc(136px + env(safe-area-inset-right));
+  bottom: calc(38px + env(safe-area-inset-bottom));
+  color: #ffd27a;
+  border-color: rgba(242, 178, 30, 0.5);
+  box-shadow: 0 0 14px rgba(242, 178, 30, 0.2);
+}
+#btnKnife:active,
+#btnKnife.on {
+  background: rgba(242, 178, 30, 0.3);
+  box-shadow: 0 0 24px rgba(242, 178, 30, 0.45);
+}
+#btnJump {
+  width: 64px;
+  height: 64px;
+  right: calc(44px + env(safe-area-inset-right));
+  bottom: calc(148px + env(safe-area-inset-bottom));
+}
+#btnReload {
+  width: 56px;
+  height: 56px;
+  right: calc(212px + env(safe-area-inset-right));
+  bottom: calc(60px + env(safe-area-inset-bottom));
+}
+#btnPause {
+  width: 42px;
+  height: 42px;
+  right: calc(14px + env(safe-area-inset-right));
+  top: calc(12px + env(safe-area-inset-top));
+  bottom: auto;
+}
+
+/* Portrait lock: above every screen, so it also guards the menu. */
+#rotateScreen {
+  z-index: 40;
+  cursor: default;
+}
+#rotateIcon {
+  margin-top: 30px;
+  font-size: 72px;
+  animation: rotateHint 1.8s ease-in-out infinite;
+}
+@keyframes rotateHint {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  55%,
+  80% {
+    transform: rotate(90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* First-launch fire-mode ask: over the menu, under the rotate lock. */
+#fireModeScreen {
+  z-index: 30;
+  cursor: default;
+}
+
+/* Controls shown / hidden by input kind. */
+.touch-only {
+  display: none;
+}
+.is-touch .touch-only {
+  display: flex;
+}
+.is-touch .desktop-only {
+  display: none;
+}
+
+/* Small landscape screens: tighten the HUD so the thumbs keep the corners. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .panel {
+    padding: 8px 12px;
+  }
+  #stats .k,
+  #stats .v {
+    font-size: 11px;
+  }
+  #healthLabel {
+    font-size: 11px;
+  }
+  .screen h1 {
+    font-size: 46px;
+    letter-spacing: 8px;
+  }
+  .screen .menu .btn {
+    min-width: 200px;
+  }
 }

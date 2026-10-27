@@ -40,6 +40,7 @@ src/game/        simulation — pure logic, no Three.js, no DOM
   alarm.ts       tower alarm rising-edge detection
   minimap.ts     world→radar projection (pure maths)
   fx.ts          particle + tracer pools
+  touch.ts       touch stick maths: dead zone, rim clamp, auto-sprint
   world/         collision.ts (AABB + ramp height fields), layout.ts (arena constants)
 src/render/      everything that owns meshes
   Arena.ts       renderer, scene, camera rig, lights, floor, walls, cover
@@ -56,6 +57,7 @@ src/render/      everything that owns meshes
 src/ui/          DOM-facing
   Hud.ts         HUD elements, screens, banners, threat warning
   Input.ts       keyboard/mouse/pointer-lock bookkeeping
+  Touch.ts       the touch layer: floating stick, look drag, on-screen buttons
   Minimap.ts     the canvas radar
   MapScreen.ts   the full-screen tactical map (M / Tab)
   Profile.ts     the credit wallet + the loadout, in localStorage
@@ -266,25 +268,28 @@ rotation, the drain, the cooldown and the floor-beneath-the-deck case.
 WebGL. If you add behaviour to an enemy or a system, that's where it gets
 covered.
 
-**E2E (Playwright)** — one long test, `tests/e2e/smoke.spec.ts`, that boots the
-real production build, plays it, and asserts it cleans up after itself. It runs
-with the system Chrome channel and SwiftShader (Playwright's own Chromium
-download is blocked on the dev machine — see `playwright.config.ts`).
+**E2E (Playwright)** — `tests/e2e/smoke.spec.ts` boots the real production
+build, plays it, and asserts it cleans up after itself; `tests/e2e/mobile.spec.ts`
+does the same for the touch layer on an emulated phone. Both run with the
+system Chrome channel and SwiftShader (Playwright's own Chromium download is
+blocked on the dev machine — see `playwright.config.ts`).
 
 The game has a headless entry point for automation:
 
 - `?test` (any value) boots straight into a playing state, skipping pointer lock
   and hiding the menu screens.
+- `?touch` (with or without `?test`) forces the touch layer on, so the mobile
+  suite can drive it from a desktop browser.
 - `window.__NEON` exposes the hooks the suite drives:
   `stats()`, `hurt(d)`, `teleportEnemies(d)`, `faceEnemies(d, y)`,
   `aim(yaw, pitch)`, `enemyPos()`, `camState()`, `renderInfo()`,
   `gunVisible()`, `inputStats()`, `capture()`, `alarm()`, `bombs()`,
   `spawnBomb(x, z)`, `forceWave(n)`, `crosshair()`, `setCrosshair(patch)`,
   `teleportPlayer(x, z, y?)`, `settings()`, `setGame(patch)`,
-  `setVideo(patch)`, `xpStats()`, `grantXp(n)`, `meteor()`, `forceMeteor()`,
-  `dropStone(x, z)`, `ammo()`, `setAmmo(mag, reserve)`, `knife()`,
-  `swingKnife()`, `profile()`, `credits()`, `grantCredits(n)`, `buySkin(id)`,
-  `equipSkin(id)`.
+  `setVideo(patch)`, `setTouch(patch)`, `touch()`, `xpStats()`, `grantXp(n)`,
+  `meteor()`, `forceMeteor()`, `dropStone(x, z)`, `ammo()`,
+  `setAmmo(mag, reserve)`, `knife()`, `swingKnife()`, `profile()`,
+  `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -387,6 +392,59 @@ so the spec re-declares the shapes it uses.
   or palm-rejection settings enabled, which literally suspend the pad while keys
   are held. Those must be turned off in Windows/macOS settings; no browser code
   can override them. The pause screen points this out.
+
+## Mobile / touch
+
+Phones and tablets play through `ui/Touch.ts`, a sibling of `Input` with the
+same deal: it records intent and forwards discrete events, it holds no game
+logic. The pure half of the maths — dead zone, rim clamp, the auto-sprint
+threshold — lives in `game/touch.ts` and is unit-tested. `Game` merges the two
+input sources each step (`move` vectors add, triggers OR, ADS ORs), so
+`Player.update` never learns that a thumb exists.
+
+- **Detection is `pointer: coarse` + `hover: none`** (`isTouchDevice()`), the
+  canonical phone/tablet combo — a mouse-driven touchscreen laptop stays
+  desktop. `?touch` forces the layer on so the mobile E2E can drive it on a
+  desktop browser; `?test&touch` boots playing with the layer live.
+- **The stick is floating.** A touch down on the left ~45% of the screen spawns
+  the stick where the thumb landed; the offset from there is the walk vector,
+  clamped to `TOUCH.STICK_R` with `TOUCH.DEAD_ZONE` scaled out. Pushing past
+  `TOUCH.SPRINT_FRACTION` auto-sprints (stamina still applies). Everything
+  right of that line is a look drag, unless the pointer landed on a button.
+- **Shoot modes are a stored choice.** First launch on a touch device asks
+  FIRE BUTTON vs AUTO-FIRE (`#fireModeScreen`); the pick lands in
+  `settings.touch.shootMode` and is changeable in the GAME tab forever.
+  `auto` pulls the trigger whenever a centre-ray pick (zero spread, same
+  target list as real shots) hits a hostile — bombs excluded, so defusing
+  stays deliberate. The probe runs only when nothing else holds the trigger.
+- **ADS is a toggle** on touch, a hold on mouse. Same `weapon.aiming` flag.
+- **Pause works without pointer lock.** Touch has no lock to drop, so the
+  PAUSE button calls `Game.pauseGame()` and RESUME calls `resumeGame()`;
+  `onLockRequest` branches the same way so "click to resume" still works.
+  `pauseGame`/`resumeGame` guard on state, so double-invocations are no-ops.
+- **Portrait is locked, not reflowed.** The `TURN YOUR PHONE` overlay
+  (`#rotateScreen`) shows whenever a touch device is portrait; a live run
+  pauses behind it (`rotatePaused`) and resumes when the phone turns back —
+  but only if the rotation is what paused it.
+- **First touch launch applies video LOW** (1× pixels, no shadows) via the
+  `touch.tuned` flag — stored like any setting, so the player can raise it.
+  Desktop defaults are untouched.
+- **The layer is derived from state**, exactly like the viewmodels:
+  `touch.setVisible(state === PLAYING)` in `render()`. `setVisible` guards on
+  `enabled` first — the render loop feeds it raw state, and a layer un-hidden
+  on a pointer device would sit over the game swallowing the mouse. It sits at
+  z-index 6 — above the canvas, below every screen — so screens never fight it
+  for a tap.
+- **Every pointerdown inside the layer stops propagation**, and so does a
+  click on the rotate overlay. A click that bubbles to `document` is
+  `Input`'s re-lock/resume signal; a tap on FIRE would otherwise resume a
+  paused run the same instant it paused it. If you add a control, it needs
+  the same guard.
+- **`__NEON` hooks**: `touch()` reports `{ enabled, visible, portrait,
+  firing, aiming, shootMode }`; `setTouch(patch)` patches the touch settings
+  group. The mobile spec (`tests/e2e/mobile.spec.ts`) drives the buttons with
+  synthetic PointerEvents (pointerId 0) and the rotate overlay by resizing
+  the viewport.
 
 ## Freeze / pause recovery notes
 

@@ -22,6 +22,7 @@ import {
   SCREEN,
   START_HP,
   STATE,
+  TOUCH,
   WAVES,
   WEAPON,
   WORLD,
@@ -52,6 +53,7 @@ import { type MapTower, Minimap } from '../ui/Minimap';
 import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
 import { Skins } from '../ui/Skins';
+import { isTouchDevice, Touch } from '../ui/Touch';
 
 interface Hostile {
   enemy: Enemy;
@@ -101,6 +103,12 @@ export class Game {
   private music = new Music();
   private hud = new Hud();
   private input: Input;
+  /** The touch layer; absent on pointer devices (`enabled` false is a no-op). */
+  private touch: Touch;
+  /** Touch controls active — a coarse-pointer device, or `?touch` for the harness. */
+  private readonly touchEnabled: boolean;
+  /** Set while a portrait rotation paused the run, so the landscape return resumes it. */
+  private rotatePaused = false;
   private gun = new GunView();
   private knifeView = new KnifeView();
   /** The knife: a cone in front of the player, on its own cooldown. */
@@ -171,6 +179,22 @@ export class Game {
     return this.input.stats;
   }
 
+  /** Touch layer state for the `__NEON.touch()` hook. */
+  get touchInfo(): {
+    enabled: boolean;
+    visible: boolean;
+    portrait: boolean;
+    firing: boolean;
+    aiming: boolean;
+    shootMode: string;
+  } {
+    return {
+      enabled: this.touchEnabled,
+      ...this.touch.stats,
+      shootMode: this.settings.values.touch.shootMode,
+    };
+  }
+
   private scratch = new THREE.Vector3();
   private tracerEnd = new THREE.Vector3();
   private camQuat = new THREE.Quaternion();
@@ -201,7 +225,11 @@ export class Game {
     credits: 0,
   };
 
-  constructor(readonly test = false) {
+  constructor(
+    readonly test = false,
+    touchOverride = false,
+  ) {
+    this.touchEnabled = touchOverride || (!test && isTouchDevice());
     this.arena = new Arena(this.collision, this.rng);
     this.capture = new CapturePoints(this.arena.pads.map((pad) => pad.deck));
     this.alarm = new TowerAlarm(this.arena.pads.length);
@@ -225,9 +253,13 @@ export class Game {
 
     this.settings = new Settings(this.hud.crosshair, {
       onOpen: () => {
-        // Dropping pointer lock pauses the run through the normal lock flow, so
-        // closing the panel lands the player back on the pause screen.
-        if (this.state === STATE.PLAYING) this.input.release();
+        // Desktop drops pointer lock, which pauses the run through the normal
+        // lock flow, so closing the panel lands the player on the pause screen.
+        // Touch has no lock to drop, so it pauses directly.
+        if (this.state === STATE.PLAYING) {
+          if (this.touchEnabled) this.pauseGame();
+          else this.input.release();
+        }
       },
       onChange: (values) => {
         this.player.sens = values.game.sensitivity;
@@ -246,6 +278,14 @@ export class Game {
     this.baseFov = this.settings.values.game.fov;
     this.fov = this.baseFov;
     this.arena.setVideo(this.settings.values.video);
+
+    // First launch on a touch device: phones meet this renderer with a
+    // fraction of a desktop's fill-rate, so quality LOW (1× pixels, no
+    // shadows) is the honest default. It is a stored setting, not a cap.
+    if (this.touchEnabled && !this.settings.values.touch.tuned) {
+      this.settings.setVideo({ quality: 0, shadows: false });
+      this.settings.setTouch({ tuned: true });
+    }
 
     this.weapon = new Weapon({
       onShot: () => this.resolveShot(),
@@ -267,7 +307,12 @@ export class Game {
           const g = this.settings.values.game;
           this.player.look(dx, g.invertY ? -dy : dy, g.sensitivity);
         },
-        onLockRequest: () => this.input.lock(),
+        // The bare-click resume path: desktop re-takes the lock, touch has no
+        // lock so it resumes directly. A no-op while already playing.
+        onLockRequest: () => {
+          if (this.touchEnabled) this.resumeGame();
+          else this.input.lock();
+        },
         onLockChange: (locked) => this.onLockChange(locked),
         onToggleSettings: () => this.settings.toggle(),
         onCloseSettings: () => this.settings.close(),
@@ -275,6 +320,29 @@ export class Game {
       },
       test,
     );
+
+    this.touch = new Touch(
+      {
+        onLook: (dx, dy) => {
+          const g = this.settings.values;
+          // Touch drags get their own gain on top of WEAPON.SENS, and their own
+          // sensitivity setting — a thumb is not a mouse.
+          this.player.look(dx, g.game.invertY ? -dy : dy, TOUCH.LOOK_GAIN * g.touch.touchSensitivity);
+        },
+        onJump: () => this.player.queueJump(),
+        onReload: () => this.weapon.startReload(),
+        onKnife: () => this.swingKnife(),
+        onPause: () => this.pauseGame(),
+        onRotate: (portrait) => this.onRotate(portrait),
+        onFireMode: (mode) => this.settings.setTouch({ shootMode: mode, shootModeChosen: true }),
+      },
+      this.touchEnabled,
+    );
+    if (this.touchEnabled) {
+      // The overlay must be up before the first frame paints a sideways arena.
+      this.touch.reportOrientation();
+      if (!this.test && !this.settings.values.touch.shootModeChosen) this.touch.showFirePrompt(true);
+    }
 
     this.waves.testing = test;
     this.waves.rng = this.rng;
@@ -309,7 +377,8 @@ export class Game {
     });
     document.getElementById('pauseResume')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.input.lock();
+      if (this.touchEnabled) this.resumeGame();
+      else this.input.lock();
     });
     document.getElementById('pauseMenu')!.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -330,10 +399,47 @@ export class Game {
   toMenu(): void {
     this.state = STATE.MENU;
     this.input.firing = false;
+    this.touch.clear();
     this.input.release();
     this.hud.setVisible(false);
     this.hud.showScreen(SCREEN.MENU);
     this.music.stop();
+  }
+
+  /**
+   * Pause without pointer lock — the touch path. The pause screen appears as
+   * usual; on touch there is no lock to drop, so resume goes through
+   * `resumeGame` instead of a re-lock.
+   */
+  private pauseGame(): void {
+    if (this.state !== STATE.PLAYING) return;
+    this.state = STATE.PAUSED;
+    this.input.firing = false;
+    this.touch.clear();
+    if (!this.test && !this.mapOpen) this.hud.showScreen(SCREEN.PAUSE);
+  }
+
+  /** The touch half of pause: leave the pause screen. */
+  private resumeGame(): void {
+    if (this.state !== STATE.PAUSED) return;
+    this.state = STATE.PLAYING;
+    if (!this.test && !this.mapOpen) this.hud.showScreen(SCREEN.NONE);
+  }
+
+  /**
+   * The phone rotated. Portrait shows the TURN YOUR PHONE overlay and pauses a
+   * live run; rotating back resumes it — but only if the rotation is what
+   * paused it, so a player who paused deliberately stays paused.
+   */
+  private onRotate(portrait: boolean): void {
+    this.touch.setRotate(portrait);
+    if (portrait && this.state === STATE.PLAYING) {
+      this.rotatePaused = true;
+      this.pauseGame();
+    } else if (!portrait && this.rotatePaused && this.state === STATE.PAUSED) {
+      this.rotatePaused = false;
+      this.resumeGame();
+    }
   }
 
   /**
@@ -377,7 +483,8 @@ export class Game {
     if (this.test) this.hud.hideAllScreens();
     else this.hud.showScreen(SCREEN.NONE);
 
-    if (!skipLock) this.input.lock();
+    // Touch has no pointer lock to take — the layer is the input surface.
+    if (!skipLock && !this.touchEnabled) this.input.lock();
   }
 
   private reset(): void {
@@ -404,6 +511,7 @@ export class Game {
     this.feedback.shakeT = 0;
 
     this.input.firing = false;
+    this.touch.clear();
     this.hud.reset();
   }
 
@@ -553,6 +661,21 @@ export class Game {
   }
 
   // --------------------------------------------------------------------- shop
+
+  /**
+   * Does the auto-fire mode want the trigger pulled right now?
+   *
+   * A centre-ray pick at zero spread against the same target list the shots
+   * use: the trigger fires exactly when the crosshair rests on a hostile.
+   * Bombs are deliberately excluded — defusing stays a deliberate shot — and
+   * the real shot re-aims with the weapon's true spread afterwards.
+   */
+  private autoFireWants(): boolean {
+    if (!this.touchEnabled) return false;
+    if (this.settings.values.touch.shootMode !== 'auto') return false;
+    this.pick.aim(this.arena.camera, 0, this.rng);
+    return this.pick.cast()?.enemy != null;
+  }
 
   /** Buy a skin with credits. False when it is unknown, owned or too dear. */
   buySkin(id: string): boolean {
@@ -924,15 +1047,28 @@ export class Game {
     this.elapsed += dt;
 
     if (this.state === STATE.PLAYING) {
-      this.player.update(dt, this.input.move(), this.collision);
+      // Keyboard/mouse intent plus the stick's, merged — the player never has
+      // both at once, but the merge is what keeps `Player` input-agnostic.
+      const moveIn = this.input.move();
+      if (this.touchEnabled) {
+        const t = this.touch.move;
+        moveIn.forward = clamp(moveIn.forward + t.forward, -1, 1);
+        moveIn.right = clamp(moveIn.right + t.right, -1, 1);
+        moveIn.sprint = moveIn.sprint || t.sprint;
+      }
+      this.player.update(dt, moveIn, this.collision);
       // Enemies compare their own height against the player's feet, not the eye.
       this.world.playerY = this.player.position.y - WORLD.PLAYER_H;
       // Sync the rig to the current view before firing, so a shot's ray matches
       // the crosshair this frame rather than the camera left by the last render.
       this.applyCameraPose();
       this.arena.camera.updateWorldMatrix(true, false);
-      this.weapon.aiming = this.input.aiming;
-      this.weapon.update(dt, this.elapsed, this.input.trigger);
+      this.weapon.aiming = this.input.aiming || this.touch.aiming;
+      // The trigger: mouse, fire key, FIRE button — or the auto-fire mode,
+      // which pulls it whenever the crosshair is over a hostile.
+      let firing = this.input.trigger || this.touch.firing;
+      if (!firing && this.autoFireWants()) firing = true;
+      this.weapon.update(dt, this.elapsed, firing);
       this.knife.update(dt);
       this.updateWaves(dt);
       this.updateBombs(dt);
@@ -1039,6 +1175,8 @@ export class Game {
     // from state (not from a transition) is what keeps it alive across resume.
     this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
     this.knifeView.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
+    // Same rule for the touch layer: it is the input surface of a live run.
+    this.touch.setVisible(this.state === STATE.PLAYING);
 
     if (this.state === STATE.PLAYING) {
       this.applyCameraPose();
@@ -1050,9 +1188,12 @@ export class Game {
       pitchObj.position.y = Math.sin(player.bobPhase * 2) * CAMERA.BOB_Y;
 
       const dip = weapon.reloading ? Math.sin(weapon.reloadProgress * Math.PI) : 0;
-      this.gun.pose(player.bobPhase, weapon.kick, dip, this.input.strafe);
+      const strafe = this.touchEnabled
+        ? clamp(this.input.strafe + this.touch.move.right, -1, 1)
+        : this.input.strafe;
+      this.gun.pose(player.bobPhase, weapon.kick, dip, strafe);
       this.gun.decay(dt, weapon.flashT);
-      this.knifeView.pose(this.knife.swingT, player.bobPhase, this.input.strafe);
+      this.knifeView.pose(this.knife.swingT, player.bobPhase, strafe);
     }
 
     this.arena.camera.getWorldQuaternion(this.camQuat);

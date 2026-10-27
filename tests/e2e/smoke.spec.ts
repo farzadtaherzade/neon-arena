@@ -66,6 +66,10 @@ interface AmmoState {
   reserve: number;
   dry: boolean;
 }
+interface TouchState {
+  enabled: boolean;
+  visible: boolean;
+}
 
 const stats = (page: Page) => page.evaluate(() => window.__NEON.stats() as Stats);
 const enemies = (page: Page) => page.evaluate(() => window.__NEON.enemyPos() as EnemyPos[]);
@@ -189,6 +193,14 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(boot.ammo).toBe(12);
   expect(boot.hostiles).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__NEON.gunVisible())).toBe(true);
+
+  // The touch layer must not exist on a pointer device: a desktop that un-hid
+  // the mobile buttons on the first playing frame would also be swallowing the
+  // mouse with its stick/look handlers.
+  const touchState = await page.evaluate(() => window.__NEON.touch() as TouchState);
+  expect(touchState.enabled).toBe(false);
+  expect(touchState.visible).toBe(false);
+  expect(await page.evaluate(() => document.getElementById('touchLayer')?.hidden)).toBe(true);
 
   const alive = await enemies(page);
   expect(alive.length).toBeGreaterThan(0);
@@ -449,8 +461,11 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     { x: spot.px + 2, z: spot.pz },
   );
   await page.mouse.down();
+  // A 3 s fuse takes ~15-17 s of wall clock under SwiftShader on this machine
+  // (measured ~4.5 fps, and MAX_DT clamps the sim to 0.05 s per frame), and a
+  // meteor shower overlapping the phase pushes it past 20 — hence 45 s.
   await page.waitForFunction(() => (window.__NEON.bombs() as number[]).length === 0, undefined, {
-    timeout: 20_000,
+    timeout: 45_000,
   });
   await page.mouse.up();
   expect((await stats(page)).score).toBeGreaterThan(scoreBeforeShot);
@@ -462,7 +477,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForFunction(
     (hp) => (window.__NEON.bombs() as number[]).length === 0 && (window.__NEON.stats() as Stats).hp < hp,
     hpBeforeFuse,
-    { timeout: 20_000 },
+    { timeout: 45_000 },
   );
   expect((await stats(page)).hp).toBeLessThan(hpBeforeFuse);
   expect(await page.evaluate(() => document.getElementById('bombWarn')?.classList.contains('on'))).toBe(
@@ -476,9 +491,16 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // The orbs drop where the mobs die and the player never walks over them in
   // this run, so bank the xp directly and check the bar and the level.
   await page.evaluate(() => window.__NEON.grantXp(30));
-  await page.waitForTimeout(250);
   const xpHalf = await xpStats(page);
   expect(xpHalf.xp).toBe(30);
+  // The bar's width is written by the next HUD frame, and under software
+  // rendering that can be a fifth of a second away — wait for the condition,
+  // not a fixed tick count.
+  await page.waitForFunction(
+    () => (document.getElementById('xpFill') as HTMLElement).getBoundingClientRect().width > 0,
+    undefined,
+    { timeout: 10_000 },
+  );
   const fillWidth = await page.evaluate(
     () => (document.getElementById('xpFill') as HTMLElement).getBoundingClientRect().width,
   );

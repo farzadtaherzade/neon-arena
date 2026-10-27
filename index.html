@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- maximum-scale / user-scalable=no: the game owns every gesture — a pinch
+         or a double-tap zoom mid-fight is a death, not a convenience.
+         viewport-fit=cover: draw under the notch, safe areas handled in CSS. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <!-- empty data URL: stops the browser's automatic /favicon.ico request (and its 404) -->
     <link rel="icon" href="data:," />
     <title>NEON ARENA — 3D Shooter</title>
@@ -67,6 +73,9 @@
         <div class="pair"><span class="cap">Space</span><span class="lbl">JUMP</span></div>
         <div class="pair"><span class="cap">C</span><span class="lbl">SETTINGS</span></div>
         <div class="pair"><span class="cap">M</span><span class="cap">Tab</span><span class="lbl">MAP</span></div>
+        <div class="pair touch-only"><span class="cap">LEFT THUMB</span><span class="lbl">MOVE — PUSH FAR TO SPRINT</span></div>
+        <div class="pair touch-only"><span class="cap">RIGHT THUMB</span><span class="lbl">DRAG TO LOOK</span></div>
+        <div class="pair touch-only"><span class="cap">BUTTONS</span><span class="lbl">FIRE · ADS · KNIFE · JUMP · RELOAD</span></div>
       </div>
       <div class="tip">SURVIVE THE WAVES — HEADSHOTS DEAL 2.5× DAMAGE — THE RIFLE RUNS DRY, SO Q IS THE KNIFE — HOLD THE GLOWING DECK TO REPAIR</div>
       <div id="bestRecord" class="best-record"></div>
@@ -81,7 +90,7 @@
         <button class="btn" type="button" id="pauseMenu">MAIN MENU</button>
       </div>
       <div class="go">CLICK TO RESUME</div>
-      <div class="shint">TOUCHPAD USERS: F / V ALSO FIRE — AND DISABLE 'TOUCHPAD WHILE TYPING' + PALM REJECTION</div>
+      <div class="shint desktop-only">TOUCHPAD USERS: F / V ALSO FIRE — AND DISABLE 'TOUCHPAD WHILE TYPING' + PALM REJECTION</div>
     </div>
 
     <div class="screen" id="gameOverScreen">
@@ -146,6 +155,38 @@
         <canvas id="mapCanvas" width="720" height="720"></canvas>
         <div class="shint">M OR TAB CLOSES THE MAP — THE RUN IS PAUSED WHILE IT IS OPEN</div>
       </div>
+    </div>
+
+    <!-- Touch controls. Hidden on pointer devices; `ui/Touch.ts` shows the
+         layer only while a run is live and owns every gesture on it. -->
+    <div id="touchLayer" hidden>
+      <div id="stickBase" hidden><div id="stickNub"></div></div>
+      <div class="tbtn" id="btnFire">FIRE</div>
+      <div class="tbtn" id="btnAim">ADS</div>
+      <div class="tbtn" id="btnKnife">KNIFE</div>
+      <div class="tbtn" id="btnJump">JUMP</div>
+      <div class="tbtn" id="btnReload">R</div>
+      <div class="tbtn tsmall" id="btnPause">❚❚</div>
+    </div>
+
+    <!-- Portrait lock: the arena is a wide maze and the thumbs have nowhere to
+         sit in portrait, so phones get turned instead of reflowed. -->
+    <div class="screen" id="rotateScreen">
+      <h1>TURN YOUR PHONE</h1>
+      <h2>NEON ARENA PLAYS IN LANDSCAPE</h2>
+      <div id="rotateIcon">📱</div>
+    </div>
+
+    <!-- First-launch ask on a touch device: how does the player want to shoot?
+         The pick is stored like any setting and changeable in GAME forever. -->
+    <div class="screen" id="fireModeScreen">
+      <h1>HOW DO YOU SHOOT?</h1>
+      <h2>PICK A MODE — CHANGE IT ANY TIME IN SETTINGS · GAME</h2>
+      <div class="menu">
+        <button class="btn primary" type="button" id="fmButton">FIRE BUTTON</button>
+        <button class="btn" type="button" id="fmAuto">AUTO-FIRE</button>
+      </div>
+      <div class="tip">FIRE BUTTON — HOLD TO SHOOT · AUTO-FIRE — SHOOTS WHEN THE CROSSHAIR IS ON A HOSTILE</div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
