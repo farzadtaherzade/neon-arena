@@ -114,7 +114,11 @@ export class Input {
       if (e.code === 'KeyM' || e.code === 'Tab') {
         // Tab would otherwise move the focus to the next control.
         e.preventDefault();
-        if (!e.repeat && !hooks.isSettingsOpen()) hooks.onToggleMap();
+        // Only a live run, or one the map itself paused. From the menu or the
+        // game-over screen the PAUSED → PLAYING round trip would fabricate or
+        // resurrect a run.
+        if (!e.repeat && !hooks.isSettingsOpen() && (hooks.isPlaying() || hooks.isPaused()))
+          hooks.onToggleMap();
       }
       // Esc never reaches keydown while pointer-locked (the browser eats it to
       // exit the lock), so it only closes the settings panel.
@@ -252,6 +256,10 @@ export class Input {
   }
 
   lock(): void {
+    // iOS Safari has no pointer lock at all: the method itself is missing, and
+    // a synchronous throw here would escape through every caller (start,
+    // resume, map close). On touch this is simply never reached on purpose.
+    if (!this.canvas.requestPointerLock) return;
     const p = this.canvas.requestPointerLock() as Promise<void> | undefined;
     if (p?.catch) p.catch(() => {});
   }
