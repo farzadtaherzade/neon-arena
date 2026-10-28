@@ -266,6 +266,7 @@ export class Game {
         }
       },
       onChange: (values) => {
+        document.documentElement.classList.toggle('no-crt', !values.video.crt);
         this.player.sens = values.game.sensitivity;
         this.sfx.setMuted(values.game.mute);
         this.music.setMuted(values.game.mute);
@@ -294,9 +295,10 @@ export class Game {
 
     // First launch on a touch device: phones meet this renderer with a
     // fraction of a desktop's fill-rate, so quality LOW (1× pixels, no
-    // shadows) is the honest default. It is a stored setting, not a cap.
+    // shadows, no scanline overlay) is the honest default. It is a stored
+    // setting, not a cap.
     if (this.touchEnabled && !this.settings.values.touch.tuned) {
-      this.settings.setVideo({ quality: 0, shadows: false });
+      this.settings.setVideo({ quality: 0, shadows: false, crt: false });
       this.settings.setTouch({ tuned: true });
     }
 

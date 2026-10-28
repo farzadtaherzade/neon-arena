@@ -60,6 +60,8 @@ export interface VideoSettings {
   theme: ThemeId;
   /** Post-processing bloom. Off by default: it costs fill-rate. */
   bloom: boolean;
+  /** Scanline + vignette CRT overlay. Off on touch first launch. */
+  crt: boolean;
 }
 
 /** How the trigger works on a touch screen. */
@@ -117,6 +119,7 @@ export const VIDEO_DEFAULTS: VideoSettings = {
   fog: true,
   theme: DEFAULT_THEME,
   bloom: false,
+  crt: true,
 };
 
 export const TOUCH_DEFAULTS: TouchSettings = {
@@ -244,6 +247,7 @@ export function sanitizeVideo(raw: unknown): VideoSettings {
     fog: bool(o.fog, d.fog),
     theme,
     bloom: bool(o.bloom, d.bloom),
+    crt: bool(o.crt, d.crt),
   };
 }
 
@@ -390,6 +394,7 @@ const VIDEO_ROWS: readonly Row[] = [
   { key: 'theme', label: 'ARENA THEME', type: 'select', options: Object.keys(THEMES) },
   { key: 'quality', label: 'RENDER QUALITY', type: 'number', min: [0, VIDEO.QUALITY_PIXELS.length - 1] },
   { key: 'bloom', label: 'BLOOM', type: 'toggle' },
+  { key: 'crt', label: 'CRT UI', type: 'toggle' },
   { key: 'shadows', label: 'SHADOWS', type: 'toggle' },
   { key: 'fog', label: 'FOG', type: 'toggle' },
 ];
