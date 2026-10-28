@@ -486,8 +486,12 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
 
   // --- xp: orbs are xp, and a level up pays a repair --------------------------
   // The bomb blast above kills mobs right next to the player, so their orbs
-  // trickle in under the magnet — sweep the floor before banking anything.
-  await page.evaluate(() => window.__NEON.clearOrbs());
+  // trickle in under the magnet, and a live wave keeps dropping more. Shoo the
+  // mobs away and sweep the floor, so the banking below is the only xp in flight.
+  await page.evaluate(() => {
+    window.__NEON.teleportEnemies(80);
+    window.__NEON.clearOrbs();
+  });
   const xpStart = await xpStats(page);
   expect(xpStart.level).toBe(1);
   expect(xpStart.need).toBe(60);
