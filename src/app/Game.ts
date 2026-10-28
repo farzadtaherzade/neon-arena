@@ -1147,6 +1147,11 @@ export class Game {
     if (this.meter.add(amount)) this.levelUp();
   }
 
+  /** Headless hook: sweep every orb off the floor, so XP banking is deterministic. */
+  clearOrbs(): void {
+    this.clearXps();
+  }
+
   get meteorStats(): { phase: string; tint: number; stones: number } {
     return {
       phase: this.shower.phase,

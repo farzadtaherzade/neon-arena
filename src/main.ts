@@ -185,6 +185,9 @@ function exposeTestApi(game: Game) {
     /** Bank XP without waiting for a pickup. */
     grantXp: (n: number) => game.grantXp(n),
 
+    /** Sweep every XP orb off the floor, so grantXp tests are deterministic. */
+    clearOrbs: () => game.clearOrbs(),
+
     /** The perk offer standing right now (empty while playing). */
     perkOffer: () => game.perks.offer,
 
