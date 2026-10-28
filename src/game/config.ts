@@ -756,14 +756,56 @@ export const XP = {
 
 /**
  * Player levels. The meter needs `FIRST_NEED × GROWTH^(level−1)` XP to advance,
- * and each level pays `HEAL` integrity over time. Skills are not built yet —
- * they will read `level` off `XpMeter`.
+ * and each level pays `HEAL` integrity over time — then offers a perk.
  */
 export const XP_LEVEL = {
   FIRST_NEED: 60,
   GROWTH: 1.3,
   HEAL: 15,
 } as const;
+
+// ------------------------------------------------------------------- perks
+
+/**
+ * Perks: the level-up reward.
+ *
+ * Every level crossed offers a pick of `OFFER_COUNT` upgrades. Each perk
+ * stacks to `STACK_MAX`; the numbers below are **per stack**. Effects read
+ * through `game/perks.ts`'s multiplier getters — nothing else may guess them.
+ */
+export const PERKS = {
+  OFFER_COUNT: 3,
+  STACK_MAX: 2,
+  /** OVERCLOCK: +15% walk and sprint speed per stack. */
+  MOVE_SPEED: 0.15,
+  /** LIGHT MAG: reload 25% faster per stack. */
+  RELOAD_CUT: 0.25,
+  /** PLATING: +25 max integrity per stack, repaired immediately. */
+  MAX_HP_BONUS: 25,
+  /** ADRENALINE: stamina regenerates 30% faster per stack. */
+  STAMINA_REGEN: 0.3,
+  /** HEAVY ROUNDS: +15% bullet damage per stack (the knife stays honest). */
+  DAMAGE: 0.15,
+  /** MAGNET: XP orbs reach the player from 60% farther per stack. */
+  XP_RADIUS: 0.6,
+  /** COOLANT: bloom grows 30% slower per stack, so sustained fire stays true. */
+  BLOOM_CUT: 0.3,
+  /** SCAVENGER: mobs drop 50% more ammo per stack. */
+  AMMO_DROP: 0.5,
+} as const;
+
+export const PERK_DEFS = [
+  { id: 'overclock', name: 'OVERCLOCK', flavour: 'MOVE 15% FASTER' },
+  { id: 'lightmag', name: 'LIGHT MAG', flavour: 'RELOAD 25% FASTER' },
+  { id: 'plating', name: 'PLATING', flavour: '+25 MAX INTEGRITY, REPAIRED NOW' },
+  { id: 'adrenaline', name: 'ADRENALINE', flavour: 'STAMINA REGENERATES 30% FASTER' },
+  { id: 'heavy', name: 'HEAVY ROUNDS', flavour: 'BULLETS DEAL 15% MORE DAMAGE' },
+  { id: 'magnet', name: 'MAGNET', flavour: 'XP ORBS REACH 60% FARTHER' },
+  { id: 'coolant', name: 'COOLANT', flavour: 'BLOOM GROWS 30% SLOWER' },
+  { id: 'scavenger', name: 'SCAVENGER', flavour: 'MOBS DROP 50% MORE AMMO' },
+] as const;
+
+export type PerkId = (typeof PERK_DEFS)[number]['id'];
 
 /**
  * The meteor shower: a random set-piece that bleeds the sky red and drops rocks
@@ -838,6 +880,7 @@ export const SCREEN = {
   MENU: 'menu',
   PAUSE: 'pause',
   GAMEOVER: 'gameover',
+  PERK: 'perk',
 } as const;
 
 export type GameState = (typeof STATE)[keyof typeof STATE];

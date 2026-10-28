@@ -5,6 +5,8 @@ import type { CrosshairSettings } from './Settings';
 /** What the HUD reads each frame. Kept structural so `Game` doesn't leak itself. */
 export interface HudModel {
   hp: number;
+  /** What full integrity is this run — the PLATING perk raises it. */
+  maxHp: number;
   score: number;
   wave: number;
   hostiles: number;
@@ -81,11 +83,14 @@ export class Hud {
   private captureFill = $('captureFill');
   private newBestBadge = $('newBestBadge');
   private bestRecord = $('bestRecord');
+  private perkRow = $('perkRow');
 
   private pips: HTMLElement[] = [];
   private static MAX_FEED = 3;
 
-  private screens: Record<Exclude<ScreenName, 'none'>, HTMLElement> = {
+  // The perk screen manages its own visibility (like MapScreen), so it is
+  // deliberately absent here — `showScreen` must not be able to hide it.
+  private screens: Record<Exclude<ScreenName, 'none' | 'perk'>, HTMLElement> = {
     [SCREEN.MENU]: $('menuScreen'),
     [SCREEN.PAUSE]: $('pauseScreen'),
     [SCREEN.GAMEOVER]: $('gameOverScreen'),
@@ -228,10 +233,11 @@ export class Hud {
 
     if (this.last.hp !== hp) {
       this.last.hp = hp;
-      // The bar is a fraction of its track: healing past the max must not
-      // push it out of the panel.
-      this.healthFill.style.width = `${Math.min(100, hp)}%`;
-      this.healthText.textContent = String(Math.min(100, Math.ceil(hp)));
+      // The bar is a fraction of this run's max: PLATING raises the max, and
+      // healing past the old 100 must not push the fill out of the panel.
+      const pct = Math.min(100, (hp / Math.max(1, model.maxHp)) * 100);
+      this.healthFill.style.width = `${pct}%`;
+      this.healthText.textContent = String(Math.ceil(hp));
       this.healthFill.style.background =
         hp > 50
           ? 'linear-gradient(90deg,#1fd67a,#7dffb8)'
@@ -351,5 +357,21 @@ export class Hud {
     const { isNew } = updateRecord({ score: stats.score, wave: stats.wave });
     this.newBestBadge.style.display = isNew ? 'block' : 'none';
     this.refreshBestRecord();
+  }
+
+  /** The perks this run owns, as "NAME ×n" chips. Rebuilt only when they change. */
+  setPerkTags(tags: string[]): void {
+    const key = tags.join('|');
+    if (this.last.perkTags === key) return;
+    this.last.perkTags = key;
+    this.perkRow.hidden = tags.length === 0;
+    this.perkRow.replaceChildren(
+      ...tags.map((tag) => {
+        const el = document.createElement('span');
+        el.className = 'ptag';
+        el.textContent = tag;
+        return el;
+      }),
+    );
   }
 }

@@ -185,6 +185,15 @@ function exposeTestApi(game: Game) {
     /** Bank XP without waiting for a pickup. */
     grantXp: (n: number) => game.grantXp(n),
 
+    /** The perk offer standing right now (empty while playing). */
+    perkOffer: () => game.perks.offer,
+
+    /** Perk stacks by id. */
+    perks: () => game.perks.countsSnapshot(),
+
+    /** Take the offered perk at an index, as a click or the 1/2/3 keys would. */
+    pickPerk: (i: number) => game.pickPerk(i),
+
     /** The meteor shower: phase, sky tint and stones in flight. */
     meteor: () => game.meteorStats,
 

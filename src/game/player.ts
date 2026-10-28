@@ -31,6 +31,9 @@ export class Player {
   bobPhase = 0;
   /** Multiplier for mouse look; 1 = default WEAPON.SENS. */
   sens = 1;
+  /** Perk multipliers: 1 = untuned. Set by `Game` when a perk is taken. */
+  speedMul = 1;
+  staminaRegenMul = 1;
 
   /** Sprint fuel; when it hits zero sprint is locked off until it refills. */
   stamina: number = WORLD.STAMINA_MAX;
@@ -72,12 +75,15 @@ export class Player {
     if (input.sprint && movingNow && !this.sprintLocked) {
       this.stamina = Math.max(0, this.stamina - WORLD.STAMINA_DRAIN * dt);
     } else {
-      this.stamina = Math.min(WORLD.STAMINA_MAX, this.stamina + WORLD.STAMINA_REGEN * dt);
+      this.stamina = Math.min(
+        WORLD.STAMINA_MAX,
+        this.stamina + WORLD.STAMINA_REGEN * this.staminaRegenMul * dt,
+      );
     }
     if (this.stamina <= 0) this.sprintLocked = true;
     else if (this.stamina >= WORLD.STAMINA_UNLOCK) this.sprintLocked = false;
     const sprinting = input.sprint && movingNow && !this.sprintLocked;
-    const speed = sprinting ? WORLD.SPRINT : WORLD.WALK;
+    const speed = (sprinting ? WORLD.SPRINT : WORLD.WALK) * this.speedMul;
 
     const fx = -Math.sin(this.yaw);
     const fz = -Math.cos(this.yaw);

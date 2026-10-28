@@ -27,6 +27,7 @@
         <div><span class="k">WAVE</span><span class="v" id="waveVal">–</span></div>
         <div><span class="k">HOSTILES</span><span class="v warn" id="enemyVal">0</span></div>
         <div><span class="k">CREDITS</span><span class="v gold" id="creditVal">0</span></div>
+        <div id="perkRow" hidden></div>
       </div>
       <div class="panel" id="healthWrap">
         <div id="healthLabel">INTEGRITY <span id="healthText">100</span></div>
@@ -154,6 +155,16 @@
         <h1>ARENA MAP</h1>
         <canvas id="mapCanvas" width="720" height="720"></canvas>
         <div class="shint">M OR TAB CLOSES THE MAP — THE RUN IS PAUSED WHILE IT IS OPEN</div>
+      </div>
+    </div>
+
+    <!-- Level-up perk offer: the run is paused behind it, exactly like the map. -->
+    <div class="screen" id="perkScreen">
+      <div class="perkbox">
+        <h1 id="perkTitle">LEVEL 2</h1>
+        <h2>CHOOSE AN UPGRADE</h2>
+        <div id="perkCards"></div>
+        <div class="shint">CLICK A CARD OR PRESS 1 / 2 / 3 — THE RUN IS PAUSED WHILE YOU PICK</div>
       </div>
     </div>
 

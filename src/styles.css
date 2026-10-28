@@ -1232,3 +1232,81 @@ input.toggle {
     min-width: 200px;
   }
 }
+
+/* ---------------------------------------------------------------- perks */
+
+#perkRow {
+  margin-top: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#perkRow .ptag {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  padding: 2px 5px;
+}
+
+#perkScreen .perkbox {
+  text-align: center;
+  max-width: 780px;
+  padding: 20px;
+}
+#perkCards {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin: 26px 0 18px;
+  flex-wrap: wrap;
+}
+.perk-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  width: 216px;
+  min-height: 150px;
+  justify-content: center;
+  padding: 18px 16px;
+  cursor: pointer;
+  background: rgba(6, 10, 20, 0.72);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  color: #dfe9f5;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    transform 0.12s;
+}
+.perk-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--accent) 40%, transparent);
+  transform: translateY(-3px);
+}
+.perk-num {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 2px 9px;
+}
+.perk-name {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 19px;
+  letter-spacing: 2px;
+  color: var(--accent-soft);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.perk-flavour {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #9aa7bd;
+}
+.perk-stacks {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #7f8ba0;
+}

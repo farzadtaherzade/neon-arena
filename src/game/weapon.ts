@@ -32,6 +32,10 @@ export class Weapon {
   kick = 0;
   bloom = 0;
   flashT = 0;
+  /** Perk multipliers: 1 = untuned. Set by `Game` when a perk is taken. */
+  reloadMul = 1;
+  damageMul = 1;
+  bloomMul = 1;
 
   constructor(private readonly hooks: WeaponHooks) {}
 
@@ -66,12 +70,17 @@ export class Weapon {
 
   /** Reload progress 0..1, for the HUD bar. */
   get reloadProgress(): number {
-    return Math.min(this.reloadT / WEAPON.RELOAD_T, 1);
+    return Math.min(this.reloadT / this.reloadTTotal, 1);
+  }
+
+  /** How long this gun's reload takes right now — the LIGHT MAG perk shortens it. */
+  get reloadTTotal(): number {
+    return WEAPON.RELOAD_T * this.reloadMul;
   }
 
   /** Damage for a hit, before the type's own HP scaling. */
   damage(headshot: boolean): number {
-    return WEAPON.DMG * (headshot ? WEAPON.HEAD_MULT : 1);
+    return WEAPON.DMG * this.damageMul * (headshot ? WEAPON.HEAD_MULT : 1);
   }
 
   startReload(): void {
@@ -102,7 +111,7 @@ export class Weapon {
   private tickReload(dt: number): void {
     if (!this.reloading) return;
     this.reloadT += dt;
-    if (this.reloadT >= WEAPON.RELOAD_T) {
+    if (this.reloadT >= this.reloadTTotal) {
       this.reloading = false;
       const take = Math.min(WEAPON.MAG - this.ammo, this.reserve);
       this.ammo += take;
@@ -123,7 +132,7 @@ export class Weapon {
     this.lastShot = elapsed;
     this.recoil = Math.min(this.recoil + WEAPON.RECOIL_PER_SHOT, WEAPON.RECOIL_MAX);
     this.kick = Math.min(this.kick + WEAPON.KICK_PER_SHOT, WEAPON.KICK_MAX);
-    this.bloom = Math.min(this.bloom + WEAPON.BLOOM_PER_SHOT, WEAPON.BLOOM_MAX);
+    this.bloom = Math.min(this.bloom + WEAPON.BLOOM_PER_SHOT * this.bloomMul, WEAPON.BLOOM_MAX);
     this.flashT = WEAPON.FLASH_T;
     this.hooks.onShot();
     if (this.ammo <= 0) this.startReload();

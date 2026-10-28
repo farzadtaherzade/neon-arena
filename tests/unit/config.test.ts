@@ -17,6 +17,8 @@ import {
   KNIFE,
   MAX_DT,
   METEOR,
+  PERK_DEFS,
+  PERKS,
   RUNNER,
   SAPPER,
   SCREEN,
@@ -224,6 +226,33 @@ describe('config', () => {
     expect(XP.VALUE.tank).toBeGreaterThan(XP.VALUE.grunt);
   });
 
+  it('keeps the perk offers sane', () => {
+    expect(PERKS.OFFER_COUNT).toBeGreaterThanOrEqual(1);
+    expect(PERKS.OFFER_COUNT).toBeLessThanOrEqual(PERK_DEFS.length);
+    expect(PERKS.STACK_MAX).toBeGreaterThanOrEqual(1);
+    // A cut may never zero the stat out, and a boost may at most double it —
+    // except the magnet, which widens a radius.
+    expect(PERKS.RELOAD_CUT).toBeGreaterThan(0);
+    expect(PERKS.RELOAD_CUT * PERKS.STACK_MAX).toBeLessThan(1);
+    expect(PERKS.BLOOM_CUT).toBeGreaterThan(0);
+    expect(PERKS.BLOOM_CUT * PERKS.STACK_MAX).toBeLessThan(1);
+    for (const boost of [PERKS.MOVE_SPEED, PERKS.STAMINA_REGEN, PERKS.DAMAGE, PERKS.AMMO_DROP]) {
+      expect(boost).toBeGreaterThan(0);
+      expect(boost * PERKS.STACK_MAX).toBeLessThanOrEqual(1);
+    }
+    // The magnet widens a radius, which is quadratic in area — doubling at max
+    // stacks is the design, not a runaway.
+    expect(PERKS.XP_RADIUS).toBeGreaterThan(0);
+    expect(PERKS.XP_RADIUS * PERKS.STACK_MAX).toBeLessThanOrEqual(2);
+    expect(PERKS.MAX_HP_BONUS).toBeGreaterThan(0);
+    // Every perk is named and described, and the ids are unique.
+    expect(new Set(PERK_DEFS.map((d) => d.id)).size).toBe(PERK_DEFS.length);
+    for (const def of PERK_DEFS) {
+      expect(def.name.length, def.id).toBeGreaterThan(0);
+      expect(def.flavour.length, def.id).toBeGreaterThan(0);
+    }
+  });
+
   it('caps a frame at a sane step', () => {
     expect(FIXED_STEP).toBeCloseTo(1 / 60, 10);
     expect(MAX_DT).toBeGreaterThan(FIXED_STEP);
@@ -312,7 +341,7 @@ describe('config', () => {
 
   it('names every state and screen exactly once', () => {
     expect(Object.values(STATE)).toEqual(['menu', 'playing', 'paused', 'gameover']);
-    expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover']);
+    expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover', 'perk']);
     expect(new Set(Object.values(STATE)).size).toBe(4);
   });
 

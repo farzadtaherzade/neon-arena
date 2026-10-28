@@ -27,17 +27,18 @@ export class Xp {
 
   /**
    * Advance one step. Returns true once the orb has been collected, which the
-   * caller turns into XP and a small burst.
+   * caller turns into XP and a small burst. `magnetRadius` lets the MAGNET
+   * perk widen the pull; it defaults to the tuned radius.
    */
-  update(dt: number, player: { x: number; z: number }): boolean {
+  update(dt: number, player: { x: number; z: number }, magnetRadius: number = XP.RADIUS): boolean {
     this.age += dt;
     const dx = player.x - this.pos.x;
     const dz = player.z - this.pos.z;
     const d = Math.hypot(dx, dz);
     if (d <= XP.COLLECT) return true;
-    if (d > XP.RADIUS) return false;
+    if (d > magnetRadius) return false;
 
-    const speed = XP.PULL_SPEED * (1 - d / XP.RADIUS);
+    const speed = XP.PULL_SPEED * (1 - d / magnetRadius);
     this.pos.x += (dx / d) * speed * dt;
     this.pos.z += (dz / d) * speed * dt;
     return false;

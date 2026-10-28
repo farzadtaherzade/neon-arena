@@ -517,6 +517,12 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForTimeout(150);
   expect((await stats(page)).hp).toBeCloseTo(60, 3);
   await page.evaluate(() => window.__NEON.grantXp(30)); // crosses the threshold
+  // The level-up pauses the run behind a perk offer. Take the first card —
+  // which resumes play — and only then does the repair pay out over time.
+  await page.waitForFunction(() => (window.__NEON.perkOffer() as string[]).length > 0, undefined, {
+    timeout: 10_000,
+  });
+  await page.evaluate(() => window.__NEON.pickPerk(0));
   await page.waitForFunction(() => (window.__NEON.stats() as Stats).hp > 60, undefined, { timeout: 20_000 });
   expect((await xpStats(page)).level).toBe(2);
   expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 2');

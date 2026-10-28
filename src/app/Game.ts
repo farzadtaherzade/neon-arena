@@ -20,6 +20,9 @@ import {
   type GameState,
   KNIFE,
   METEOR,
+  PERK_DEFS,
+  PERKS,
+  type PerkId,
   SCREEN,
   START_HP,
   STATE,
@@ -34,6 +37,7 @@ import { SpatialHash } from '../game/enemies';
 import { Enemy, type EnemyWorld } from '../game/enemy';
 import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
+import { Perks } from '../game/perks';
 import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
@@ -52,10 +56,14 @@ import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
+import { PerkScreen } from '../ui/Perks';
 import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
 import { Skins } from '../ui/Skins';
 import { isTouchDevice, Touch } from '../ui/Touch';
+
+/** Display strings by perk id, for the offer cards and the HUD tags. */
+const PERK_BY_ID = new Map(PERK_DEFS.map((d) => [d.id, d]));
 
 interface Hostile {
   enemy: Enemy;
@@ -91,6 +99,10 @@ export class Game {
   readonly alarm: TowerAlarm;
   /** Player progression: level and the XP banked toward the next one. */
   readonly meter = new XpMeter();
+  /** The perks this run has taken; level-ups pause behind an offer from here. */
+  readonly perks = new Perks();
+  /** What full integrity is this run — PLATING raises it above `START_HP`. */
+  maxHp = START_HP;
   /** The random sky event: a meteor shower that drops rocks around the player. */
   readonly shower = new MeteorShower();
   aliveCount = 0;
@@ -113,6 +125,8 @@ export class Game {
   private rotatePaused = false;
   private gun = new GunView();
   private knifeView = new KnifeView();
+  /** The level-up perk offer screen; visible only while an offer stands. */
+  private perkScreen = new PerkScreen({ onPick: (id) => this.pickPerkId(id) });
   /** The knife: a cone in front of the player, on its own cooldown. */
   readonly knife = new Knife();
   /** Reused: the mobs a knife swing caught this frame. */
@@ -206,6 +220,7 @@ export class Game {
   private groundProbe = { x: 0, z: 0 };
   private model: HudModel = {
     hp: 0,
+    maxHp: START_HP,
     score: 0,
     wave: 0,
     hostiles: 0,
@@ -332,6 +347,7 @@ export class Game {
         onToggleSettings: () => this.settings.toggle(),
         onCloseSettings: () => this.settings.close(),
         onToggleMap: () => this.toggleMap(),
+        onPerkSlot: (index) => this.pickPerk(index),
       },
       test,
     );
@@ -523,6 +539,10 @@ export class Game {
     this.alarm.reset();
     this.healLeft = 0;
     this.meter.reset();
+    this.perks.reset();
+    this.applyPerks();
+    this.perkScreen.hide();
+    this.hud.setPerkTags([]);
     this.shower.reset();
 
     this.hp = START_HP;
@@ -734,7 +754,8 @@ export class Game {
 
     this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z, XP.VALUE[enemy.kind]);
     // The mob's rounds go into the reserve, so a wave of them is a resupply.
-    this.weapon.addAmmo(AMMO.DROP[enemy.kind]);
+    // SCAVENGER fattens the drop.
+    this.weapon.addAmmo(Math.round(AMMO.DROP[enemy.kind] * this.perks.ammoDropMul));
     // A knife kill pays the same as a gun kill.
     this.profile.addCredits(CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0));
 
@@ -866,10 +887,11 @@ export class Game {
 
   /** Magnet orbs toward the player, collecting them at `XP.COLLECT`. */
   private updateXps(dt: number): void {
+    const magnet = XP.RADIUS * this.perks.xpRadiusMul;
     for (let i = this.xps.length - 1; i >= 0; i--) {
       const xp = this.xps[i];
       if (!xp) continue;
-      if (!xp.update(dt, this.player.position)) continue;
+      if (!xp.update(dt, this.player.position, magnet)) continue;
 
       const view = this.xpViews.get(xp);
       if (view) {
@@ -887,12 +909,82 @@ export class Game {
 
   /**
    * A level up pays a repair — paid out over time like a secured deck, but
-   * smaller, so capturing a deck stays the premium heal.
+   * smaller, so capturing a deck stays the premium heal — and offers a perk,
+   * which pauses the run behind the offer screen.
    */
   private levelUp(): void {
     this.healLeft += XP_LEVEL.HEAL;
     this.hud.showBanner(`LEVEL ${this.meter.level}`, `+${XP_LEVEL.HEAL} INTEGRITY`);
     this.sfx.wave();
+    this.offerPerks();
+  }
+
+  /**
+   * Pause the run behind a perk offer. One offer stands at a time: a level
+   * crossed while an offer is open (a fat orb bank) simply waits for the next.
+   */
+  private offerPerks(): void {
+    if (this.perks.isOffering) return;
+    const offer = this.perks.makeOffer(this.rng);
+    if (offer.length === 0) return;
+    this.state = STATE.PAUSED;
+    this.input.firing = false;
+    this.touch.clear();
+    this.perkScreen.show(
+      this.meter.level,
+      offer.map((id) => {
+        const def = PERK_BY_ID.get(id);
+        return {
+          id,
+          name: def?.name ?? id.toUpperCase(),
+          flavour: def?.flavour ?? '',
+          stacks: this.perks.count(id),
+        };
+      }),
+    );
+    // Clicking a card needs the cursor back, exactly like the map does.
+    this.input.release();
+  }
+
+  /** Take the offered perk at `index` and go back to playing. */
+  pickPerk(index: number): void {
+    const id: PerkId | undefined = this.perks.offer[index];
+    if (id) this.pickPerkId(id);
+  }
+
+  /** Take a specific offered perk — the card click and the 1/2/3 keys end here. */
+  pickPerkId(id: PerkId): void {
+    if (this.state !== STATE.PAUSED || !this.perks.isOffering) return;
+    if (!this.perks.offer.includes(id)) return;
+    this.perks.take(id);
+    this.applyPerks();
+    // PLATING repairs the bonus it just added, against the new max.
+    if (id === 'plating') this.hp = Math.min(this.maxHp, this.hp + PERKS.MAX_HP_BONUS);
+    this.perkScreen.hide();
+    this.hud.setPerkTags(this.perkTagList());
+    this.state = STATE.PLAYING;
+    if (!this.test) this.input.lock();
+  }
+
+  /** Push the perk multipliers out to the systems that read them. */
+  private applyPerks(): void {
+    const p = this.perks;
+    this.player.speedMul = p.moveMul;
+    this.player.staminaRegenMul = p.staminaRegenMul;
+    this.weapon.reloadMul = p.reloadMul;
+    this.weapon.damageMul = p.damageMul;
+    this.weapon.bloomMul = p.bloomMul;
+    this.maxHp = START_HP + p.maxHpBonus;
+  }
+
+  /** "OVERCLOCK ×2" chips for the stats panel. */
+  private perkTagList(): string[] {
+    const tags: string[] = [];
+    for (const def of PERK_DEFS) {
+      const stacks = this.perks.count(def.id);
+      if (stacks > 0) tags.push(stacks > 1 ? `${def.name} ×${stacks}` : def.name);
+    }
+    return tags;
   }
 
   private clearXps(): void {
@@ -1279,6 +1371,7 @@ export class Game {
 
     const m = this.model;
     m.hp = this.hp;
+    m.maxHp = this.maxHp;
     m.score = this.score;
     m.wave = this.wave;
     m.hostiles = this.waves.hostileCount(this.aliveCount);

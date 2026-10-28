@@ -19,6 +19,8 @@ export interface InputHooks {
   onToggleSettings(): void;
   onCloseSettings(): void;
   onToggleMap(): void;
+  /** A perk-offer card picked by key (1/2/3 → index 0/1/2). */
+  onPerkSlot(index: number): void;
 }
 
 export interface MoveInput {
@@ -111,6 +113,9 @@ export class Input {
       if (e.code === 'KeyR') hooks.onReload();
       if (e.code === 'KeyQ' && !e.repeat && hooks.isPlaying()) hooks.onKnife();
       if (e.code === 'KeyC') hooks.onToggleSettings();
+      if ((e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') && !e.repeat) {
+        hooks.onPerkSlot(Number(e.code.slice(-1)) - 1);
+      }
       if (e.code === 'KeyM' || e.code === 'Tab') {
         // Tab would otherwise move the focus to the next control.
         e.preventDefault();
