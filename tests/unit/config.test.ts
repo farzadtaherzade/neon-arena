@@ -33,6 +33,9 @@ import {
   VIDEO,
   WAVES,
   WEAPON,
+  WEAPON_ORDER,
+  WEAPONS,
+  type WeaponDef,
   WORLD,
   XP,
   XP_LEVEL,
@@ -55,15 +58,36 @@ describe('config', () => {
     expect(WORLD.STEP_HEIGHT).toBeLessThan(WORLD.PLAYER_H);
   });
 
-  it('keeps the weapon self-consistent', () => {
-    expect(WEAPON.BLOOM_MAX).toBeGreaterThanOrEqual(WEAPON.BLOOM_PER_SHOT);
-    expect(WEAPON.RECOIL_MAX).toBeGreaterThanOrEqual(WEAPON.RECOIL_PER_SHOT);
-    expect(WEAPON.KICK_MAX).toBeGreaterThanOrEqual(WEAPON.KICK_PER_SHOT);
-    expect(WEAPON.FIRE_T).toBeGreaterThan(0);
-    expect(WEAPON.RELOAD_T).toBeGreaterThan(WEAPON.FIRE_T);
-    expect(WEAPON.HEAD_MULT).toBeGreaterThan(1);
-    expect(WEAPON.MAG).toBeGreaterThan(0);
+  it('keeps every gun in the arsenal self-consistent', () => {
     expect(WEAPON.GUN_REST).toHaveLength(3);
+    expect(WEAPON_ORDER).toEqual(['rifle', 'smg', 'scatter', 'dmr']);
+    for (const [id, def] of Object.entries(WEAPONS) as [string, WeaponDef][]) {
+      expect(def.bloomMax, id).toBeGreaterThanOrEqual(def.bloomPerShot);
+      expect(def.recoilMax, id).toBeGreaterThanOrEqual(def.recoilPerShot);
+      expect(def.kickMax, id).toBeGreaterThanOrEqual(def.kickPerShot);
+      expect(def.fireT, id).toBeGreaterThan(0);
+      expect(def.reloadT, id).toBeGreaterThan(def.fireT);
+      expect(def.headMult, id).toBeGreaterThan(1);
+      expect(def.mag, id).toBeGreaterThan(0);
+      expect(def.reserveMax, id).toBeGreaterThanOrEqual(def.reserveStart);
+      expect(def.waveAmmo, id).toBeGreaterThan(0);
+      expect(def.maxRange, id).toBeGreaterThan(0);
+      expect(def.pellets, id).toBeGreaterThanOrEqual(1);
+    }
+    // The rifle is standard issue; every other gun has a price and a name.
+    expect(WEAPONS.rifle.price).toBe(0);
+    for (const id of ['smg', 'scatter', 'dmr'] as const) {
+      expect(WEAPONS[id].price, id).toBeGreaterThan(0);
+      expect(WEAPONS[id].name.length, id).toBeGreaterThan(0);
+    }
+    // Roles: the SMG is fast and light, the scatter fires a wall of pellets,
+    // the DMR hits hardest per shot.
+    expect(WEAPONS.smg.fireT).toBeLessThan(WEAPONS.rifle.fireT);
+    expect(WEAPONS.smg.dmg).toBeLessThan(WEAPONS.rifle.dmg);
+    expect(WEAPONS.scatter.pellets).toBeGreaterThan(1);
+    expect(WEAPONS.dmr.dmg).toBeGreaterThan(WEAPONS.rifle.dmg);
+    // A scattergun volley cannot trivially one-shot a tank through its armour.
+    expect(WEAPONS.scatter.dmg * WEAPONS.scatter.pellets).toBeLessThan(ENEMY_TYPES.tank.hp * 1.5);
   });
 
   it('keeps the camera usable', () => {
@@ -372,15 +396,15 @@ describe('config', () => {
   });
 
   it('keeps the ammo economy coherent', () => {
-    expect(AMMO.RESERVE_START).toBeGreaterThan(0);
-    expect(AMMO.RESERVE_MAX).toBeGreaterThanOrEqual(AMMO.RESERVE_START);
     // Every mob drops something, and a tank is worth more than a grunt.
     expect(Object.keys(AMMO.DROP).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
     for (const value of Object.values(AMMO.DROP)) expect(value).toBeGreaterThan(0);
     expect(AMMO.DROP.tank).toBeGreaterThan(AMMO.DROP.grunt);
-    // A wave hands out enough rounds to matter but not enough to replace aim.
-    expect(WAVES.AMMO_PER_WAVE).toBeGreaterThan(0);
-    expect(WAVES.AMMO_PER_WAVE).toBeLessThan(WEAPON.MAG * 3);
+    // A wave resupply matters but never replaces aim: under three magazines.
+    for (const [id, def] of Object.entries(WEAPONS) as [string, WeaponDef][]) {
+      expect(def.waveAmmo, id).toBeGreaterThan(0);
+      expect(def.waveAmmo, id).toBeLessThan(def.mag * 3);
+    }
   });
 
   it('keeps the knife coherent', () => {

@@ -31,6 +31,9 @@ import {
   TOUCH,
   WAVES,
   WEAPON,
+  WEAPON_ORDER,
+  WEAPONS,
+  type WeaponId,
   WORLD,
   XP_LEVEL,
 } from '../game/config';
@@ -52,6 +55,7 @@ import { GunView } from '../render/Gun';
 import { KnifeView } from '../render/Knife';
 import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
+import { DmrView, ScatterView, SmgView } from '../render/ViewModels';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
@@ -125,6 +129,8 @@ export class Game {
   /** Set while a portrait rotation paused the run, so the landscape return resumes it. */
   private rotatePaused = false;
   private gun = new GunView();
+  /** One viewmodel per gun; `render()` shows the one in hand. */
+  private readonly gunById: Record<WeaponId, GunView | SmgView | ScatterView | DmrView>;
   private knifeView = new KnifeView();
   /** The level-up perk offer screen; visible only while an offer stands. */
   private perkScreen = new PerkScreen({ onPick: (id) => this.pickPerkId(id) });
@@ -137,7 +143,19 @@ export class Game {
 
   // Public because `main.ts` drives them from the headless E2E suite.
   readonly settings: Settings;
-  readonly weapon: Weapon;
+  /** One Weapon per gun in the arsenal; the reserves live and die with the run. */
+  readonly weapons: Record<WeaponId, Weapon>;
+  /** The gun in hand. */
+  private weaponId: WeaponId = 'rifle';
+  /** The active weapon — every existing reader of `game.weapon` keeps working. */
+  get weapon(): Weapon {
+    return this.weapons[this.weaponId];
+  }
+
+  get activeWeaponId(): WeaponId {
+    return this.weaponId;
+  }
+
   readonly hostiles: Hostile[] = [];
   /** The credits wallet and the loadout. The credits survive a death. */
   readonly profile = new Profile();
@@ -186,7 +204,7 @@ export class Game {
 
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
-    return this.gun.group.visible;
+    return this.gunById[this.weaponId].group.visible;
   }
 
   /**
@@ -233,9 +251,12 @@ export class Game {
     ammo: 0,
     reserve: 0,
     dry: false,
+    weaponName: WEAPONS.rifle.name,
+    mag: WEAPONS.rifle.mag,
     reloading: false,
     reloadProgress: 0,
     bloom: 0,
+    bloomMax: WEAPONS.rifle.bloomMax,
     moving: false,
     stamina: WORLD.STAMINA_MAX,
     bombDist: Number.POSITIVE_INFINITY,
@@ -272,6 +293,7 @@ export class Game {
       getProfile: () => this.profile.data,
       onBuy: (id) => this.buySkin(id),
       onEquip: (id) => this.equipSkin(id),
+      onBuyWeapon: (id) => this.buyWeapon(id),
     });
     this.applySkins();
 
@@ -322,12 +344,23 @@ export class Game {
       this.settings.setTouch({ tuned: true });
     }
 
-    this.weapon = new Weapon({
+    const weaponHooks = {
       onShot: () => this.resolveShot(),
       onDry: () => this.sfx.empty(),
       onReloadStart: () => this.sfx.reloadStart(),
       onReloadEnd: () => this.sfx.reloadEnd(),
-    });
+    };
+    this.weapons = {
+      rifle: new Weapon(weaponHooks, WEAPONS.rifle),
+      smg: new Weapon(weaponHooks, WEAPONS.smg),
+      scatter: new Weapon(weaponHooks, WEAPONS.scatter),
+      dmr: new Weapon(weaponHooks, WEAPONS.dmr),
+    };
+    const smgView = new SmgView();
+    const scatterView = new ScatterView();
+    const dmrView = new DmrView();
+    this.gunById = { rifle: this.gun, smg: smgView, scatter: scatterView, dmr: dmrView };
+    this.arena.camera.add(smgView.group, scatterView.group, dmrView.group);
 
     this.input = new Input(
       this.arena.renderer.domElement,
@@ -353,6 +386,11 @@ export class Game {
         onCloseSettings: () => this.settings.close(),
         onToggleMap: () => this.toggleMap(),
         onPerkSlot: (index) => this.pickPerk(index),
+        onWeaponSlot: (index) => {
+          const id: WeaponId | undefined = WEAPON_ORDER[index];
+          if (id) this.swapWeapon(id);
+        },
+        onWeaponCycle: (dir) => this.cycleWeapon(dir),
       },
       test,
     );
@@ -369,6 +407,7 @@ export class Game {
         onReload: () => this.weapon.startReload(),
         onKnife: () => this.swingKnife(),
         onPause: () => this.pauseGame(),
+        onSwap: () => this.cycleWeapon(1),
         onRotate: (portrait) => this.onRotate(portrait),
         onFireMode: (mode) => this.settings.setTouch({ shootMode: mode, shootModeChosen: true }),
       },
@@ -534,7 +573,7 @@ export class Game {
   private reset(): void {
     this.waves.reset();
     this.fx.clear();
-    this.weapon.reset();
+    for (const w of Object.values(this.weapons)) w.reset();
     this.player.reset();
     this.clearHostiles();
     this.clearBombs();
@@ -614,63 +653,69 @@ export class Game {
     this.waveClearPending = false;
     this.waves.start(n);
     // A resupply at the start of every wave, on top of what the mobs drop.
-    this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
+    this.resupply();
     this.hud.showBanner(`WAVE ${n}`, n === 1 ? 'GET READY' : 'HOSTILES INCOMING');
     this.sfx.wave();
   }
 
   // ----------------------------------------------------------------- shooting
 
-  /** One bullet: pick, damage, sparks, tracer. Runs on the fixed step. */
+  /**
+   * One trigger pull: a flash, a bang, then one ray per pellet — the scattergun
+   * is a wall of them, every other gun one. Runs on the fixed step.
+   */
   private resolveShot(): void {
-    this.pick.aim(this.arena.camera, this.weapon.spread, this.rng);
-    const hit = this.pick.cast();
-    this.gun.fire(this.rng);
-    this.sfx.shoot();
+    const vm = this.gunById[this.weaponId];
+    vm.fire(this.rng);
+    this.sfx.shoot(this.weaponId);
 
-    this.gun.muzzle.updateWorldMatrix(true, false);
-    this.gun.muzzle.getWorldPosition(this.scratch);
-    this.fx.tracers.fire(this.scratch, hit ? hit.point : this.missEnd());
+    vm.muzzle.updateWorldMatrix(true, false);
+    vm.muzzle.getWorldPosition(this.scratch);
 
-    if (!hit) return;
+    for (let i = 0; i < this.weapon.def.pellets; i++) {
+      this.pick.aim(this.arena.camera, this.weapon.spread, this.rng);
+      const hit = this.pick.cast();
+      this.fx.tracers.fire(this.scratch, hit ? hit.point : this.missEnd());
+      if (!hit) continue;
 
-    if (hit.bomb) {
-      this.defuse(hit.bomb);
-      return;
-    }
+      if (hit.bomb) {
+        this.defuse(hit.bomb);
+        continue;
+      }
 
-    if (hit.enemy) {
-      const headshot = hit.part === 'head';
+      if (hit.enemy) {
+        const headshot = hit.part === 'head';
+        const p = hit.point;
+        this.fx.burst(
+          { x: p.x, y: p.y, z: p.z, color: 0xff4455, count: 10, speed: 3.5, life: 0.5, gravity: 9 },
+          this.rng,
+        );
+        this.feedback.hitT = 1;
+        this.sfx.hit();
+
+        const enemy = hit.enemy;
+        const dir = this.pick.direction;
+        // The plate only covers what the mob is facing, so it needs to know where
+        // the shot came from.
+        const from = { dirX: -dir.x, dirZ: -dir.z, headshot, melee: false };
+        if (enemy.takeDamage(this.weapon.damage(headshot), from)) this.killEnemy(enemy, headshot);
+        else enemy.knockback(dir.x, dir.z);
+        continue;
+      }
+
       const p = hit.point;
       this.fx.burst(
-        { x: p.x, y: p.y, z: p.z, color: 0xff4455, count: 10, speed: 3.5, life: 0.5, gravity: 9 },
+        { x: p.x, y: p.y, z: p.z, color: 0xffc266, count: 8, speed: 3, life: 0.4, gravity: 9 },
         this.rng,
       );
-      this.feedback.hitT = 1;
-      this.sfx.hit();
-
-      const enemy = hit.enemy;
-      const dir = this.pick.direction;
-      // The plate only covers what the mob is facing, so it needs to know where
-      // the shot came from.
-      const from = { dirX: -dir.x, dirZ: -dir.z, headshot, melee: false };
-      if (enemy.takeDamage(this.weapon.damage(headshot), from)) this.killEnemy(enemy, headshot);
-      else enemy.knockback(dir.x, dir.z);
-      return;
     }
-
-    const p = hit.point;
-    this.fx.burst(
-      { x: p.x, y: p.y, z: p.z, color: 0xffc266, count: 8, speed: 3, life: 0.4, gravity: 9 },
-      this.rng,
-    );
   }
 
   private missEnd(): THREE.Vector3 {
     // The camera lives inside the yaw/pitch rig, so its local position is a
     // permanent (0,0,0) — the ray leaves from its world position, not that.
     this.arena.camera.getWorldPosition(this.tracerEnd);
-    return this.tracerEnd.addScaledVector(this.pick.direction, WEAPON.MAX_RANGE);
+    return this.tracerEnd.addScaledVector(this.pick.direction, this.weapon.def.maxRange);
   }
 
   /**
@@ -723,6 +768,41 @@ export class Game {
     if (this.settings.values.touch.shootMode !== 'auto') return false;
     this.pick.aim(this.arena.camera, 0, this.rng);
     return this.pick.cast()?.enemy != null;
+  }
+
+  /** The guns this player carries: the rifle, plus whatever the armory sold. */
+  ownedWeaponIds(): WeaponId[] {
+    return WEAPON_ORDER.filter((id) => id === 'rifle' || this.profile.ownsWeapon(id));
+  }
+
+  /** Holster the current gun and draw another. False when it is not owned. */
+  swapWeapon(id: WeaponId): boolean {
+    if (id === this.weaponId || !this.ownedWeaponIds().includes(id)) return false;
+    this.weaponId = id;
+    this.sfx.swap();
+    return true;
+  }
+
+  /** Step through the owned guns — the wheel and the touch SWAP button. */
+  cycleWeapon(dir: 1 | -1): void {
+    const owned = this.ownedWeaponIds();
+    const i = owned.indexOf(this.weaponId);
+    const next = owned[(i + dir + owned.length) % owned.length];
+    if (next) this.swapWeapon(next);
+  }
+
+  /** The wave resupply: every owned gun gets its own share. */
+  private resupply(): void {
+    for (const id of WEAPON_ORDER) {
+      if (id === 'rifle' || this.profile.ownsWeapon(id)) this.weapons[id].addAmmo(WEAPONS[id].waveAmmo);
+    }
+  }
+
+  /** Buy a gun from the armory. It joins the loadout for every later run. */
+  buyWeapon(id: WeaponId): boolean {
+    const bought = this.profile.buyWeapon(id);
+    if (bought) this.skins.refresh();
+    return bought;
   }
 
   /** Buy a skin with credits. False when it is unknown, owned or too dear. */
@@ -990,9 +1070,11 @@ export class Game {
     const p = this.perks;
     this.player.speedMul = p.moveMul;
     this.player.staminaRegenMul = p.staminaRegenMul;
-    this.weapon.reloadMul = p.reloadMul;
-    this.weapon.damageMul = p.damageMul;
-    this.weapon.bloomMul = p.bloomMul;
+    for (const w of Object.values(this.weapons)) {
+      w.reloadMul = p.reloadMul;
+      w.damageMul = p.damageMul;
+      w.bloomMul = p.bloomMul;
+    }
     this.maxHp = START_HP + p.maxHpBonus;
   }
 
@@ -1293,7 +1375,7 @@ export class Game {
     // wave look (and announce) like "wave 1 complete" forever.
     if (this.waves.wave > waveBefore) {
       this.wave = this.waves.wave;
-      this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
+      this.resupply();
       this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
       this.sfx.wave();
       this.waveClearPending = false;
@@ -1326,8 +1408,11 @@ export class Game {
     // The viewmodel belongs to a live run: visible while playing and behind the
     // pause overlay, hidden on the title and game-over screens. Driving this
     // from state (not from a transition) is what keeps it alive across resume.
-    this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
-    this.knifeView.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
+    const vmPlaying = this.state === STATE.PLAYING || this.state === STATE.PAUSED;
+    for (const [id, view] of Object.entries(this.gunById)) {
+      view.show(vmPlaying && id === this.weaponId);
+    }
+    this.knifeView.show(vmPlaying);
     // Same rule for the touch layer: it is the input surface of a live run.
     this.touch.setVisible(this.state === STATE.PLAYING);
 
@@ -1344,8 +1429,8 @@ export class Game {
       const strafe = this.touchEnabled
         ? clamp(this.input.strafe + this.touch.move.right, -1, 1)
         : this.input.strafe;
-      this.gun.pose(player.bobPhase, weapon.kick, dip, strafe);
-      this.gun.decay(dt, weapon.flashT);
+      this.gunById[this.weaponId].pose(player.bobPhase, weapon.kick, dip, strafe);
+      this.gunById[this.weaponId].decay(dt, weapon.flashT);
       this.knifeView.pose(this.knife.swingT, player.bobPhase, strafe);
     }
 
@@ -1418,9 +1503,12 @@ export class Game {
     m.ammo = weapon.ammo;
     m.reserve = weapon.reserve;
     m.dry = weapon.isDry;
+    m.weaponName = WEAPONS[this.weaponId].name;
+    m.mag = weapon.def.mag;
     m.reloading = weapon.reloading;
     m.reloadProgress = weapon.reloadProgress;
     m.bloom = weapon.bloom;
+    m.bloomMax = weapon.def.bloomMax;
     m.moving = player.moving;
     m.stamina = player.stamina;
     m.bombDist = nearestD;

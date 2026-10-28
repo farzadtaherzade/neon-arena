@@ -9,7 +9,15 @@
  * game when it opens, so nothing here can be bought mid-fight.
  */
 
-import { type KnifeBlade, type RifleOptic, SKINS, type SkinDef } from '../game/config';
+import {
+  type KnifeBlade,
+  type RifleOptic,
+  SKINS,
+  type SkinDef,
+  WEAPON_ORDER,
+  WEAPONS,
+  type WeaponId,
+} from '../game/config';
 import type { ProfileData } from './Profile';
 
 const PART_NAMES: Record<RifleOptic | KnifeBlade, string> = {
@@ -30,15 +38,61 @@ export interface SkinsHooks {
   onBuy(id: string): void;
   /** Equip a skin the player already owns. */
   onEquip(id: string): void;
+  /** Buy a gun from the armory. */
+  onBuyWeapon(id: WeaponId): void;
 }
 
 export class Skins {
   private list = document.getElementById('skinList')!;
   private balance = document.getElementById('creditBalance')!;
+  private armory = document.getElementById('armoryList')!;
   private cards: { skin: SkinDef; root: HTMLElement; button: HTMLButtonElement }[] = [];
+  private armoryCards: { id: WeaponId; root: HTMLElement; button: HTMLButtonElement }[] = [];
 
   constructor(private readonly hooks: SkinsHooks) {
     this.build();
+    this.buildArmory();
+  }
+
+  /** One card per buyable gun. The rifle is standard issue and not listed. */
+  private buildArmory(): void {
+    for (const id of WEAPON_ORDER) {
+      const def = WEAPONS[id];
+      if (def.price <= 0) continue;
+      const root = document.createElement('div');
+      root.className = 'skincard';
+
+      const head = document.createElement('div');
+      head.className = 'skinhead';
+      const name = document.createElement('span');
+      name.className = 'skname';
+      name.textContent = def.name;
+      const tag = document.createElement('span');
+      tag.className = 'skweap';
+      tag.textContent = `${def.mag} RND · ${def.dmg} DMG${def.pellets > 1 ? ` ×${def.pellets}` : ''}`;
+      head.append(name, tag);
+
+      const foot = document.createElement('div');
+      foot.className = 'skinfoot';
+      const part = document.createElement('span');
+      part.className = 'skpart';
+      part.textContent = 'CARRIED WITH THE RIFLE';
+      const price = document.createElement('span');
+      price.className = 'skprice';
+      price.textContent = String(def.price);
+      const button = document.createElement('button');
+      button.className = 'btn';
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        this.hooks.onBuyWeapon(id);
+        this.refresh();
+      });
+      foot.append(part, price, button);
+
+      root.append(head, foot);
+      this.armory.appendChild(root);
+      this.armoryCards.push({ id, root, button });
+    }
   }
 
   private build(): void {
@@ -105,6 +159,16 @@ export class Skins {
       card.button.classList.toggle('primary', owned && !equipped);
       card.root.classList.toggle('owned', owned);
       card.root.classList.toggle('equipped', equipped);
+      card.root.classList.toggle('locked', !owned && !affordable);
+    }
+    for (const card of this.armoryCards) {
+      const def = WEAPONS[card.id];
+      const owned = profile.unlockedWeapons.includes(card.id);
+      const affordable = profile.credits >= def.price;
+      card.button.textContent = owned ? 'OWNED' : 'BUY';
+      card.button.disabled = owned || (!owned && !affordable);
+      card.button.classList.toggle('primary', !owned && affordable);
+      card.root.classList.toggle('owned', owned);
       card.root.classList.toggle('locked', !owned && !affordable);
     }
   }

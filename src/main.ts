@@ -229,6 +229,15 @@ function exposeTestApi(game: Game) {
       return game.settings.values.video;
     },
 
+    /** The arsenal: which gun is in hand and which the armory has sold. */
+    weapons: () => ({ active: game.activeWeaponId, owned: game.ownedWeaponIds() }),
+
+    /** Draw a gun by id, as a swap key would. */
+    swapWeapon: (id: string) => game.swapWeapon(id as never),
+
+    /** Unlock a gun with credits, for testing the armory. */
+    unlockWeapon: (id: string) => game.profile.buyWeapon(id as never),
+
     /** The credits wallet and the loadout. */
     profile: () => game.profile.data,
 

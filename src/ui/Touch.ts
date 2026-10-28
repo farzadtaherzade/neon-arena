@@ -21,6 +21,8 @@ export interface TouchHooks {
   onReload(): void;
   onKnife(): void;
   onPause(): void;
+  /** The SWAP button: step to the next owned gun. */
+  onSwap(): void;
   /** The orientation flipped to (or from) portrait. */
   onRotate(portrait: boolean): void;
   /** The player picked a shoot mode on the first-launch prompt. */
@@ -92,6 +94,7 @@ export class Touch {
     this.layer.addEventListener('click', (e) => e.stopPropagation());
     document.getElementById(ROTATE_SCREEN)!.addEventListener('click', (e) => e.stopPropagation());
 
+    this.bindButton('btnSwap', () => hooks.onSwap());
     this.bindButton('btnJump', () => hooks.onJump());
     this.bindButton('btnReload', () => hooks.onReload());
     this.bindButton('btnKnife', () => hooks.onKnife());

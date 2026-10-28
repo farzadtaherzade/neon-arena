@@ -8,7 +8,7 @@
  * (private windows, a full disk) and a shop must never break the game.
  */
 
-import { SKINS, type SkinDef, type SkinWeapon } from '../game/config';
+import { SKINS, type SkinDef, type SkinWeapon, WEAPONS, type WeaponId } from '../game/config';
 
 const KEY = 'neon.profile';
 
@@ -19,10 +19,12 @@ export interface ProfileData {
   unlocked: string[];
   /** One equipped skin per weapon; an empty id is the standard issue. */
   equipped: Record<SkinWeapon, string>;
+  /** The guns the armory has sold; the rifle is standard issue and needs no entry. */
+  unlockedWeapons: WeaponId[];
 }
 
 export function defaultProfile(): ProfileData {
-  return { credits: 0, unlocked: [], equipped: { rifle: '', knife: '' } };
+  return { credits: 0, unlocked: [], equipped: { rifle: '', knife: '' }, unlockedWeapons: [] };
 }
 
 /** The skin with this id, or null. */
@@ -45,10 +47,15 @@ export function readProfile(store: Pick<Storage, 'getItem'>): ProfileData {
       const id = p?.equipped?.[weapon];
       if (typeof id === 'string' && (id === '' || known.has(id))) equipped[weapon] = id;
     }
+    const weaponIds = new Set<string>(Object.keys(WEAPONS));
+    const unlockedWeapons = Array.isArray(p?.unlockedWeapons)
+      ? p.unlockedWeapons.filter((id: unknown): id is WeaponId => typeof id === 'string' && weaponIds.has(id))
+      : [];
     return {
       credits: typeof p?.credits === 'number' && p.credits >= 0 ? p.credits : 0,
       unlocked,
       equipped,
+      unlockedWeapons,
     };
   } catch {
     return base;
@@ -84,6 +91,21 @@ export class Profile {
 
   owns(id: string): boolean {
     return this.data.unlocked.includes(id);
+  }
+
+  ownsWeapon(id: WeaponId): boolean {
+    return id === 'rifle' || this.data.unlockedWeapons.includes(id);
+  }
+
+  /** Buy a gun from the armory. Returns false when unknown, owned or too dear. */
+  buyWeapon(id: WeaponId): boolean {
+    const def = WEAPONS[id];
+    if (!def || def.price <= 0 || this.ownsWeapon(id)) return false;
+    if (this.data.credits < def.price) return false;
+    this.data.credits -= def.price;
+    this.data.unlockedWeapons.push(id);
+    this.save();
+    return true;
   }
 
   /** Buy a skin. Returns false when it is unknown, already owned or too dear. */

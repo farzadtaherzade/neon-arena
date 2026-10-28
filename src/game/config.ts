@@ -44,37 +44,153 @@ export const WORLD = {
 } as const;
 
 export const WEAPON = {
-  MAG: 12,
-  RELOAD_T: 1.25,
-  FIRE_T: 0.12,
   /** How often the empty click may play, so it cannot machine-gun. */
   DRY_CLICK_T: 0.4,
-  DMG: 34,
-  HEAD_MULT: 2.5,
+  /** Score paid over the kill for a headshot. */
   HEADSHOT_BONUS: 25,
   SENS: 0.0023,
-  MAX_RANGE: 120,
   GUN_REST: [0.27, -0.24, -0.5],
 
-  BASE_SPREAD: 0.006,
-  BLOOM_PER_SHOT: 0.0045,
-  BLOOM_MAX: 0.03,
+  /** How fast bloom, recoil and kick bleed off — shared handling, per-gun sizes. */
   BLOOM_DECAY: 5,
-  /** Aim multiplier applied to the base spread while ADS is held. */
-  AIM_SPREAD: 0.45,
-
-  RECOIL_PER_SHOT: 0.011,
-  RECOIL_MAX: 0.09,
   RECOIL_DECAY: 9,
-
-  KICK_PER_SHOT: 0.05,
-  KICK_MAX: 0.16,
   KICK_DECAY: 11,
 
   FLASH_T: 0.05,
   FLASH_LIGHT_PEAK: 30,
   FLASH_LIGHT_DECAY: 26,
 } as const;
+
+// ------------------------------------------------------------------ arsenal
+
+export type WeaponId = 'rifle' | 'smg' | 'scatter' | 'dmr';
+
+/** One gun's combat numbers. The rifle's are the shipped tuning, verbatim. */
+export interface WeaponDef {
+  readonly id: WeaponId;
+  readonly name: string;
+  /** 0 = standard issue, always carried. */
+  readonly price: number;
+  readonly mag: number;
+  readonly reserveStart: number;
+  readonly reserveMax: number;
+  /** Rounds the wave resupply hands out. */
+  readonly waveAmmo: number;
+  readonly reloadT: number;
+  readonly fireT: number;
+  readonly dmg: number;
+  readonly headMult: number;
+  /** Raycasts per shot — the scattergun is a wall of them. */
+  readonly pellets: number;
+  readonly baseSpread: number;
+  /** Multiplier applied to the spread while ADS is held. */
+  readonly aimSpread: number;
+  readonly bloomPerShot: number;
+  readonly bloomMax: number;
+  readonly recoilPerShot: number;
+  readonly recoilMax: number;
+  readonly kickPerShot: number;
+  readonly kickMax: number;
+  readonly maxRange: number;
+}
+
+/** Switch order for the 1-4 keys, the wheel and the touch SWAP button. */
+export const WEAPON_ORDER: readonly WeaponId[] = ['rifle', 'smg', 'scatter', 'dmr'];
+
+export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  rifle: {
+    id: 'rifle',
+    name: 'RIFLE',
+    price: 0,
+    mag: 12,
+    reserveStart: 60,
+    reserveMax: 120,
+    waveAmmo: 24,
+    reloadT: 1.25,
+    fireT: 0.12,
+    dmg: 34,
+    headMult: 2.5,
+    pellets: 1,
+    baseSpread: 0.006,
+    aimSpread: 0.45,
+    bloomPerShot: 0.0045,
+    bloomMax: 0.03,
+    recoilPerShot: 0.011,
+    recoilMax: 0.09,
+    kickPerShot: 0.05,
+    kickMax: 0.16,
+    maxRange: 120,
+  },
+  smg: {
+    id: 'smg',
+    name: 'SMG',
+    price: 900,
+    mag: 32,
+    reserveStart: 96,
+    reserveMax: 224,
+    waveAmmo: 72,
+    reloadT: 1.5,
+    fireT: 0.085,
+    dmg: 14,
+    headMult: 2.0,
+    pellets: 1,
+    baseSpread: 0.014,
+    aimSpread: 0.6,
+    bloomPerShot: 0.006,
+    bloomMax: 0.05,
+    recoilPerShot: 0.008,
+    recoilMax: 0.07,
+    kickPerShot: 0.03,
+    kickMax: 0.1,
+    maxRange: 80,
+  },
+  scatter: {
+    id: 'scatter',
+    name: 'SCATTERGUN',
+    price: 1200,
+    mag: 6,
+    reserveStart: 24,
+    reserveMax: 48,
+    waveAmmo: 8,
+    reloadT: 1.7,
+    fireT: 0.75,
+    dmg: 9,
+    headMult: 1.5,
+    pellets: 8,
+    baseSpread: 0.045,
+    aimSpread: 0.8,
+    bloomPerShot: 0.002,
+    bloomMax: 0.02,
+    recoilPerShot: 0.05,
+    recoilMax: 0.14,
+    kickPerShot: 0.14,
+    kickMax: 0.3,
+    maxRange: 28,
+  },
+  dmr: {
+    id: 'dmr',
+    name: 'DMR',
+    price: 2000,
+    mag: 8,
+    reserveStart: 24,
+    reserveMax: 64,
+    waveAmmo: 8,
+    reloadT: 2.0,
+    fireT: 0.55,
+    dmg: 70,
+    headMult: 2.5,
+    pellets: 1,
+    baseSpread: 0.001,
+    aimSpread: 0.2,
+    bloomPerShot: 0.01,
+    bloomMax: 0.04,
+    recoilPerShot: 0.03,
+    recoilMax: 0.12,
+    kickPerShot: 0.1,
+    kickMax: 0.22,
+    maxRange: 160,
+  },
+};
 
 /**
  * Touch controls (phones and tablets).
@@ -598,11 +714,10 @@ export const ALARM = {
  * run from spiralling.
  */
 export const AMMO = {
-  /** Rounds in the reserve when a run starts. */
-  RESERVE_START: 60,
-  /** The reserve never grows past this. */
-  RESERVE_MAX: 120,
-  /** Rounds dropped by a mob of each kind when it dies. */
+  /**
+   * Rounds dropped by a mob of each kind when it dies. They feed whichever gun
+   * is in hand — the wave resupply tops the others up.
+   */
   DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30 },
 } as const;
 
@@ -685,8 +800,6 @@ export const WAVES = {
 
   HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0 },
   DMG_PER_2_WAVES: 2,
-  /** Rounds handed over at the start of every wave, on top of the mob drops. */
-  AMMO_PER_WAVE: 24,
 } as const;
 
 /**
