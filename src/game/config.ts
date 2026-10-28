@@ -462,7 +462,7 @@ export const SKINS = [
 
 /** What a kill is worth. A knife kill pays the same as a gun kill. */
 export const CREDITS = {
-  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25 },
+  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25, warden: 400 },
   HEADSHOT: 5,
   WAVE: 50,
   CAPTURE: 40,
@@ -486,6 +486,36 @@ export const ENEMY_TYPES = {
   tank: { hp: 200, speed: 2.2, scale: 1.35, dmg: 22, score: 300, body: 0x5e3a8a },
   /** The sapper: skulks, plants bombs, and only charges once the herd thins. */
   sapper: { hp: 90, speed: 4.2, scale: 0.95, dmg: 12, score: 250, body: 0x2fbf6f },
+  /**
+   * The WARDEN: the every-fifth-wave boss. It shells from a distance and slams
+   * anything that closes; see `BOSS` for the behaviour and `WAVES` for how it
+   * enters the composition.
+   */
+  warden: { hp: 900, speed: 3.0, scale: 2.1, dmg: 26, score: 3000, body: 0xff2a4e },
+} as const;
+
+/**
+ * The WARDEN boss: walks in on every wave a multiple of `EVERY`, keeps the
+ * player inside a distance band, and lobs rocket volleys on a timer. The
+ * rockets are the sapper's bomb pipeline with their own numbers — so defusing
+ * a rocket mid-air stays a deliberate shot, exactly like a planted bomb.
+ */
+export const BOSS = {
+  EVERY: 5,
+  /** The warden closes inside this, and backs off inside the floor of it. */
+  KEEP_MIN: 10,
+  KEEP_MAX: 16,
+  /** Seconds between volleys, how many rockets one volley lobs, and their ring. */
+  VOLLEY_T: 5.5,
+  VOLLEY_ROCKETS: 3,
+  ROCKET_SPREAD: 2.2,
+  /** Seconds the racks glow before a volley lands — step out of the ring. */
+  VOLLEY_TELL: 1.0,
+  FIRST_VOLLEY: 2.5,
+  /** A rocket is a fast bomb: shorter fuse, smaller blast, lighter hit. */
+  ROCKET_FUSE: 2.2,
+  ROCKET_RADIUS: 3.5,
+  ROCKET_PLAYER_DMG: 28,
 } as const;
 
 export const ENEMY = {
@@ -513,7 +543,7 @@ export const ENEMY = {
    * than a player's mouse: that is what makes flanking possible, and the
    * front plate only covers what the mob can see.
    */
-  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2 },
+  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2, warden: 1.6 },
   HIT_FLASH: 0.08,
   HIT_FLASH_COLOR: 0xffffff,
   ATTACK_FLASH_COLOR: 0xff2222,
@@ -573,7 +603,7 @@ export const AMMO = {
   /** The reserve never grows past this. */
   RESERVE_MAX: 120,
   /** Rounds dropped by a mob of each kind when it dies. */
-  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6 },
+  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30 },
 } as const;
 
 /**
@@ -653,7 +683,7 @@ export const WAVES = {
   INTERMISSION: 3,
   WAVE_HEAL: 25,
 
-  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12 },
+  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0 },
   DMG_PER_2_WAVES: 2,
   /** Rounds handed over at the start of every wave, on top of the mob drops. */
   AMMO_PER_WAVE: 24,
@@ -746,7 +776,7 @@ export const XP = {
   /** Distance at which the orb is collected. */
   COLLECT: 0.8,
   /** Points per orb, by enemy kind. */
-  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8 },
+  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8, warden: 120 },
   /** How fast the orb slides toward the player while magnetised. */
   PULL_SPEED: 7,
   /** Visual-only: how high the orb floats and how fast it bobs. */
@@ -885,7 +915,7 @@ export const SCREEN = {
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper'] as const;
+const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 /**
@@ -913,5 +943,9 @@ export const ENEMY_LOOKS: Record<EnemyKind, { readonly body: number; readonly ac
     { body: 0x2fbf6f, accent: 0xffe08a },
     { body: 0x17805b, accent: 0xa7f3d0 },
     { body: 0x0f5132, accent: 0x6ee7b7 },
+  ],
+  warden: [
+    { body: 0xff2a4e, accent: 0xffd166 },
+    { body: 0xc21f3a, accent: 0xffe08a },
   ],
 };

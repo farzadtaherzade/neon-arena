@@ -11,6 +11,7 @@ import {
   ALARM,
   AMMO,
   BOMB,
+  BOSS,
   CAMERA,
   CAPTURE,
   CREDITS,
@@ -213,6 +214,9 @@ export class Game {
     };
   }
 
+  /** Reused per-frame: the live boss's health, or null when none walks. */
+  private bossModel: { hp: number; max: number } | null = null;
+
   private scratch = new THREE.Vector3();
   private tracerEnd = new THREE.Vector3();
   private camQuat = new THREE.Quaternion();
@@ -242,6 +246,7 @@ export class Game {
     xp: 0,
     xpNeed: 1,
     credits: 0,
+    boss: null,
   };
 
   constructor(
@@ -398,7 +403,7 @@ export class Game {
       ramps: this.collision.ramps,
       damagePlayer: (amount) => this.damagePlayer(amount),
       knockPlayer: (dirX, dirZ, force) => this.knockPlayer(dirX, dirZ, force),
-      plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
+      plantBomb: (from, to, thrown, heavy) => this.plantBomb(from, to, thrown, heavy),
     };
 
     document.getElementById('menuDeploy')!.addEventListener('click', () => this.start(false));
@@ -781,10 +786,24 @@ export class Game {
 
   // --------------------------------------------------------------------- bombs
 
-  /** A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc. */
-  plantBomb(from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean): void {
+  /**
+   * A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc.
+   * `heavy` builds the WARDEN's rocket: shorter fuse, smaller blast, lighter hit.
+   */
+  plantBomb(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    thrown: boolean,
+    heavy = false,
+  ): void {
     const limit = WORLD.HALF - WORLD.WALL_INSET;
-    const bomb = new Bomb(clamp(to.x, -limit, limit), clamp(to.z, -limit, limit));
+    const bomb = new Bomb(
+      clamp(to.x, -limit, limit),
+      clamp(to.z, -limit, limit),
+      heavy ? BOSS.ROCKET_FUSE : BOMB.FUSE,
+      heavy ? BOSS.ROCKET_RADIUS : BOMB.RADIUS,
+      heavy ? BOSS.ROCKET_PLAYER_DMG : BOMB.PLAYER_DMG,
+    );
     // Rest it on whatever is actually under the blast spot, so a bomb thrown at
     // someone on a platform does not blink inside the platform's geometry.
     this.groundProbe.x = bomb.pos.x;
@@ -838,7 +857,7 @@ export class Game {
       this.player.position.z - z,
       this.player.position.y - WORLD.PLAYER_H - bomb.pos.y,
     );
-    if (pd < r) this.damagePlayer(BOMB.PLAYER_DMG * (1 - pd / r));
+    if (pd < r) this.damagePlayer(bomb.playerDmg * (1 - pd / r));
 
     for (const h of this.hostiles) {
       const enemy = h.enemy;
@@ -1160,6 +1179,16 @@ export class Game {
     };
   }
 
+  /** The live boss's health, or null when none walks — for `__NEON.boss()`. */
+  get bossInfo(): { hp: number; max: number } | null {
+    for (const h of this.hostiles) {
+      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+        return { hp: h.enemy.hp, max: h.enemy.stats.maxHp };
+      }
+    }
+    return null;
+  }
+
   // ------------------------------------------------------------------- update
 
   /** One fixed simulation step. */
@@ -1223,6 +1252,10 @@ export class Game {
       this.pick.add(view.body, view.head);
       this.hostiles.push({ enemy, view });
       this.aliveCount++;
+      if (req.kind === 'warden') {
+        this.hud.showBanner('WARDEN INBOUND', 'KEEP MOVING — IT SHELLS FROM AFAR');
+        this.sfx.alarm();
+      }
     }
 
     const scratch = this.enemyScratch;
@@ -1399,6 +1432,25 @@ export class Game {
     m.xpNeed = this.meter.need;
     m.credits = this.profile.data.credits;
 
+    // The boss bar tracks the first live warden; it dies, it disappears.
+    let bossFound: Hostile | undefined;
+    for (const h of this.hostiles) {
+      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+        bossFound = h;
+        break;
+      }
+    }
+    if (bossFound) {
+      this.bossModel ??= { hp: 0, max: 0 };
+      const model = this.bossModel;
+      model.hp = bossFound.enemy.hp;
+      model.max = bossFound.enemy.stats.maxHp;
+      m.boss = model;
+    } else {
+      this.bossModel = null;
+      m.boss = null;
+    }
+
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
     }
@@ -1407,6 +1459,7 @@ export class Game {
     }
 
     this.hud.setHitmark(this.feedback.hitT);
+    this.hud.setBoss(m.boss);
     this.hud.setVignette(m, this.elapsed);
     this.hud.setADS(this.weapon.aiming);
     if (this.state === STATE.PLAYING) this.hud.update(m, this.settings.values.crosshair);

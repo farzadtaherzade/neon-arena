@@ -191,6 +191,9 @@ function exposeTestApi(game: Game) {
     /** The perk offer standing right now (empty while playing). */
     perkOffer: () => game.perks.offer,
 
+    /** The live boss's health, or null when no warden walks. */
+    boss: () => game.bossInfo,
+
     /** Perk stacks by id. */
     perks: () => game.perks.countsSnapshot(),
 

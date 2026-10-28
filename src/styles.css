@@ -1310,3 +1310,33 @@ input.toggle {
   letter-spacing: 1px;
   color: #7f8ba0;
 }
+
+/* ------------------------------------------------------------ boss bar */
+
+#bossWrap {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, 60vw);
+  text-align: center;
+}
+#bossLabel {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--danger);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--danger) 60%, transparent);
+  margin-bottom: 5px;
+}
+#bossBar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+}
+#bossFill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--danger-deep), var(--danger-soft));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--danger) 55%, transparent);
+}

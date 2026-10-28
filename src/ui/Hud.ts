@@ -35,6 +35,8 @@ export interface HudModel {
   xpNeed: number;
   /** The credits wallet — it survives a death, so it is shown, not spent. */
   credits: number;
+  /** The WARDEN's health while one is alive; null hides the boss bar. */
+  boss: { hp: number; max: number } | null;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -84,6 +86,8 @@ export class Hud {
   private newBestBadge = $('newBestBadge');
   private bestRecord = $('bestRecord');
   private perkRow = $('perkRow');
+  private bossWrap = $('bossWrap');
+  private bossFill = $('bossFill');
 
   private pips: HTMLElement[] = [];
   private static MAX_FEED = 3;
@@ -373,5 +377,20 @@ export class Hud {
         return el;
       }),
     );
+  }
+
+  /** The WARDEN's top-screen bar; hidden whenever no boss is alive. */
+  setBoss(boss: { hp: number; max: number } | null): void {
+    const on = boss != null;
+    if (this.last.bossOn !== on) {
+      this.last.bossOn = on;
+      this.bossWrap.hidden = !on;
+    }
+    if (!boss) return;
+    const pct = Math.round((boss.hp / Math.max(1, boss.max)) * 100);
+    if (this.last.bossPct !== pct) {
+      this.last.bossPct = pct;
+      this.bossFill.style.width = `${pct}%`;
+    }
   }
 }

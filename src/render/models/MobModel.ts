@@ -71,6 +71,7 @@ const LAYOUT: Record<EnemyKind, BodyLayout> = {
   runner: { bodyY: 1.02, headY: 1.54, hipX: 0.15, hipY: 0.65, shoulderX: 0.34, shoulderY: 1.28 },
   tank: { bodyY: 1.04, headY: 1.57, hipX: 0.25, hipY: 0.66, shoulderX: 0.56, shoulderY: 1.3 },
   sapper: { bodyY: 1.0, headY: 1.53, hipX: 0.18, hipY: 0.63, shoulderX: 0.42, shoulderY: 1.27 },
+  warden: { bodyY: 1.14, headY: 1.86, hipX: 0.36, hipY: 0.74, shoulderX: 0.72, shoulderY: 1.52 },
 };
 
 const cache = new Map<EnemyKind, MobGeos>();
@@ -385,10 +386,82 @@ function sapper(): MobGeos {
   };
 }
 
+/** The WARDEN: a siege frame — broad hull, sensor mast, twin rocket pods. */
+function warden(): MobGeos {
+  const p = blank();
+
+  // Hull: a wide, layered slab with shoulder towers and a heavy skirt.
+  box(p.body, 1.1, 0.6, 0.62, 0, 0, 0);
+  box(p.body, 0.9, 0.26, 0.52, 0, -0.42, 0);
+  box(p.body, 1.0, 0.16, 0.58, 0, 0.38, 0);
+  box(p.body, 0.34, 0.3, 0.34, -0.62, 0.3, 0);
+  box(p.body, 0.34, 0.3, 0.34, 0.62, 0.3, 0);
+  box(p.body, 0.62, 0.5, 0.3, 0, 0.02, -0.36);
+  box(p.body, 0.44, 0.14, 0.52, 0, -0.54, 0);
+
+  // Sensor mast: a slab head with a wide receiver dish.
+  box(p.head, 0.4, 0.3, 0.42, 0, 0, 0);
+  box(p.head, 0.56, 0.1, 0.24, 0, 0.16, 0.1);
+  box(p.head, 0.14, 0.14, 0.24, -0.28, -0.05, 0.08);
+  box(p.head, 0.14, 0.14, 0.24, 0.28, -0.05, 0.08);
+
+  // The blast plating across the chest, and the heavy frame behind.
+  box(p.accent, 0.66, 0.42, 0.12, 0, 0.02, 0.36);
+  box(p.accent, 0.2, 0.1, 0.08, 0, 0.2, 0.41);
+  box(p.accent, 0.08, 0.2, 0.4, -0.86, 0.4, 0);
+  box(p.accent, 0.08, 0.2, 0.4, 0.86, 0.4, 0);
+  box(p.accent, 0.78, 0.2, 0.14, 0, 0.24, -0.4);
+  cyl(p.accent, 0.1, 0.12, 0.4, 6, -0.26, 0.2, -0.5);
+  cyl(p.accent, 0.1, 0.12, 0.4, 6, 0.26, 0.2, -0.5);
+  box(p.accent, 0.2, 0.1, 0.56, -0.4, -0.2, 0.22);
+  box(p.accent, 0.2, 0.1, 0.56, 0.4, -0.2, 0.22);
+
+  // Glows: the visor band, the core slit and the pod muzzles.
+  box(p.glow, 0.16, 0.06, 0.04, -0.11, 0.66, 0.22);
+  box(p.glow, 0.16, 0.06, 0.04, 0.11, 0.66, 0.22);
+  cyl(p.glow, 0.14, 0.14, 0.06, 10, 0, 0.05, 0.42, Math.PI / 2);
+  box(p.glow, 0.05, 0.26, 0.04, -0.4, 0.05, 0.38);
+  box(p.glow, 0.05, 0.26, 0.04, 0.4, 0.05, 0.38);
+  box(p.glow, 0.24, 0.05, 0.04, 0, 0.4, -0.48);
+
+  // Limbs: siege-thick legs, and each arm ends in a rocket pod.
+  leg(p.leg, true);
+  arm(p.armL, -1);
+  arm(p.armR, 1);
+  box(p.armL, 0.34, 0.34, 0.6, 0, -0.55, 0.26);
+  box(p.armR, 0.34, 0.34, 0.6, 0, -0.55, 0.26);
+  cyl(p.armL, 0.11, 0.12, 0.2, 8, -0.09, -0.55, 0.6, Math.PI / 2);
+  cyl(p.armL, 0.11, 0.12, 0.2, 8, 0.09, -0.55, 0.6, Math.PI / 2);
+  cyl(p.armR, 0.11, 0.12, 0.2, 8, -0.09, -0.55, 0.6, Math.PI / 2);
+  cyl(p.armR, 0.11, 0.12, 0.2, 8, 0.09, -0.55, 0.6, Math.PI / 2);
+
+  return {
+    body: merged(p.body),
+    head: merged(p.head),
+    accent: merged(p.accent),
+    glow: merged(p.glow),
+    leg: merged(p.leg),
+    armL: merged(p.armL),
+    armR: merged(p.armR),
+    armSwing: 0.1,
+    armBaseL: -0.1,
+    armBaseR: -0.1,
+  };
+}
+
 function geometries(kind: EnemyKind): MobGeos {
   let geo = cache.get(kind);
   if (!geo) {
-    geo = kind === 'grunt' ? grunt() : kind === 'runner' ? runner() : kind === 'tank' ? tank() : sapper();
+    geo =
+      kind === 'grunt'
+        ? grunt()
+        : kind === 'runner'
+          ? runner()
+          : kind === 'tank'
+            ? tank()
+            : kind === 'warden'
+              ? warden()
+              : sapper();
     cache.set(kind, geo);
   }
   return geo;
@@ -406,7 +479,7 @@ function geometries(kind: EnemyKind): MobGeos {
 export function mobWarmup(): THREE.Group {
   const group = new THREE.Group();
   let i = 0;
-  for (const kind of ['grunt', 'runner', 'tank', 'sapper'] as const) {
+  for (const kind of ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const) {
     const geo = geometries(kind);
     for (const part of [geo.body, geo.head, geo.accent, geo.glow, geo.leg, geo.armL, geo.armR]) {
       const mesh = new THREE.Mesh(part, MAT.eye());

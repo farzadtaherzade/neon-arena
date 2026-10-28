@@ -4,6 +4,7 @@ import {
   AMMO,
   BLOOM,
   BOMB,
+  BOSS,
   CAMERA,
   CAPTURE,
   CREDITS,
@@ -170,6 +171,31 @@ describe('config', () => {
     expect(BOMB.PLAYER_DMG).toBeGreaterThan(0);
     expect(BOMB.ENEMY_DMG).toBeGreaterThan(BOMB.PLAYER_DMG);
     expect(BOMB.DEFUSE_SCORE).toBeGreaterThan(0);
+  });
+
+  it('keeps the warden boss coherent', () => {
+    const boss = ENEMY_TYPES.warden;
+    const tank = ENEMY_TYPES.tank;
+    // The warden is the biggest, toughest thing in the arena.
+    expect(boss.hp).toBeGreaterThan(tank.hp);
+    expect(boss.scale).toBeGreaterThan(tank.scale);
+    expect(boss.dmg).toBeGreaterThan(tank.dmg);
+
+    expect(BOSS.EVERY).toBeGreaterThanOrEqual(2);
+    expect(BOSS.KEEP_MIN).toBeGreaterThan(0);
+    expect(BOSS.KEEP_MIN).toBeLessThan(BOSS.KEEP_MAX);
+    expect(BOSS.VOLLEY_T).toBeGreaterThan(BOSS.VOLLEY_TELL);
+    expect(BOSS.VOLLEY_ROCKETS).toBeGreaterThanOrEqual(1);
+    expect(BOSS.ROCKET_SPREAD).toBeGreaterThan(0);
+    expect(BOSS.VOLLEY_TELL).toBeGreaterThan(0);
+    expect(BOSS.FIRST_VOLLEY).toBeGreaterThan(0);
+    // A rocket is a faster, smaller, lighter bomb than the sapper's.
+    expect(BOSS.ROCKET_FUSE).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_FUSE).toBeLessThan(BOMB.FUSE);
+    expect(BOSS.ROCKET_RADIUS).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_RADIUS).toBeLessThan(BOMB.RADIUS);
+    expect(BOSS.ROCKET_PLAYER_DMG).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_PLAYER_DMG).toBeLessThan(BOMB.PLAYER_DMG);
   });
 
   it('gives every enemy kind at least two cosmetic looks', () => {
