@@ -355,8 +355,11 @@ The game has a headless entry point for automation:
   `teleportPlayer(x, z, y?)`, `settings()`, `setGame(patch)`,
   `setVideo(patch)`, `setTouch(patch)`, `touch()`, `xpStats()`, `grantXp(n)`,
   `meteor()`, `forceMeteor()`, `dropStone(x, z)`, `ammo()`,
-  `setAmmo(mag, reserve)`, `knife()`, `swingKnife()`, `profile()`,
+  `setAmmo(mag, reserve)`, `knife()`, `swingKnife()`, `perkOffer()`,
+  `pickPerk(i)`, `perks()`, `clearOrbs()`, `boss()`, `weapons()`,
+  `swapWeapon(id)`, `unlockWeapon(id)`, `profile()`,
   `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`.
+  `ammo()` reads the gun in hand, so it stays per-active-weapon.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
 so the spec re-declares the shapes it uses.
@@ -512,6 +515,32 @@ input sources each step (`move` vectors add, triggers OR, ADS ORs), so
   group. The mobile spec (`tests/e2e/mobile.spec.ts`) drives the buttons with
   synthetic PointerEvents (pointerId 0) and the rotate overlay by resizing
   the viewport.
+
+## Gotchas (style, perks, arsenal, boss)
+
+- **A theme swap rebuilds the world, so the pick list must follow.** `Game`'s
+  settings hook snapshots `arena.solids` before `setVideo`, removes them from
+  `pick`, and re-adds the fresh list after. Forget it and every shot after a
+  theme change raycasts against disposed meshes.
+- **`Arena.rebuildWorld` must not re-register collision.** The builders are
+  shared between the boot path (registers) and the rebuild path (skips, via
+  `registerCollision`). Re-registering stacks colliders; a theme change would
+  silently thicken every wall.
+- **Settings rows are namespaced by group.** The crosshair group already had a
+  `bloom` key when the VIDEO tab gained one — a shared key map stole the other
+  row's binding and displayed the wrong value. `buildRows` takes a per-group
+  reader and keys `inputs` by `hostId.key`; don't collapse it back to a global
+  key lookup.
+- **The perk offer pauses the run.** Anything that must keep animating while
+  the offer stands belongs in `render()` (same rule as the pause screen), and
+  code that assumes `state === PLAYING` — like `damagePlayer` — early-returns
+  while it stands. That is the pause doing its job.
+- **Kill drops feed the gun in hand; the wave resupply feeds every owned gun.**
+  A player who never swaps still gets everything through the rifle, so the
+  economy does not punish owning guns without using them.
+- **`dropStone(x, z)` is the deterministic boss-killer in tests.** It bypasses
+  the shower's schedule and lands exactly where it is told, so the E2E kills
+  the warden by raining stones on its position instead of waiting on a fight.
 
 ## Freeze / pause recovery notes
 
