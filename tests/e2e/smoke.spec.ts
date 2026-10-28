@@ -598,6 +598,31 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
   await page.evaluate(() => window.__NEON.teleportEnemies(24));
 
+  // --- the warden walks in on the boss wave, with a top-screen bar -----------
+  await page.waitForFunction(
+    () => (window.__NEON.enemyPos() as EnemyPos[]).some((e) => e.kind === 'warden'),
+    undefined,
+    { timeout: 90_000 },
+  );
+  expect(await page.evaluate(() => document.getElementById('bossWrap')?.hidden)).toBe(false);
+  // Meteor the boss off its feet: stones land for 60 a hit wherever they drop,
+  // so raining them on the warden is a deterministic kill the suite can wait on.
+  await page.waitForFunction(
+    () => {
+      const g = window.__NEON;
+      const warden = (g.enemyPos() as EnemyPos[]).find((e) => e.kind === 'warden' && e.state === 'alive');
+      if (!warden) return true;
+      g.dropStone(warden.x, warden.z);
+      return false;
+    },
+    undefined,
+    { timeout: 90_000 },
+  );
+  await page.waitForFunction(() => document.getElementById('bossWrap')?.hidden === true, undefined, {
+    timeout: 30_000,
+  });
+  await page.evaluate(() => window.__NEON.clearOrbs());
+
   const info = await renderInfo(page);
   expect(info.calls).toBeGreaterThan(0);
   const shot = await page.screenshot();

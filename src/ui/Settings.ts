@@ -412,6 +412,8 @@ interface Bound {
   input: HTMLInputElement | HTMLSelectElement;
   out: HTMLElement;
   row: Row;
+  /** Reads the row's current value from its own group. */
+  read(): Value;
 }
 
 export interface SettingsHooks {
@@ -441,17 +443,29 @@ export class Settings {
     this.targets = [hudCrosshair, document.getElementById('previewCross')!];
 
     this.buildPresets();
-    this.buildRows(document.getElementById('tuneList')!, CROSSHAIR_ROWS, (k, v) =>
-      this.setCrosshair({ [k]: v } as Partial<CrosshairSettings>),
+    this.buildRows(
+      document.getElementById('tuneList')!,
+      CROSSHAIR_ROWS,
+      (k, v) => this.setCrosshair({ [k]: v } as Partial<CrosshairSettings>),
+      (k) => (this.values.crosshair as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('gameList')!, GAME_ROWS, (k, v) =>
-      this.setGame({ [k]: v } as Partial<GameSettings>),
+    this.buildRows(
+      document.getElementById('gameList')!,
+      GAME_ROWS,
+      (k, v) => this.setGame({ [k]: v } as Partial<GameSettings>),
+      (k) => (this.values.game as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('gameList')!, TOUCH_ROWS, (k, v) =>
-      this.setTouch({ [k]: v } as Partial<TouchSettings>),
+    this.buildRows(
+      document.getElementById('gameList')!,
+      TOUCH_ROWS,
+      (k, v) => this.setTouch({ [k]: v } as Partial<TouchSettings>),
+      (k) => (this.values.touch as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('videoList')!, VIDEO_ROWS, (k, v) =>
-      this.setVideo({ [k]: v } as Partial<VideoSettings>),
+    this.buildRows(
+      document.getElementById('videoList')!,
+      VIDEO_ROWS,
+      (k, v) => this.setVideo({ [k]: v } as Partial<VideoSettings>),
+      (k) => (this.values.video as unknown as Record<string, Value>)[k] ?? '',
     );
     this.bind();
     this.apply();
@@ -491,6 +505,7 @@ export class Settings {
     host: HTMLElement,
     rows: readonly Row[],
     write: (key: string, value: Value) => void,
+    read: (key: string) => Value,
   ): void {
     for (const row of rows) {
       const line = el('div', 'trow');
@@ -538,7 +553,9 @@ export class Settings {
       const out = el('span', 'tv');
       line.append(input, out);
       host.appendChild(line);
-      this.inputs.set(`${row.key}`, { input, out, row });
+      // Namespaced by host: the crosshair and video groups both own a `bloom`,
+      // and a shared key would silently steal the other row's binding.
+      this.inputs.set(`${host.id}.${row.key}`, { input, out, row, read: () => read(row.key) });
     }
   }
 
@@ -589,8 +606,8 @@ export class Settings {
 
   private apply(): void {
     for (const target of this.targets) renderCrosshair(target, this.values.crosshair);
-    for (const { input, out, row } of this.inputs.values()) {
-      const raw = this.readValue(row.key);
+    for (const { input, out, row, read } of this.inputs.values()) {
+      const raw = read();
       if (row.type === 'toggle') (input as HTMLInputElement).checked = raw === true;
       else input.value = String(raw);
       out.textContent = this.label(row, raw);
@@ -603,20 +620,6 @@ export class Settings {
       btn.classList.toggle('on', same(preset.values, this.values.crosshair));
     });
     this.hooks.onChange(this.values);
-  }
-
-  /** Current value of a control, from whichever group owns it. */
-  private readValue(key: string): Value {
-    if (key in this.values.crosshair) {
-      return (this.values.crosshair as unknown as Record<string, Value>)[key] ?? '';
-    }
-    if (key in this.values.game) {
-      return (this.values.game as unknown as Record<string, Value>)[key] ?? '';
-    }
-    if (key in this.values.touch) {
-      return (this.values.touch as unknown as Record<string, Value>)[key] ?? '';
-    }
-    return (this.values.video as unknown as Record<string, Value>)[key] ?? '';
   }
 
   private label(row: Row, value: Value): string {

@@ -37,6 +37,7 @@ src/game/        simulation — pure logic, no Three.js, no DOM
   knife.ts       the blade: a cone query, cooldown, swing
   bomb.ts        a planted bomb: fuse, radius, detonation
   capture.ts     the rotating deck objective: hold timer, cooldowns
+  perks.ts       the level-up perk bank: offers, stack caps, multipliers
   alarm.ts       tower alarm rising-edge detection
   minimap.ts     world→radar projection (pure maths)
   fx.ts          particle + tracer pools
@@ -48,7 +49,8 @@ src/render/      everything that owns meshes
   ClockTower.ts  the clock tower landmark and its live canvas readout
   EnemyView.ts   an enemy's meshes + health bar
   BombView.ts    a bomb's meshes + blink
-  Gun.ts         the first-person viewmodel
+  Gun.ts         the first-person rifle viewmodel (skins + optics)
+  Viewmodels.ts  the SMG / scattergun / DMR viewmodels (shared pose base)
   Knife.ts       the first-person blade viewmodel
   Pick.ts        hitscan raycasting (screen centre → world)
   Fx.ts          pooled Points/Lines on screen
@@ -72,7 +74,10 @@ src/main.ts      bootstrap, fixed-step loop, test API
 - **`config.ts` is the single tuning table.** Every number lives there as
   `as const`, and it imports nothing. Change behaviour by editing it, not by
   scattering magic numbers. `tests/unit/config.test.ts` is effectively its
-  schema — a new tuning group should get sanity assertions there.
+  schema — a new tuning group should get sanity assertions there. The combat
+  numbers for every gun live in `WEAPONS` (one `WeaponDef` each); `WEAPON`
+  keeps only the shared handling — sensitivity, dry-click throttle, decay
+  rates, flash, the viewmodel rest pose.
 - **Simulation never imports Three.js.** `src/game/**` works on plain
   `{x,y,z}` objects so it stays unit-testable. The bridge is
   `src/app/Game.ts`, which holds `Hostile { enemy, view }` pairs.
@@ -219,6 +224,68 @@ while hot, amber on the live deck, dim cyan on the other three — and the minim
 pulses a ring there. Break the edge detection and the siren screams non-stop;
 break the hold and it strobes whenever a mob steps behind cover.
 
+
+### Arena themes
+
+`THEMES` (config) is the palette hub: sky, fog, lights, the StructureKit
+colours, the floor paint, the star colour and the two CSS accents. SYNTHWAVE
+is the default; INDUSTRIAL preserves the shipped look; TOXIC and BLOOD MOON
+are the other presets. A theme is **render-only** — layout and collision never
+move — so `Arena.applyTheme` disposes the static world group, rebuilds it from
+the same layout tables with the new palette (without re-registering colliders)
+and recolours the lights and shared materials in place; `Game` then re-points
+the pick list at the fresh `arena.solids`. Two rules keep a theme playable:
+hemisphere intensity stays at or above 1.0 (below it enemies read as black
+silhouettes), and enemies keep their own `ENEMY_LOOKS` colours — they are
+gameplay identity, not decoration. The UI follows a theme through the
+`--accent`/`--danger` custom properties; everything else in `styles.css` derives
+from those two with `color-mix`, so a theme swap recolours the whole UI.
+
+### Bloom and the CRT layer
+
+`BLOOM` (config) tunes a lazy `EffectComposer` + `UnrealBloomPass` +
+`OutputPass` pipeline built the first time the VIDEO toggle is switched on —
+a player who never enables it pays nothing. The CRT layer is pure CSS
+(scanlines + vignette on `body::before/::after`, z-index 50, pointer-events
+none) toggled by a `no-crt` class on `<html>`; touch first-launch starts with
+it off, like shadows and pixel ratio.
+
+### Perks: the level-up offer
+
+`game/perks.ts` is pure: it banks stacks (cap `PERKS.STACK_MAX`), makes the
+three-card offer (distinct, cap-aware) and exposes the multipliers. Every
+level crossed pays the usual heal and then **pauses the run behind
+`#perkScreen`** — the map-open pattern: state PAUSED, pointer released,
+resume + relock on pick. One offer stands at a time; a level crossed while an
+offer is open waits for the next. `Game.applyPerks()` pushes the multipliers
+out (player speed/stamina, every weapon's reload/damage/bloom, `maxHp` — the
+HUD bar is a fraction of the run's max, not of 100) and is the only place
+that does.
+
+### The warden: the boss wave
+
+Every wave a multiple of `BOSS.EVERY` leads with a `warden` — a unique kind,
+not a scaled tank — and thins the usual composition to every other entry so
+the escort stays an escort. It refuses to close: inside `KEEP_MIN..KEEP_MAX`
+it circles and lobs `VOLLEY_ROCKETS` rockets on a tell, and slams like a tank
+(slam reach scales with its bulk) only when something gets under its feet. A
+player on a deck is besieged like any other mob while the rockets reach over
+the wall. Rockets are the sapper's bomb pipeline with a `heavy` flag —
+`plantBomb(..., heavy)` builds a faster, smaller, lighter `Bomb`, so shooting
+a rocket out of the air stays the same deliberate act as defusing a bomb.
+`HudModel.boss` drives the top-screen bar; it hides the moment no live warden
+walks.
+
+### The arsenal
+
+Four guns: the rifle (standard issue) plus the SMG, SCATTERGUN and DMR, bought
+in the SKINS tab's ARMORY section (`Profile.unlockedWeapons`). `Game` holds
+one `Weapon` per def and a viewmodel per gun; `game.weapon` is a getter for
+the gun in hand, which is why every existing reader keeps working. Swapping
+is 1/2/3/4, the mouse wheel, or the touch SWAP button; the wave resupply tops
+up **every owned gun** (`def.waveAmmo`) while kill drops feed whichever gun is
+in hand. The scattergun resolves one ray per pellet. New guns wear the
+standard palette — per-gun skins are a later pass.
 
 ### Renderer
 

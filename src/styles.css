@@ -666,6 +666,10 @@ canvas {
 /* ---------------------------------------------------------- settings panel */
 #settingsScreen {
   z-index: 20;
+  /* A modal: fully own the screen, or the glowing menu bleeds through the
+     vignette's 18% window and reads as broken layering. */
+  background: #05070c;
+  backdrop-filter: none;
 }
 .sbox {
   width: min(560px, 92vw);
