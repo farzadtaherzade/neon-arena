@@ -1,6 +1,10 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Rng } from '../core/rng';
-import { CAMERA, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO, WORLD } from '../game/config';
+import { BLOOM, CAMERA, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO, WORLD } from '../game/config';
 import type { CollisionWorld } from '../game/world/collision';
 import {
   OBSTACLES,
@@ -91,7 +95,14 @@ export class Arena {
   clock: ClockTower | null = null;
 
   /** Video options from the settings panel, and the values they currently hold. */
-  private video = { quality: 2, shadows: true, fog: true, theme: DEFAULT_THEME as string };
+  private video = { quality: 2, shadows: true, fog: true, theme: DEFAULT_THEME as string, bloom: false };
+
+  /**
+   * The post pipeline, built lazily the first time bloom is switched on so a
+   * player who never enables it never pays for a render target. With the
+   * composer active, `OutputPass` owns tone mapping and the sRGB conversion.
+   */
+  private composer: EffectComposer | null = null;
 
   constructor(
     private readonly collision: CollisionWorld,
@@ -151,7 +162,7 @@ export class Arena {
    * on or off forces every material to recompile, which is far too expensive
    * to do on every settings change, and a theme swap rebuilds the world.
    */
-  setVideo(video: { quality: number; shadows: boolean; fog: boolean; theme: string }): void {
+  setVideo(video: { quality: number; shadows: boolean; fog: boolean; theme: string; bloom: boolean }): void {
     if (video.shadows !== this.video.shadows) {
       this.video.shadows = video.shadows;
       this.renderer.shadowMap.enabled = video.shadows;
@@ -180,16 +191,40 @@ export class Arena {
       this.video.theme = video.theme;
       this.applyTheme(video.theme);
     }
+    if (video.bloom !== this.video.bloom) {
+      this.video.bloom = video.bloom;
+      if (video.bloom) this.ensureComposer();
+    }
+  }
+
+  /** Build the post pipeline once; the bloom pass reads `BLOOM` from config. */
+  private ensureComposer(): void {
+    if (this.composer) return;
+    const composer = new EffectComposer(this.renderer);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    composer.addPass(
+      new UnrealBloomPass(
+        new THREE.Vector2(innerWidth, innerHeight),
+        BLOOM.STRENGTH,
+        BLOOM.RADIUS,
+        BLOOM.THRESHOLD,
+      ),
+    );
+    composer.addPass(new OutputPass());
+    composer.setSize(innerWidth, innerHeight);
+    this.composer = composer;
   }
 
   resize(): void {
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
+    this.composer?.setSize(innerWidth, innerHeight);
   }
 
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    if (this.video.bloom && this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     // The warm-up exists only to upload the shared mob buffers before the E2E
     // suite starts sampling geometry counts. Drop it after the first frame.
     if (this.mobWarmupGroup) {

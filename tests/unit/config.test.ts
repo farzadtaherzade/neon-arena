@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALARM,
   AMMO,
+  BLOOM,
   BOMB,
   CAMERA,
   CAPTURE,
@@ -250,6 +251,13 @@ describe('config', () => {
     // The field of view range has to contain the default camera fov.
     expect(VIDEO.FOV_MIN).toBeLessThan(CAMERA.FOV);
     expect(VIDEO.FOV_MAX).toBeGreaterThan(CAMERA.FOV);
+    // Bloom glows the neon, it must not wash the arena out.
+    expect(BLOOM.STRENGTH).toBeGreaterThan(0);
+    expect(BLOOM.STRENGTH).toBeLessThan(2);
+    expect(BLOOM.RADIUS).toBeGreaterThan(0);
+    expect(BLOOM.RADIUS).toBeLessThanOrEqual(1);
+    expect(BLOOM.THRESHOLD).toBeGreaterThan(0.5);
+    expect(BLOOM.THRESHOLD).toBeLessThan(1);
   });
 
   it('paints every theme completely and legibly', () => {

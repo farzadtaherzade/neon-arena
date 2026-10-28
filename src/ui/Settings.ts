@@ -58,6 +58,8 @@ export interface VideoSettings {
   fog: boolean;
   /** Which arena theme paints the world. */
   theme: ThemeId;
+  /** Post-processing bloom. Off by default: it costs fill-rate. */
+  bloom: boolean;
 }
 
 /** How the trigger works on a touch screen. */
@@ -114,6 +116,7 @@ export const VIDEO_DEFAULTS: VideoSettings = {
   shadows: true,
   fog: true,
   theme: DEFAULT_THEME,
+  bloom: false,
 };
 
 export const TOUCH_DEFAULTS: TouchSettings = {
@@ -240,6 +243,7 @@ export function sanitizeVideo(raw: unknown): VideoSettings {
     shadows: bool(o.shadows, d.shadows),
     fog: bool(o.fog, d.fog),
     theme,
+    bloom: bool(o.bloom, d.bloom),
   };
 }
 
@@ -385,6 +389,7 @@ const GAME_ROWS: readonly Row[] = [
 const VIDEO_ROWS: readonly Row[] = [
   { key: 'theme', label: 'ARENA THEME', type: 'select', options: Object.keys(THEMES) },
   { key: 'quality', label: 'RENDER QUALITY', type: 'number', min: [0, VIDEO.QUALITY_PIXELS.length - 1] },
+  { key: 'bloom', label: 'BLOOM', type: 'toggle' },
   { key: 'shadows', label: 'SHADOWS', type: 'toggle' },
   { key: 'fog', label: 'FOG', type: 'toggle' },
 ];

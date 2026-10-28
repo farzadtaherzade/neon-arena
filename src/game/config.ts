@@ -136,6 +136,18 @@ export const VIDEO = {
   FOV_MAX: 110,
 } as const;
 
+/**
+ * The post-processing bloom pass, enabled from the video settings. Tuned so
+ * only the neon trim and emissives cross the threshold — the lit shells stay
+ * crisp and the glow is an accent, not a haze.
+ */
+export const BLOOM = {
+  STRENGTH: 0.5,
+  RADIUS: 0.4,
+  /** Luminance a pixel must pass before it blooms. */
+  THRESHOLD: 0.72,
+} as const;
+
 // ------------------------------------------------------------------ themes
 
 /** The structural palette StructureKit bakes into vertex colours. */
