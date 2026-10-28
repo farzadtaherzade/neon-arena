@@ -6,6 +6,7 @@ import {
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_THEME,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
@@ -22,6 +23,8 @@ import {
   START_HP,
   STATE,
   TANK,
+  THEMES,
+  type ThemeDef,
   TOUCH,
   VIDEO,
   WAVES,
@@ -247,6 +250,56 @@ describe('config', () => {
     // The field of view range has to contain the default camera fov.
     expect(VIDEO.FOV_MIN).toBeLessThan(CAMERA.FOV);
     expect(VIDEO.FOV_MAX).toBeGreaterThan(CAMERA.FOV);
+  });
+
+  it('paints every theme completely and legibly', () => {
+    // Four presets, unique ids, and the shipped look preserved as one of them.
+    expect(Object.keys(THEMES)).toEqual(['synthwave', 'industrial', 'toxic', 'blood']);
+    expect(new Set(Object.values(THEMES).map((t) => t.id)).size).toBe(4);
+    expect(THEMES[DEFAULT_THEME]).toBeDefined();
+
+    const numberKeys = [
+      'sky',
+      'hemiSky',
+      'hemiGround',
+      'ambient',
+      'cornerLight',
+      'sun',
+      'fill',
+      'star',
+    ] as const;
+    const stringKeys = [
+      'floorBase',
+      'floorPlate',
+      'floorLane',
+      'floorZone',
+      'cssAccent',
+      'cssDanger',
+    ] as const;
+    for (const [id, theme] of Object.entries(THEMES) as [string, ThemeDef][]) {
+      expect(theme.name.length, id).toBeGreaterThan(0);
+      // Below ~1.0 hemisphere the enemies' body colours drop out and they read
+      // as black silhouettes — every theme has to stay above the line.
+      expect(theme.hemiIntensity, id).toBeGreaterThanOrEqual(1.0);
+      expect(theme.fogNear, id).toBeGreaterThan(0);
+      expect(theme.fogFar, id).toBeGreaterThan(theme.fogNear);
+      expect(theme.ambientIntensity, id).toBeGreaterThan(0);
+      expect(theme.cornerIntensity, id).toBeGreaterThan(0);
+      expect(theme.sunIntensity, id).toBeGreaterThan(0);
+      expect(theme.fillIntensity, id).toBeGreaterThan(0);
+      for (const key of numberKeys) expect(theme[key], `${id}.${key}`).toBeGreaterThan(0);
+      for (const key of stringKeys) expect(theme[key], `${id}.${key}`).toMatch(/^#[0-9a-f]{6}$/i);
+      // The structure palette is real colours, and the two neon accents differ.
+      expect(theme.cyan, id).not.toBe(theme.magenta);
+      expect(theme.hazard, id).not.toBe(theme.dark);
+    }
+    // The industrial preset is the shipped look, verbatim.
+    expect(THEMES.industrial).toMatchObject({
+      sky: 0x0c1222,
+      body: 0x38456a,
+      hazard: 0xf2b21e,
+      hemiIntensity: 1.35,
+    });
   });
 
   it('names every state and screen exactly once', () => {

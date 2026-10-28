@@ -14,6 +14,7 @@ import {
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_THEME,
   ENEMY,
   FEEDBACK,
   type GameState,
@@ -22,6 +23,7 @@ import {
   SCREEN,
   START_HP,
   STATE,
+  THEMES,
   TOUCH,
   WAVES,
   WEAPON,
@@ -164,6 +166,8 @@ export class Game {
   private fov: number = CAMERA.FOV;
   /** Base FOV from the settings panel; the ADS target is a fraction of it. */
   private baseFov: number = CAMERA.FOV;
+  /** The theme the arena is currently built with, so a change re-syncs the pick list. */
+  private appliedTheme: string = DEFAULT_THEME;
 
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
@@ -266,7 +270,16 @@ export class Game {
         this.sfx.setMuted(values.game.mute);
         this.music.setMuted(values.game.mute);
         this.baseFov = values.game.fov;
+        // A theme swap rebuilds the static world, so the pick list has to be
+        // re-pointed at the fresh meshes before the next shot resolves.
+        const oldSolids = values.video.theme !== this.appliedTheme ? [...this.arena.solids] : null;
         this.arena.setVideo(values.video);
+        if (oldSolids) {
+          for (const s of oldSolids) this.pick.remove(s);
+          this.pick.add(...this.arena.solids);
+          this.appliedTheme = values.video.theme;
+          this.applyUiTheme(values.video.theme);
+        }
       },
       onShowTab: (tab) => {
         if (tab === 'skins') this.skins.refresh();
@@ -404,6 +417,14 @@ export class Game {
     this.hud.setVisible(false);
     this.hud.showScreen(SCREEN.MENU);
     this.music.stop();
+  }
+
+  /** Paint the HUD and menus in the arena theme's two accents. */
+  private applyUiTheme(themeId: string): void {
+    const t = THEMES[themeId as keyof typeof THEMES] ?? THEMES[DEFAULT_THEME];
+    const root = document.documentElement.style;
+    root.setProperty('--accent', t.cssAccent);
+    root.setProperty('--danger', t.cssDanger);
   }
 
   /**

@@ -136,6 +136,206 @@ export const VIDEO = {
   FOV_MAX: 110,
 } as const;
 
+// ------------------------------------------------------------------ themes
+
+/** The structural palette StructureKit bakes into vertex colours. */
+export interface KitPalette {
+  readonly body: number;
+  readonly light: number;
+  readonly dark: number;
+  readonly panel: number;
+  readonly panelDark: number;
+  readonly hazard: number;
+  readonly cyan: number;
+  readonly magenta: number;
+}
+
+/**
+ * An arena theme: every colour the world is painted with, in one place.
+ *
+ * A theme is render-only — layout, collision and gameplay are untouched — so
+ * switching one rebuilds the static meshes and nothing else. Hemisphere
+ * intensity must stay at or above 1.0: below that the enemies' standard
+ * materials lose their body colour and read as black silhouettes.
+ */
+export interface ThemeDef extends KitPalette {
+  readonly id: string;
+  readonly name: string;
+
+  /** Sky and fog. The fog colour tracks the sky, as `setSkyTint` always has. */
+  readonly sky: number;
+  readonly fogNear: number;
+  readonly fogFar: number;
+
+  readonly hemiSky: number;
+  readonly hemiGround: number;
+  readonly hemiIntensity: number;
+  readonly ambient: number;
+  readonly ambientIntensity: number;
+  readonly cornerLight: number;
+  readonly cornerIntensity: number;
+  readonly sun: number;
+  readonly sunIntensity: number;
+  readonly fill: number;
+  readonly fillIntensity: number;
+
+  /**
+   * Floor paint, as `#rrggbb` strings — the texture painter applies the alpha
+   * per layer, so the theme only picks the hue.
+   */
+  readonly floorBase: string;
+  readonly floorPlate: string;
+  readonly floorLane: string;
+  readonly floorZone: string;
+
+  readonly star: number;
+  /** The two CSS accents the HUD and menus derive their colour from. */
+  readonly cssAccent: string;
+  readonly cssDanger: string;
+}
+
+export const THEMES = {
+  /** The default: a black-violet void under a magenta sun, cyan grid on the floor. */
+  synthwave: {
+    id: 'synthwave',
+    name: 'SYNTHWAVE',
+    sky: 0x070310,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0x9a6cff,
+    hemiGround: 0x1c1030,
+    hemiIntensity: 1.2,
+    ambient: 0x2c1c52,
+    ambientIntensity: 1.0,
+    cornerLight: 0xff2bd6,
+    cornerIntensity: 30,
+    sun: 0xff3ba8,
+    sunIntensity: 2.0,
+    fill: 0x46e0ff,
+    fillIntensity: 0.9,
+    body: 0x251a42,
+    light: 0x4a3880,
+    dark: 0x130b24,
+    panel: 0x7a2a9e,
+    panelDark: 0x3c1a58,
+    hazard: 0xff4fd8,
+    cyan: 0x28e0ff,
+    magenta: 0xff3ba8,
+    floorBase: '#0b0714',
+    floorPlate: '#46e0ff',
+    floorLane: '#ff2bd6',
+    floorZone: '#28e0ff',
+    star: 0xff9ce8,
+    cssAccent: '#46e0ff',
+    cssDanger: '#ff3b4e',
+  },
+  /** The shipped look, preserved verbatim as a selectable preset. */
+  industrial: {
+    id: 'industrial',
+    name: 'INDUSTRIAL',
+    sky: 0x0c1222,
+    fogNear: 52,
+    fogFar: 210,
+    hemiSky: 0x6f86b0,
+    hemiGround: 0x2a3040,
+    hemiIntensity: 1.35,
+    ambient: 0x2e3448,
+    ambientIntensity: 0.85,
+    cornerLight: 0x2aa5c4,
+    cornerIntensity: 26,
+    sun: 0xffd9a0,
+    sunIntensity: 2.2,
+    fill: 0x8fb4ff,
+    fillIntensity: 0.7,
+    body: 0x38456a,
+    light: 0x55699b,
+    dark: 0x232d45,
+    panel: 0xa06d1a,
+    panelDark: 0x5b3f16,
+    hazard: 0xf2b21e,
+    cyan: 0x2aa5c4,
+    magenta: 0xff3ba8,
+    floorBase: '#14171d',
+    floorPlate: '#46e0ff',
+    floorLane: '#f2b21e',
+    floorZone: '#e06520',
+    star: 0xaaccff,
+    cssAccent: '#46e0ff',
+    cssDanger: '#ff3b4e',
+  },
+  /** Biohazard containment: sick greens, institutional dim, orange reactor. */
+  toxic: {
+    id: 'toxic',
+    name: 'TOXIC',
+    sky: 0x0a120c,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0x8ab07a,
+    hemiGround: 0x1a2414,
+    hemiIntensity: 1.2,
+    ambient: 0x243218,
+    ambientIntensity: 1.0,
+    cornerLight: 0x9dff3a,
+    cornerIntensity: 26,
+    sun: 0xd8ffb0,
+    sunIntensity: 2.0,
+    fill: 0x4aff9e,
+    fillIntensity: 0.7,
+    body: 0x2a3a26,
+    light: 0x4e6a3e,
+    dark: 0x141c12,
+    panel: 0x6a7a1e,
+    panelDark: 0x38420f,
+    hazard: 0xc8ff1e,
+    cyan: 0x9dff3a,
+    magenta: 0xff8a1e,
+    floorBase: '#0d120c',
+    floorPlate: '#9dff3a',
+    floorLane: '#c8ff1e',
+    floorZone: '#ff961e',
+    star: 0xbfffb0,
+    cssAccent: '#3dffa0',
+    cssDanger: '#ff3b4e',
+  },
+  /** A permanent meteor-shower mood: crimson sky, red neon on near-black steel. */
+  blood: {
+    id: 'blood',
+    name: 'BLOOD MOON',
+    sky: 0x130505,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0xa05a5a,
+    hemiGround: 0x241010,
+    hemiIntensity: 1.15,
+    ambient: 0x381414,
+    ambientIntensity: 0.95,
+    cornerLight: 0xff4a2a,
+    cornerIntensity: 26,
+    sun: 0xff6a4e,
+    sunIntensity: 2.1,
+    fill: 0xff8a7a,
+    fillIntensity: 0.7,
+    body: 0x3a2020,
+    light: 0x6a3a34,
+    dark: 0x1c0d0d,
+    panel: 0x7a2a1e,
+    panelDark: 0x421610,
+    hazard: 0xff5a2a,
+    cyan: 0xff6a4e,
+    magenta: 0xff2a4e,
+    floorBase: '#120a0a',
+    floorPlate: '#ff5a46',
+    floorLane: '#ff5a2e',
+    floorZone: '#ffb440',
+    star: 0xffb0a0,
+    cssAccent: '#ff6a4e',
+    cssDanger: '#ff3b4e',
+  },
+} as const satisfies Record<string, ThemeDef>;
+
+export type ThemeId = keyof typeof THEMES;
+export const DEFAULT_THEME: ThemeId = 'synthwave';
+
 // ------------------------------------------------------------------ skins
 
 export type SkinWeapon = 'rifle' | 'knife';

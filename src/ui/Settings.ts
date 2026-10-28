@@ -10,7 +10,7 @@
  * who already tuned their crosshair keeps it.
  */
 
-import { CAMERA, VIDEO } from '../game/config';
+import { CAMERA, DEFAULT_THEME, THEMES, type ThemeId, VIDEO } from '../game/config';
 
 const KEY = 'neon.settings';
 const LEGACY_KEY = 'neon.crosshair';
@@ -56,6 +56,8 @@ export interface VideoSettings {
   quality: number;
   shadows: boolean;
   fog: boolean;
+  /** Which arena theme paints the world. */
+  theme: ThemeId;
 }
 
 /** How the trigger works on a touch screen. */
@@ -111,6 +113,7 @@ export const VIDEO_DEFAULTS: VideoSettings = {
   quality: 2,
   shadows: true,
   fog: true,
+  theme: DEFAULT_THEME,
 };
 
 export const TOUCH_DEFAULTS: TouchSettings = {
@@ -231,10 +234,12 @@ export function sanitizeGame(raw: unknown): GameSettings {
 export function sanitizeVideo(raw: unknown): VideoSettings {
   const o = rec(raw);
   const d = VIDEO_DEFAULTS;
+  const theme = typeof o.theme === 'string' && o.theme in THEMES ? (o.theme as ThemeId) : d.theme;
   return {
     quality: num(o.quality, 0, VIDEO.QUALITY_PIXELS.length - 1, d.quality),
     shadows: bool(o.shadows, d.shadows),
     fog: bool(o.fog, d.fog),
+    theme,
   };
 }
 
@@ -378,6 +383,7 @@ const GAME_ROWS: readonly Row[] = [
 ];
 
 const VIDEO_ROWS: readonly Row[] = [
+  { key: 'theme', label: 'ARENA THEME', type: 'select', options: Object.keys(THEMES) },
   { key: 'quality', label: 'RENDER QUALITY', type: 'number', min: [0, VIDEO.QUALITY_PIXELS.length - 1] },
   { key: 'shadows', label: 'SHADOWS', type: 'toggle' },
   { key: 'fog', label: 'FOG', type: 'toggle' },
@@ -605,7 +611,10 @@ export class Settings {
 
   private label(row: Row, value: Value): string {
     if (row.type === 'toggle') return value ? 'ON' : 'OFF';
-    if (row.type === 'select') return '';
+    if (row.type === 'select') {
+      if (row.key === 'theme') return THEMES[value as ThemeId]?.name ?? '';
+      return '';
+    }
     if (row.key === 'quality') return QUALITY_NAMES[Number(value)] ?? '';
     if (row.key === 'shootMode') return SHOOT_MODE_NAMES[value as ShootMode] ?? '';
     return String(value);

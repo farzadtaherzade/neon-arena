@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BOMB, METEOR } from '../game/config';
+import { BOMB, METEOR, type ThemeDef } from '../game/config';
 
 /**
  * Lazily-created, shared geometry and materials.
@@ -153,4 +153,19 @@ export const MAT = {
     })),
   /** The falling rock: dark stone, lit by the scene. */
   rock: () => (mRock ??= new THREE.MeshStandardMaterial({ color: 0x3a2f2c, roughness: 0.9, metalness: 0.1 })),
+
+  /**
+   * Recolour the world-facing shared materials for a theme. The kit's shells
+   * carry their palette in vertex colours and are rebuilt instead; these are
+   * the standalone meshes (ramps, reactor hardware, the pad collar) that would
+   * otherwise stay the old colour. Calling the getters materialises them, which
+   * is fine — everything here is used by the arena anyway.
+   */
+  applyTheme(t: ThemeDef): void {
+    this.obstacle().color.set(t.dark);
+    this.magenta().color.set(t.magenta);
+    this.core().color.set(t.magenta);
+    this.halo().color.set(t.magenta);
+    this.hazard().color.set(t.hazard);
+  },
 };

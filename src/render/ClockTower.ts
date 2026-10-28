@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ThemeDef } from '../game/config';
 import { makeClockTower } from './models/StructureKit';
 
 /** Texture size of one clock face. */
@@ -35,8 +36,11 @@ export class ClockTower {
 
   private last = '';
 
-  constructor(x: number, z: number) {
-    const asset = makeClockTower();
+  private readonly theme: ThemeDef;
+
+  constructor(x: number, z: number, theme: ThemeDef) {
+    this.theme = theme;
+    const asset = makeClockTower(theme);
     this.group.add(asset.group);
     this.solid = asset.solid;
     this.group.position.set(x, 0, z);
@@ -81,7 +85,7 @@ export class ClockTower {
       ctx.arc(c, c, c - 2, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = '#2aa5c4';
+      ctx.strokeStyle = hex(this.theme.cyan);
       ctx.lineWidth = 7;
       ctx.beginPath();
       ctx.arc(c, c, c - 8, 0, Math.PI * 2);
@@ -96,7 +100,7 @@ export class ClockTower {
       ctx.font = 'bold 92px monospace';
       ctx.fillText(value, c, 152);
 
-      ctx.fillStyle = '#f2b21e';
+      ctx.fillStyle = hex(this.theme.hazard);
       ctx.font = 'bold 27px monospace';
       ctx.fillText(sub, c, 202);
 
@@ -114,4 +118,9 @@ export class ClockTower {
       mat.dispose();
     }
   }
+}
+
+/** `0x28e0ff` → `#28e0ff`, for the canvas face. */
+function hex(n: number): string {
+  return `#${n.toString(16).padStart(6, '0')}`;
 }
