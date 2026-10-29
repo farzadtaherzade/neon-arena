@@ -82,11 +82,32 @@ export class Sfx {
     src.start(t0, 0, dur);
   }
 
-  shoot(): void {
+  /** One bang per gun family: the rifle cracks, the SMG snaps, the rest boom. */
+  shoot(kind: 'rifle' | 'smg' | 'scatter' | 'dmr' = 'rifle'): void {
     this.guard((t) => {
+      if (kind === 'smg') {
+        this.noise(t, 0.05, 0.32, 4200);
+        this.osc('square', 240, 90, t, 0.05, 0.16);
+        return;
+      }
+      if (kind === 'scatter') {
+        this.noise(t, 0.22, 0.7, 2200);
+        this.osc('square', 95, 34, t, 0.2, 0.34);
+        return;
+      }
+      if (kind === 'dmr') {
+        this.noise(t, 0.14, 0.6, 2800);
+        this.osc('square', 120, 44, t, 0.13, 0.3);
+        return;
+      }
       this.noise(t, 0.09, 0.5, 3200);
       this.osc('square', 165, 55, t, 0.09, 0.28);
     });
+  }
+
+  /** The swap: a short metallic click, once, not per frame. */
+  swap(): void {
+    this.guard((t) => this.osc('square', 620, 420, t, 0.035, 0.1));
   }
 
   empty(): void {

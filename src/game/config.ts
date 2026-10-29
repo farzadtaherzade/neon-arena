@@ -44,37 +44,153 @@ export const WORLD = {
 } as const;
 
 export const WEAPON = {
-  MAG: 12,
-  RELOAD_T: 1.25,
-  FIRE_T: 0.12,
   /** How often the empty click may play, so it cannot machine-gun. */
   DRY_CLICK_T: 0.4,
-  DMG: 34,
-  HEAD_MULT: 2.5,
+  /** Score paid over the kill for a headshot. */
   HEADSHOT_BONUS: 25,
   SENS: 0.0023,
-  MAX_RANGE: 120,
   GUN_REST: [0.27, -0.24, -0.5],
 
-  BASE_SPREAD: 0.006,
-  BLOOM_PER_SHOT: 0.0045,
-  BLOOM_MAX: 0.03,
+  /** How fast bloom, recoil and kick bleed off — shared handling, per-gun sizes. */
   BLOOM_DECAY: 5,
-  /** Aim multiplier applied to the base spread while ADS is held. */
-  AIM_SPREAD: 0.45,
-
-  RECOIL_PER_SHOT: 0.011,
-  RECOIL_MAX: 0.09,
   RECOIL_DECAY: 9,
-
-  KICK_PER_SHOT: 0.05,
-  KICK_MAX: 0.16,
   KICK_DECAY: 11,
 
   FLASH_T: 0.05,
   FLASH_LIGHT_PEAK: 30,
   FLASH_LIGHT_DECAY: 26,
 } as const;
+
+// ------------------------------------------------------------------ arsenal
+
+export type WeaponId = 'rifle' | 'smg' | 'scatter' | 'dmr';
+
+/** One gun's combat numbers. The rifle's are the shipped tuning, verbatim. */
+export interface WeaponDef {
+  readonly id: WeaponId;
+  readonly name: string;
+  /** 0 = standard issue, always carried. */
+  readonly price: number;
+  readonly mag: number;
+  readonly reserveStart: number;
+  readonly reserveMax: number;
+  /** Rounds the wave resupply hands out. */
+  readonly waveAmmo: number;
+  readonly reloadT: number;
+  readonly fireT: number;
+  readonly dmg: number;
+  readonly headMult: number;
+  /** Raycasts per shot — the scattergun is a wall of them. */
+  readonly pellets: number;
+  readonly baseSpread: number;
+  /** Multiplier applied to the spread while ADS is held. */
+  readonly aimSpread: number;
+  readonly bloomPerShot: number;
+  readonly bloomMax: number;
+  readonly recoilPerShot: number;
+  readonly recoilMax: number;
+  readonly kickPerShot: number;
+  readonly kickMax: number;
+  readonly maxRange: number;
+}
+
+/** Switch order for the 1-4 keys, the wheel and the touch SWAP button. */
+export const WEAPON_ORDER: readonly WeaponId[] = ['rifle', 'smg', 'scatter', 'dmr'];
+
+export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  rifle: {
+    id: 'rifle',
+    name: 'RIFLE',
+    price: 0,
+    mag: 12,
+    reserveStart: 60,
+    reserveMax: 120,
+    waveAmmo: 24,
+    reloadT: 1.25,
+    fireT: 0.12,
+    dmg: 34,
+    headMult: 2.5,
+    pellets: 1,
+    baseSpread: 0.006,
+    aimSpread: 0.45,
+    bloomPerShot: 0.0045,
+    bloomMax: 0.03,
+    recoilPerShot: 0.011,
+    recoilMax: 0.09,
+    kickPerShot: 0.05,
+    kickMax: 0.16,
+    maxRange: 120,
+  },
+  smg: {
+    id: 'smg',
+    name: 'SMG',
+    price: 900,
+    mag: 32,
+    reserveStart: 96,
+    reserveMax: 224,
+    waveAmmo: 72,
+    reloadT: 1.5,
+    fireT: 0.085,
+    dmg: 14,
+    headMult: 2.0,
+    pellets: 1,
+    baseSpread: 0.014,
+    aimSpread: 0.6,
+    bloomPerShot: 0.006,
+    bloomMax: 0.05,
+    recoilPerShot: 0.008,
+    recoilMax: 0.07,
+    kickPerShot: 0.03,
+    kickMax: 0.1,
+    maxRange: 80,
+  },
+  scatter: {
+    id: 'scatter',
+    name: 'SCATTERGUN',
+    price: 1200,
+    mag: 6,
+    reserveStart: 24,
+    reserveMax: 48,
+    waveAmmo: 8,
+    reloadT: 1.7,
+    fireT: 0.75,
+    dmg: 9,
+    headMult: 1.5,
+    pellets: 8,
+    baseSpread: 0.045,
+    aimSpread: 0.8,
+    bloomPerShot: 0.002,
+    bloomMax: 0.02,
+    recoilPerShot: 0.05,
+    recoilMax: 0.14,
+    kickPerShot: 0.14,
+    kickMax: 0.3,
+    maxRange: 28,
+  },
+  dmr: {
+    id: 'dmr',
+    name: 'DMR',
+    price: 2000,
+    mag: 8,
+    reserveStart: 24,
+    reserveMax: 64,
+    waveAmmo: 8,
+    reloadT: 2.0,
+    fireT: 0.55,
+    dmg: 70,
+    headMult: 2.5,
+    pellets: 1,
+    baseSpread: 0.001,
+    aimSpread: 0.2,
+    bloomPerShot: 0.01,
+    bloomMax: 0.04,
+    recoilPerShot: 0.03,
+    recoilMax: 0.12,
+    kickPerShot: 0.1,
+    kickMax: 0.22,
+    maxRange: 160,
+  },
+};
 
 /**
  * Touch controls (phones and tablets).
@@ -135,6 +251,218 @@ export const VIDEO = {
   FOV_MIN: 60,
   FOV_MAX: 110,
 } as const;
+
+/**
+ * The post-processing bloom pass, enabled from the video settings. Tuned so
+ * only the neon trim and emissives cross the threshold — the lit shells stay
+ * crisp and the glow is an accent, not a haze.
+ */
+export const BLOOM = {
+  STRENGTH: 0.5,
+  RADIUS: 0.4,
+  /** Luminance a pixel must pass before it blooms. */
+  THRESHOLD: 0.72,
+} as const;
+
+// ------------------------------------------------------------------ themes
+
+/** The structural palette StructureKit bakes into vertex colours. */
+export interface KitPalette {
+  readonly body: number;
+  readonly light: number;
+  readonly dark: number;
+  readonly panel: number;
+  readonly panelDark: number;
+  readonly hazard: number;
+  readonly cyan: number;
+  readonly magenta: number;
+}
+
+/**
+ * An arena theme: every colour the world is painted with, in one place.
+ *
+ * A theme is render-only — layout, collision and gameplay are untouched — so
+ * switching one rebuilds the static meshes and nothing else. Hemisphere
+ * intensity must stay at or above 1.0: below that the enemies' standard
+ * materials lose their body colour and read as black silhouettes.
+ */
+export interface ThemeDef extends KitPalette {
+  readonly id: string;
+  readonly name: string;
+
+  /** Sky and fog. The fog colour tracks the sky, as `setSkyTint` always has. */
+  readonly sky: number;
+  readonly fogNear: number;
+  readonly fogFar: number;
+
+  readonly hemiSky: number;
+  readonly hemiGround: number;
+  readonly hemiIntensity: number;
+  readonly ambient: number;
+  readonly ambientIntensity: number;
+  readonly cornerLight: number;
+  readonly cornerIntensity: number;
+  readonly sun: number;
+  readonly sunIntensity: number;
+  readonly fill: number;
+  readonly fillIntensity: number;
+
+  /**
+   * Floor paint, as `#rrggbb` strings — the texture painter applies the alpha
+   * per layer, so the theme only picks the hue.
+   */
+  readonly floorBase: string;
+  readonly floorPlate: string;
+  readonly floorLane: string;
+  readonly floorZone: string;
+
+  readonly star: number;
+  /** The two CSS accents the HUD and menus derive their colour from. */
+  readonly cssAccent: string;
+  readonly cssDanger: string;
+}
+
+export const THEMES = {
+  /** The default: a black-violet void under a magenta sun, cyan grid on the floor. */
+  synthwave: {
+    id: 'synthwave',
+    name: 'SYNTHWAVE',
+    sky: 0x070310,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0x9a6cff,
+    hemiGround: 0x1c1030,
+    hemiIntensity: 1.2,
+    ambient: 0x2c1c52,
+    ambientIntensity: 1.0,
+    cornerLight: 0xff2bd6,
+    cornerIntensity: 30,
+    sun: 0xff3ba8,
+    sunIntensity: 2.0,
+    fill: 0x46e0ff,
+    fillIntensity: 0.9,
+    body: 0x251a42,
+    light: 0x4a3880,
+    dark: 0x130b24,
+    panel: 0x7a2a9e,
+    panelDark: 0x3c1a58,
+    hazard: 0xff4fd8,
+    cyan: 0x28e0ff,
+    magenta: 0xff3ba8,
+    floorBase: '#0b0714',
+    floorPlate: '#46e0ff',
+    floorLane: '#ff2bd6',
+    floorZone: '#28e0ff',
+    star: 0xff9ce8,
+    cssAccent: '#46e0ff',
+    cssDanger: '#ff3b4e',
+  },
+  /** The shipped look, preserved verbatim as a selectable preset. */
+  industrial: {
+    id: 'industrial',
+    name: 'INDUSTRIAL',
+    sky: 0x0c1222,
+    fogNear: 52,
+    fogFar: 210,
+    hemiSky: 0x6f86b0,
+    hemiGround: 0x2a3040,
+    hemiIntensity: 1.35,
+    ambient: 0x2e3448,
+    ambientIntensity: 0.85,
+    cornerLight: 0x2aa5c4,
+    cornerIntensity: 26,
+    sun: 0xffd9a0,
+    sunIntensity: 2.2,
+    fill: 0x8fb4ff,
+    fillIntensity: 0.7,
+    body: 0x38456a,
+    light: 0x55699b,
+    dark: 0x232d45,
+    panel: 0xa06d1a,
+    panelDark: 0x5b3f16,
+    hazard: 0xf2b21e,
+    cyan: 0x2aa5c4,
+    magenta: 0xff3ba8,
+    floorBase: '#14171d',
+    floorPlate: '#46e0ff',
+    floorLane: '#f2b21e',
+    floorZone: '#e06520',
+    star: 0xaaccff,
+    cssAccent: '#46e0ff',
+    cssDanger: '#ff3b4e',
+  },
+  /** Biohazard containment: sick greens, institutional dim, orange reactor. */
+  toxic: {
+    id: 'toxic',
+    name: 'TOXIC',
+    sky: 0x0a120c,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0x8ab07a,
+    hemiGround: 0x1a2414,
+    hemiIntensity: 1.2,
+    ambient: 0x243218,
+    ambientIntensity: 1.0,
+    cornerLight: 0x9dff3a,
+    cornerIntensity: 26,
+    sun: 0xd8ffb0,
+    sunIntensity: 2.0,
+    fill: 0x4aff9e,
+    fillIntensity: 0.7,
+    body: 0x2a3a26,
+    light: 0x4e6a3e,
+    dark: 0x141c12,
+    panel: 0x6a7a1e,
+    panelDark: 0x38420f,
+    hazard: 0xc8ff1e,
+    cyan: 0x9dff3a,
+    magenta: 0xff8a1e,
+    floorBase: '#0d120c',
+    floorPlate: '#9dff3a',
+    floorLane: '#c8ff1e',
+    floorZone: '#ff961e',
+    star: 0xbfffb0,
+    cssAccent: '#3dffa0',
+    cssDanger: '#ff3b4e',
+  },
+  /** A permanent meteor-shower mood: crimson sky, red neon on near-black steel. */
+  blood: {
+    id: 'blood',
+    name: 'BLOOD MOON',
+    sky: 0x130505,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0xa05a5a,
+    hemiGround: 0x241010,
+    hemiIntensity: 1.15,
+    ambient: 0x381414,
+    ambientIntensity: 0.95,
+    cornerLight: 0xff4a2a,
+    cornerIntensity: 26,
+    sun: 0xff6a4e,
+    sunIntensity: 2.1,
+    fill: 0xff8a7a,
+    fillIntensity: 0.7,
+    body: 0x3a2020,
+    light: 0x6a3a34,
+    dark: 0x1c0d0d,
+    panel: 0x7a2a1e,
+    panelDark: 0x421610,
+    hazard: 0xff5a2a,
+    cyan: 0xff6a4e,
+    magenta: 0xff2a4e,
+    floorBase: '#120a0a',
+    floorPlate: '#ff5a46',
+    floorLane: '#ff5a2e',
+    floorZone: '#ffb440',
+    star: 0xffb0a0,
+    cssAccent: '#ff6a4e',
+    cssDanger: '#ff3b4e',
+  },
+} as const satisfies Record<string, ThemeDef>;
+
+export type ThemeId = keyof typeof THEMES;
+export const DEFAULT_THEME: ThemeId = 'synthwave';
 
 // ------------------------------------------------------------------ skins
 
@@ -250,7 +578,7 @@ export const SKINS = [
 
 /** What a kill is worth. A knife kill pays the same as a gun kill. */
 export const CREDITS = {
-  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25 },
+  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25, warden: 400 },
   HEADSHOT: 5,
   WAVE: 50,
   CAPTURE: 40,
@@ -274,6 +602,36 @@ export const ENEMY_TYPES = {
   tank: { hp: 200, speed: 2.2, scale: 1.35, dmg: 22, score: 300, body: 0x5e3a8a },
   /** The sapper: skulks, plants bombs, and only charges once the herd thins. */
   sapper: { hp: 90, speed: 4.2, scale: 0.95, dmg: 12, score: 250, body: 0x2fbf6f },
+  /**
+   * The WARDEN: the every-fifth-wave boss. It shells from a distance and slams
+   * anything that closes; see `BOSS` for the behaviour and `WAVES` for how it
+   * enters the composition.
+   */
+  warden: { hp: 900, speed: 3.0, scale: 2.1, dmg: 26, score: 3000, body: 0xff2a4e },
+} as const;
+
+/**
+ * The WARDEN boss: walks in on every wave a multiple of `EVERY`, keeps the
+ * player inside a distance band, and lobs rocket volleys on a timer. The
+ * rockets are the sapper's bomb pipeline with their own numbers — so defusing
+ * a rocket mid-air stays a deliberate shot, exactly like a planted bomb.
+ */
+export const BOSS = {
+  EVERY: 5,
+  /** The warden closes inside this, and backs off inside the floor of it. */
+  KEEP_MIN: 10,
+  KEEP_MAX: 16,
+  /** Seconds between volleys, how many rockets one volley lobs, and their ring. */
+  VOLLEY_T: 5.5,
+  VOLLEY_ROCKETS: 3,
+  ROCKET_SPREAD: 2.2,
+  /** Seconds the racks glow before a volley lands — step out of the ring. */
+  VOLLEY_TELL: 1.0,
+  FIRST_VOLLEY: 2.5,
+  /** A rocket is a fast bomb: shorter fuse, smaller blast, lighter hit. */
+  ROCKET_FUSE: 2.2,
+  ROCKET_RADIUS: 3.5,
+  ROCKET_PLAYER_DMG: 28,
 } as const;
 
 export const ENEMY = {
@@ -301,7 +659,7 @@ export const ENEMY = {
    * than a player's mouse: that is what makes flanking possible, and the
    * front plate only covers what the mob can see.
    */
-  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2 },
+  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2, warden: 1.6 },
   HIT_FLASH: 0.08,
   HIT_FLASH_COLOR: 0xffffff,
   ATTACK_FLASH_COLOR: 0xff2222,
@@ -356,12 +714,11 @@ export const ALARM = {
  * run from spiralling.
  */
 export const AMMO = {
-  /** Rounds in the reserve when a run starts. */
-  RESERVE_START: 60,
-  /** The reserve never grows past this. */
-  RESERVE_MAX: 120,
-  /** Rounds dropped by a mob of each kind when it dies. */
-  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6 },
+  /**
+   * Rounds dropped by a mob of each kind when it dies. They feed whichever gun
+   * is in hand — the wave resupply tops the others up.
+   */
+  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30 },
 } as const;
 
 /**
@@ -441,10 +798,8 @@ export const WAVES = {
   INTERMISSION: 3,
   WAVE_HEAL: 25,
 
-  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12 },
+  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0 },
   DMG_PER_2_WAVES: 2,
-  /** Rounds handed over at the start of every wave, on top of the mob drops. */
-  AMMO_PER_WAVE: 24,
 } as const;
 
 /**
@@ -534,7 +889,7 @@ export const XP = {
   /** Distance at which the orb is collected. */
   COLLECT: 0.8,
   /** Points per orb, by enemy kind. */
-  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8 },
+  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8, warden: 120 },
   /** How fast the orb slides toward the player while magnetised. */
   PULL_SPEED: 7,
   /** Visual-only: how high the orb floats and how fast it bobs. */
@@ -544,14 +899,56 @@ export const XP = {
 
 /**
  * Player levels. The meter needs `FIRST_NEED × GROWTH^(level−1)` XP to advance,
- * and each level pays `HEAL` integrity over time. Skills are not built yet —
- * they will read `level` off `XpMeter`.
+ * and each level pays `HEAL` integrity over time — then offers a perk.
  */
 export const XP_LEVEL = {
   FIRST_NEED: 60,
   GROWTH: 1.3,
   HEAL: 15,
 } as const;
+
+// ------------------------------------------------------------------- perks
+
+/**
+ * Perks: the level-up reward.
+ *
+ * Every level crossed offers a pick of `OFFER_COUNT` upgrades. Each perk
+ * stacks to `STACK_MAX`; the numbers below are **per stack**. Effects read
+ * through `game/perks.ts`'s multiplier getters — nothing else may guess them.
+ */
+export const PERKS = {
+  OFFER_COUNT: 3,
+  STACK_MAX: 2,
+  /** OVERCLOCK: +15% walk and sprint speed per stack. */
+  MOVE_SPEED: 0.15,
+  /** LIGHT MAG: reload 25% faster per stack. */
+  RELOAD_CUT: 0.25,
+  /** PLATING: +25 max integrity per stack, repaired immediately. */
+  MAX_HP_BONUS: 25,
+  /** ADRENALINE: stamina regenerates 30% faster per stack. */
+  STAMINA_REGEN: 0.3,
+  /** HEAVY ROUNDS: +15% bullet damage per stack (the knife stays honest). */
+  DAMAGE: 0.15,
+  /** MAGNET: XP orbs reach the player from 60% farther per stack. */
+  XP_RADIUS: 0.6,
+  /** COOLANT: bloom grows 30% slower per stack, so sustained fire stays true. */
+  BLOOM_CUT: 0.3,
+  /** SCAVENGER: mobs drop 50% more ammo per stack. */
+  AMMO_DROP: 0.5,
+} as const;
+
+export const PERK_DEFS = [
+  { id: 'overclock', name: 'OVERCLOCK', flavour: 'MOVE 15% FASTER' },
+  { id: 'lightmag', name: 'LIGHT MAG', flavour: 'RELOAD 25% FASTER' },
+  { id: 'plating', name: 'PLATING', flavour: '+25 MAX INTEGRITY, REPAIRED NOW' },
+  { id: 'adrenaline', name: 'ADRENALINE', flavour: 'STAMINA REGENERATES 30% FASTER' },
+  { id: 'heavy', name: 'HEAVY ROUNDS', flavour: 'BULLETS DEAL 15% MORE DAMAGE' },
+  { id: 'magnet', name: 'MAGNET', flavour: 'XP ORBS REACH 60% FARTHER' },
+  { id: 'coolant', name: 'COOLANT', flavour: 'BLOOM GROWS 30% SLOWER' },
+  { id: 'scavenger', name: 'SCAVENGER', flavour: 'MOBS DROP 50% MORE AMMO' },
+] as const;
+
+export type PerkId = (typeof PERK_DEFS)[number]['id'];
 
 /**
  * The meteor shower: a random set-piece that bleeds the sky red and drops rocks
@@ -626,11 +1023,12 @@ export const SCREEN = {
   MENU: 'menu',
   PAUSE: 'pause',
   GAMEOVER: 'gameover',
+  PERK: 'perk',
 } as const;
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper'] as const;
+const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 /**
@@ -658,5 +1056,9 @@ export const ENEMY_LOOKS: Record<EnemyKind, { readonly body: number; readonly ac
     { body: 0x2fbf6f, accent: 0xffe08a },
     { body: 0x17805b, accent: 0xa7f3d0 },
     { body: 0x0f5132, accent: 0x6ee7b7 },
+  ],
+  warden: [
+    { body: 0xff2a4e, accent: 0xffd166 },
+    { body: 0xc21f3a, accent: 0xffe08a },
   ],
 };

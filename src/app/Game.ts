@@ -11,20 +11,29 @@ import {
   ALARM,
   AMMO,
   BOMB,
+  BOSS,
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_THEME,
   ENEMY,
   FEEDBACK,
   type GameState,
   KNIFE,
   METEOR,
+  PERK_DEFS,
+  PERKS,
+  type PerkId,
   SCREEN,
   START_HP,
   STATE,
+  THEMES,
   TOUCH,
   WAVES,
   WEAPON,
+  WEAPON_ORDER,
+  WEAPONS,
+  type WeaponId,
   WORLD,
   XP_LEVEL,
 } from '../game/config';
@@ -32,6 +41,7 @@ import { SpatialHash } from '../game/enemies';
 import { Enemy, type EnemyWorld } from '../game/enemy';
 import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
+import { Perks } from '../game/perks';
 import { Player } from '../game/player';
 import { dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
@@ -45,15 +55,20 @@ import { GunView } from '../render/Gun';
 import { KnifeView } from '../render/Knife';
 import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
+import { DmrView, ScatterView, SmgView } from '../render/ViewModels';
 import { XpView } from '../render/XpView';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
+import { PerkScreen } from '../ui/Perks';
 import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
 import { Skins } from '../ui/Skins';
 import { isTouchDevice, Touch } from '../ui/Touch';
+
+/** Display strings by perk id, for the offer cards and the HUD tags. */
+const PERK_BY_ID = new Map(PERK_DEFS.map((d) => [d.id, d]));
 
 interface Hostile {
   enemy: Enemy;
@@ -89,6 +104,10 @@ export class Game {
   readonly alarm: TowerAlarm;
   /** Player progression: level and the XP banked toward the next one. */
   readonly meter = new XpMeter();
+  /** The perks this run has taken; level-ups pause behind an offer from here. */
+  readonly perks = new Perks();
+  /** What full integrity is this run — PLATING raises it above `START_HP`. */
+  maxHp = START_HP;
   /** The random sky event: a meteor shower that drops rocks around the player. */
   readonly shower = new MeteorShower();
   aliveCount = 0;
@@ -110,7 +129,11 @@ export class Game {
   /** Set while a portrait rotation paused the run, so the landscape return resumes it. */
   private rotatePaused = false;
   private gun = new GunView();
+  /** One viewmodel per gun; `render()` shows the one in hand. */
+  private readonly gunById: Record<WeaponId, GunView | SmgView | ScatterView | DmrView>;
   private knifeView = new KnifeView();
+  /** The level-up perk offer screen; visible only while an offer stands. */
+  private perkScreen = new PerkScreen({ onPick: (id) => this.pickPerkId(id) });
   /** The knife: a cone in front of the player, on its own cooldown. */
   readonly knife = new Knife();
   /** Reused: the mobs a knife swing caught this frame. */
@@ -120,7 +143,19 @@ export class Game {
 
   // Public because `main.ts` drives them from the headless E2E suite.
   readonly settings: Settings;
-  readonly weapon: Weapon;
+  /** One Weapon per gun in the arsenal; the reserves live and die with the run. */
+  readonly weapons: Record<WeaponId, Weapon>;
+  /** The gun in hand. */
+  private weaponId: WeaponId = 'rifle';
+  /** The active weapon — every existing reader of `game.weapon` keeps working. */
+  get weapon(): Weapon {
+    return this.weapons[this.weaponId];
+  }
+
+  get activeWeaponId(): WeaponId {
+    return this.weaponId;
+  }
+
   readonly hostiles: Hostile[] = [];
   /** The credits wallet and the loadout. The credits survive a death. */
   readonly profile = new Profile();
@@ -164,10 +199,12 @@ export class Game {
   private fov: number = CAMERA.FOV;
   /** Base FOV from the settings panel; the ADS target is a fraction of it. */
   private baseFov: number = CAMERA.FOV;
+  /** The theme the arena is currently built with, so a change re-syncs the pick list. */
+  private appliedTheme: string = DEFAULT_THEME;
 
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
-    return this.gun.group.visible;
+    return this.gunById[this.weaponId].group.visible;
   }
 
   /**
@@ -195,6 +232,9 @@ export class Game {
     };
   }
 
+  /** Reused per-frame: the live boss's health, or null when none walks. */
+  private bossModel: { hp: number; max: number } | null = null;
+
   private scratch = new THREE.Vector3();
   private tracerEnd = new THREE.Vector3();
   private camQuat = new THREE.Quaternion();
@@ -202,6 +242,7 @@ export class Game {
   private groundProbe = { x: 0, z: 0 };
   private model: HudModel = {
     hp: 0,
+    maxHp: START_HP,
     score: 0,
     wave: 0,
     hostiles: 0,
@@ -210,9 +251,12 @@ export class Game {
     ammo: 0,
     reserve: 0,
     dry: false,
+    weaponName: WEAPONS.rifle.name,
+    mag: WEAPONS.rifle.mag,
     reloading: false,
     reloadProgress: 0,
     bloom: 0,
+    bloomMax: WEAPONS.rifle.bloomMax,
     moving: false,
     stamina: WORLD.STAMINA_MAX,
     bombDist: Number.POSITIVE_INFINITY,
@@ -223,6 +267,7 @@ export class Game {
     xp: 0,
     xpNeed: 1,
     credits: 0,
+    boss: null,
   };
 
   constructor(
@@ -248,6 +293,7 @@ export class Game {
       getProfile: () => this.profile.data,
       onBuy: (id) => this.buySkin(id),
       onEquip: (id) => this.equipSkin(id),
+      onBuyWeapon: (id) => this.buyWeapon(id),
     });
     this.applySkins();
 
@@ -262,11 +308,21 @@ export class Game {
         }
       },
       onChange: (values) => {
+        document.documentElement.classList.toggle('no-crt', !values.video.crt);
         this.player.sens = values.game.sensitivity;
         this.sfx.setMuted(values.game.mute);
         this.music.setMuted(values.game.mute);
         this.baseFov = values.game.fov;
+        // A theme swap rebuilds the static world, so the pick list has to be
+        // re-pointed at the fresh meshes before the next shot resolves.
+        const oldSolids = values.video.theme !== this.appliedTheme ? [...this.arena.solids] : null;
         this.arena.setVideo(values.video);
+        if (oldSolids) {
+          for (const s of oldSolids) this.pick.remove(s);
+          this.pick.add(...this.arena.solids);
+          this.appliedTheme = values.video.theme;
+          this.applyUiTheme(values.video.theme);
+        }
       },
       onShowTab: (tab) => {
         if (tab === 'skins') this.skins.refresh();
@@ -281,18 +337,30 @@ export class Game {
 
     // First launch on a touch device: phones meet this renderer with a
     // fraction of a desktop's fill-rate, so quality LOW (1× pixels, no
-    // shadows) is the honest default. It is a stored setting, not a cap.
+    // shadows, no scanline overlay) is the honest default. It is a stored
+    // setting, not a cap.
     if (this.touchEnabled && !this.settings.values.touch.tuned) {
-      this.settings.setVideo({ quality: 0, shadows: false });
+      this.settings.setVideo({ quality: 0, shadows: false, crt: false });
       this.settings.setTouch({ tuned: true });
     }
 
-    this.weapon = new Weapon({
+    const weaponHooks = {
       onShot: () => this.resolveShot(),
       onDry: () => this.sfx.empty(),
       onReloadStart: () => this.sfx.reloadStart(),
       onReloadEnd: () => this.sfx.reloadEnd(),
-    });
+    };
+    this.weapons = {
+      rifle: new Weapon(weaponHooks, WEAPONS.rifle),
+      smg: new Weapon(weaponHooks, WEAPONS.smg),
+      scatter: new Weapon(weaponHooks, WEAPONS.scatter),
+      dmr: new Weapon(weaponHooks, WEAPONS.dmr),
+    };
+    const smgView = new SmgView();
+    const scatterView = new ScatterView();
+    const dmrView = new DmrView();
+    this.gunById = { rifle: this.gun, smg: smgView, scatter: scatterView, dmr: dmrView };
+    this.arena.camera.add(smgView.group, scatterView.group, dmrView.group);
 
     this.input = new Input(
       this.arena.renderer.domElement,
@@ -317,6 +385,12 @@ export class Game {
         onToggleSettings: () => this.settings.toggle(),
         onCloseSettings: () => this.settings.close(),
         onToggleMap: () => this.toggleMap(),
+        onPerkSlot: (index) => this.pickPerk(index),
+        onWeaponSlot: (index) => {
+          const id: WeaponId | undefined = WEAPON_ORDER[index];
+          if (id) this.swapWeapon(id);
+        },
+        onWeaponCycle: (dir) => this.cycleWeapon(dir),
       },
       test,
     );
@@ -333,6 +407,7 @@ export class Game {
         onReload: () => this.weapon.startReload(),
         onKnife: () => this.swingKnife(),
         onPause: () => this.pauseGame(),
+        onSwap: () => this.cycleWeapon(1),
         onRotate: (portrait) => this.onRotate(portrait),
         onFireMode: (mode) => this.settings.setTouch({ shootMode: mode, shootModeChosen: true }),
       },
@@ -367,7 +442,7 @@ export class Game {
       ramps: this.collision.ramps,
       damagePlayer: (amount) => this.damagePlayer(amount),
       knockPlayer: (dirX, dirZ, force) => this.knockPlayer(dirX, dirZ, force),
-      plantBomb: (from, to, thrown) => this.plantBomb(from, to, thrown),
+      plantBomb: (from, to, thrown, heavy) => this.plantBomb(from, to, thrown, heavy),
     };
 
     document.getElementById('menuDeploy')!.addEventListener('click', () => this.start(false));
@@ -404,6 +479,14 @@ export class Game {
     this.hud.setVisible(false);
     this.hud.showScreen(SCREEN.MENU);
     this.music.stop();
+  }
+
+  /** Paint the HUD and menus in the arena theme's two accents. */
+  private applyUiTheme(themeId: string): void {
+    const t = THEMES[themeId as keyof typeof THEMES] ?? THEMES[DEFAULT_THEME];
+    const root = document.documentElement.style;
+    root.setProperty('--accent', t.cssAccent);
+    root.setProperty('--danger', t.cssDanger);
   }
 
   /**
@@ -490,7 +573,7 @@ export class Game {
   private reset(): void {
     this.waves.reset();
     this.fx.clear();
-    this.weapon.reset();
+    for (const w of Object.values(this.weapons)) w.reset();
     this.player.reset();
     this.clearHostiles();
     this.clearBombs();
@@ -500,6 +583,10 @@ export class Game {
     this.alarm.reset();
     this.healLeft = 0;
     this.meter.reset();
+    this.perks.reset();
+    this.applyPerks();
+    this.perkScreen.hide();
+    this.hud.setPerkTags([]);
     this.shower.reset();
 
     this.hp = START_HP;
@@ -566,63 +653,69 @@ export class Game {
     this.waveClearPending = false;
     this.waves.start(n);
     // A resupply at the start of every wave, on top of what the mobs drop.
-    this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
+    this.resupply();
     this.hud.showBanner(`WAVE ${n}`, n === 1 ? 'GET READY' : 'HOSTILES INCOMING');
     this.sfx.wave();
   }
 
   // ----------------------------------------------------------------- shooting
 
-  /** One bullet: pick, damage, sparks, tracer. Runs on the fixed step. */
+  /**
+   * One trigger pull: a flash, a bang, then one ray per pellet — the scattergun
+   * is a wall of them, every other gun one. Runs on the fixed step.
+   */
   private resolveShot(): void {
-    this.pick.aim(this.arena.camera, this.weapon.spread, this.rng);
-    const hit = this.pick.cast();
-    this.gun.fire(this.rng);
-    this.sfx.shoot();
+    const vm = this.gunById[this.weaponId];
+    vm.fire(this.rng);
+    this.sfx.shoot(this.weaponId);
 
-    this.gun.muzzle.updateWorldMatrix(true, false);
-    this.gun.muzzle.getWorldPosition(this.scratch);
-    this.fx.tracers.fire(this.scratch, hit ? hit.point : this.missEnd());
+    vm.muzzle.updateWorldMatrix(true, false);
+    vm.muzzle.getWorldPosition(this.scratch);
 
-    if (!hit) return;
+    for (let i = 0; i < this.weapon.def.pellets; i++) {
+      this.pick.aim(this.arena.camera, this.weapon.spread, this.rng);
+      const hit = this.pick.cast();
+      this.fx.tracers.fire(this.scratch, hit ? hit.point : this.missEnd());
+      if (!hit) continue;
 
-    if (hit.bomb) {
-      this.defuse(hit.bomb);
-      return;
-    }
+      if (hit.bomb) {
+        this.defuse(hit.bomb);
+        continue;
+      }
 
-    if (hit.enemy) {
-      const headshot = hit.part === 'head';
+      if (hit.enemy) {
+        const headshot = hit.part === 'head';
+        const p = hit.point;
+        this.fx.burst(
+          { x: p.x, y: p.y, z: p.z, color: 0xff4455, count: 10, speed: 3.5, life: 0.5, gravity: 9 },
+          this.rng,
+        );
+        this.feedback.hitT = 1;
+        this.sfx.hit();
+
+        const enemy = hit.enemy;
+        const dir = this.pick.direction;
+        // The plate only covers what the mob is facing, so it needs to know where
+        // the shot came from.
+        const from = { dirX: -dir.x, dirZ: -dir.z, headshot, melee: false };
+        if (enemy.takeDamage(this.weapon.damage(headshot), from)) this.killEnemy(enemy, headshot);
+        else enemy.knockback(dir.x, dir.z);
+        continue;
+      }
+
       const p = hit.point;
       this.fx.burst(
-        { x: p.x, y: p.y, z: p.z, color: 0xff4455, count: 10, speed: 3.5, life: 0.5, gravity: 9 },
+        { x: p.x, y: p.y, z: p.z, color: 0xffc266, count: 8, speed: 3, life: 0.4, gravity: 9 },
         this.rng,
       );
-      this.feedback.hitT = 1;
-      this.sfx.hit();
-
-      const enemy = hit.enemy;
-      const dir = this.pick.direction;
-      // The plate only covers what the mob is facing, so it needs to know where
-      // the shot came from.
-      const from = { dirX: -dir.x, dirZ: -dir.z, headshot, melee: false };
-      if (enemy.takeDamage(this.weapon.damage(headshot), from)) this.killEnemy(enemy, headshot);
-      else enemy.knockback(dir.x, dir.z);
-      return;
     }
-
-    const p = hit.point;
-    this.fx.burst(
-      { x: p.x, y: p.y, z: p.z, color: 0xffc266, count: 8, speed: 3, life: 0.4, gravity: 9 },
-      this.rng,
-    );
   }
 
   private missEnd(): THREE.Vector3 {
     // The camera lives inside the yaw/pitch rig, so its local position is a
     // permanent (0,0,0) — the ray leaves from its world position, not that.
     this.arena.camera.getWorldPosition(this.tracerEnd);
-    return this.tracerEnd.addScaledVector(this.pick.direction, WEAPON.MAX_RANGE);
+    return this.tracerEnd.addScaledVector(this.pick.direction, this.weapon.def.maxRange);
   }
 
   /**
@@ -677,6 +770,41 @@ export class Game {
     return this.pick.cast()?.enemy != null;
   }
 
+  /** The guns this player carries: the rifle, plus whatever the armory sold. */
+  ownedWeaponIds(): WeaponId[] {
+    return WEAPON_ORDER.filter((id) => id === 'rifle' || this.profile.ownsWeapon(id));
+  }
+
+  /** Holster the current gun and draw another. False when it is not owned. */
+  swapWeapon(id: WeaponId): boolean {
+    if (id === this.weaponId || !this.ownedWeaponIds().includes(id)) return false;
+    this.weaponId = id;
+    this.sfx.swap();
+    return true;
+  }
+
+  /** Step through the owned guns — the wheel and the touch SWAP button. */
+  cycleWeapon(dir: 1 | -1): void {
+    const owned = this.ownedWeaponIds();
+    const i = owned.indexOf(this.weaponId);
+    const next = owned[(i + dir + owned.length) % owned.length];
+    if (next) this.swapWeapon(next);
+  }
+
+  /** The wave resupply: every owned gun gets its own share. */
+  private resupply(): void {
+    for (const id of WEAPON_ORDER) {
+      if (id === 'rifle' || this.profile.ownsWeapon(id)) this.weapons[id].addAmmo(WEAPONS[id].waveAmmo);
+    }
+  }
+
+  /** Buy a gun from the armory. It joins the loadout for every later run. */
+  buyWeapon(id: WeaponId): boolean {
+    const bought = this.profile.buyWeapon(id);
+    if (bought) this.skins.refresh();
+    return bought;
+  }
+
   /** Buy a skin with credits. False when it is unknown, owned or too dear. */
   buySkin(id: string): boolean {
     const bought = this.profile.buy(id);
@@ -711,7 +839,8 @@ export class Game {
 
     this.spawnXp(enemy.pos.x, enemy.pos.y, enemy.pos.z, XP.VALUE[enemy.kind]);
     // The mob's rounds go into the reserve, so a wave of them is a resupply.
-    this.weapon.addAmmo(AMMO.DROP[enemy.kind]);
+    // SCAVENGER fattens the drop.
+    this.weapon.addAmmo(Math.round(AMMO.DROP[enemy.kind] * this.perks.ammoDropMul));
     // A knife kill pays the same as a gun kill.
     this.profile.addCredits(CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0));
 
@@ -737,10 +866,24 @@ export class Game {
 
   // --------------------------------------------------------------------- bombs
 
-  /** A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc. */
-  plantBomb(from: { x: number; z: number }, to: { x: number; z: number }, thrown: boolean): void {
+  /**
+   * A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc.
+   * `heavy` builds the WARDEN's rocket: shorter fuse, smaller blast, lighter hit.
+   */
+  plantBomb(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    thrown: boolean,
+    heavy = false,
+  ): void {
     const limit = WORLD.HALF - WORLD.WALL_INSET;
-    const bomb = new Bomb(clamp(to.x, -limit, limit), clamp(to.z, -limit, limit));
+    const bomb = new Bomb(
+      clamp(to.x, -limit, limit),
+      clamp(to.z, -limit, limit),
+      heavy ? BOSS.ROCKET_FUSE : BOMB.FUSE,
+      heavy ? BOSS.ROCKET_RADIUS : BOMB.RADIUS,
+      heavy ? BOSS.ROCKET_PLAYER_DMG : BOMB.PLAYER_DMG,
+    );
     // Rest it on whatever is actually under the blast spot, so a bomb thrown at
     // someone on a platform does not blink inside the platform's geometry.
     this.groundProbe.x = bomb.pos.x;
@@ -794,7 +937,7 @@ export class Game {
       this.player.position.z - z,
       this.player.position.y - WORLD.PLAYER_H - bomb.pos.y,
     );
-    if (pd < r) this.damagePlayer(BOMB.PLAYER_DMG * (1 - pd / r));
+    if (pd < r) this.damagePlayer(bomb.playerDmg * (1 - pd / r));
 
     for (const h of this.hostiles) {
       const enemy = h.enemy;
@@ -843,10 +986,11 @@ export class Game {
 
   /** Magnet orbs toward the player, collecting them at `XP.COLLECT`. */
   private updateXps(dt: number): void {
+    const magnet = XP.RADIUS * this.perks.xpRadiusMul;
     for (let i = this.xps.length - 1; i >= 0; i--) {
       const xp = this.xps[i];
       if (!xp) continue;
-      if (!xp.update(dt, this.player.position)) continue;
+      if (!xp.update(dt, this.player.position, magnet)) continue;
 
       const view = this.xpViews.get(xp);
       if (view) {
@@ -864,12 +1008,84 @@ export class Game {
 
   /**
    * A level up pays a repair — paid out over time like a secured deck, but
-   * smaller, so capturing a deck stays the premium heal.
+   * smaller, so capturing a deck stays the premium heal — and offers a perk,
+   * which pauses the run behind the offer screen.
    */
   private levelUp(): void {
     this.healLeft += XP_LEVEL.HEAL;
     this.hud.showBanner(`LEVEL ${this.meter.level}`, `+${XP_LEVEL.HEAL} INTEGRITY`);
     this.sfx.wave();
+    this.offerPerks();
+  }
+
+  /**
+   * Pause the run behind a perk offer. One offer stands at a time: a level
+   * crossed while an offer is open (a fat orb bank) simply waits for the next.
+   */
+  private offerPerks(): void {
+    if (this.perks.isOffering) return;
+    const offer = this.perks.makeOffer(this.rng);
+    if (offer.length === 0) return;
+    this.state = STATE.PAUSED;
+    this.input.firing = false;
+    this.touch.clear();
+    this.perkScreen.show(
+      this.meter.level,
+      offer.map((id) => {
+        const def = PERK_BY_ID.get(id);
+        return {
+          id,
+          name: def?.name ?? id.toUpperCase(),
+          flavour: def?.flavour ?? '',
+          stacks: this.perks.count(id),
+        };
+      }),
+    );
+    // Clicking a card needs the cursor back, exactly like the map does.
+    this.input.release();
+  }
+
+  /** Take the offered perk at `index` and go back to playing. */
+  pickPerk(index: number): void {
+    const id: PerkId | undefined = this.perks.offer[index];
+    if (id) this.pickPerkId(id);
+  }
+
+  /** Take a specific offered perk — the card click and the 1/2/3 keys end here. */
+  pickPerkId(id: PerkId): void {
+    if (this.state !== STATE.PAUSED || !this.perks.isOffering) return;
+    if (!this.perks.offer.includes(id)) return;
+    this.perks.take(id);
+    this.applyPerks();
+    // PLATING repairs the bonus it just added, against the new max.
+    if (id === 'plating') this.hp = Math.min(this.maxHp, this.hp + PERKS.MAX_HP_BONUS);
+    this.perkScreen.hide();
+    this.hud.setPerkTags(this.perkTagList());
+    this.state = STATE.PLAYING;
+    if (!this.test) this.input.lock();
+  }
+
+  /** Push the perk multipliers out to the systems that read them. */
+  private applyPerks(): void {
+    const p = this.perks;
+    this.player.speedMul = p.moveMul;
+    this.player.staminaRegenMul = p.staminaRegenMul;
+    for (const w of Object.values(this.weapons)) {
+      w.reloadMul = p.reloadMul;
+      w.damageMul = p.damageMul;
+      w.bloomMul = p.bloomMul;
+    }
+    this.maxHp = START_HP + p.maxHpBonus;
+  }
+
+  /** "OVERCLOCK ×2" chips for the stats panel. */
+  private perkTagList(): string[] {
+    const tags: string[] = [];
+    for (const def of PERK_DEFS) {
+      const stacks = this.perks.count(def.id);
+      if (stacks > 0) tags.push(stacks > 1 ? `${def.name} ×${stacks}` : def.name);
+    }
+    return tags;
   }
 
   private clearXps(): void {
@@ -1032,12 +1248,27 @@ export class Game {
     if (this.meter.add(amount)) this.levelUp();
   }
 
+  /** Headless hook: sweep every orb off the floor, so XP banking is deterministic. */
+  clearOrbs(): void {
+    this.clearXps();
+  }
+
   get meteorStats(): { phase: string; tint: number; stones: number } {
     return {
       phase: this.shower.phase,
       tint: Math.round(this.shower.tint * 100) / 100,
       stones: this.shower.stones.length,
     };
+  }
+
+  /** The live boss's health, or null when none walks — for `__NEON.boss()`. */
+  get bossInfo(): { hp: number; max: number } | null {
+    for (const h of this.hostiles) {
+      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+        return { hp: h.enemy.hp, max: h.enemy.stats.maxHp };
+      }
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------- update
@@ -1103,6 +1334,10 @@ export class Game {
       this.pick.add(view.body, view.head);
       this.hostiles.push({ enemy, view });
       this.aliveCount++;
+      if (req.kind === 'warden') {
+        this.hud.showBanner('WARDEN INBOUND', 'KEEP MOVING — IT SHELLS FROM AFAR');
+        this.sfx.alarm();
+      }
     }
 
     const scratch = this.enemyScratch;
@@ -1140,7 +1375,7 @@ export class Game {
     // wave look (and announce) like "wave 1 complete" forever.
     if (this.waves.wave > waveBefore) {
       this.wave = this.waves.wave;
-      this.weapon.addAmmo(WAVES.AMMO_PER_WAVE);
+      this.resupply();
       this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
       this.sfx.wave();
       this.waveClearPending = false;
@@ -1173,8 +1408,11 @@ export class Game {
     // The viewmodel belongs to a live run: visible while playing and behind the
     // pause overlay, hidden on the title and game-over screens. Driving this
     // from state (not from a transition) is what keeps it alive across resume.
-    this.gun.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
-    this.knifeView.show(this.state === STATE.PLAYING || this.state === STATE.PAUSED);
+    const vmPlaying = this.state === STATE.PLAYING || this.state === STATE.PAUSED;
+    for (const [id, view] of Object.entries(this.gunById)) {
+      view.show(vmPlaying && id === this.weaponId);
+    }
+    this.knifeView.show(vmPlaying);
     // Same rule for the touch layer: it is the input surface of a live run.
     this.touch.setVisible(this.state === STATE.PLAYING);
 
@@ -1191,8 +1429,8 @@ export class Game {
       const strafe = this.touchEnabled
         ? clamp(this.input.strafe + this.touch.move.right, -1, 1)
         : this.input.strafe;
-      this.gun.pose(player.bobPhase, weapon.kick, dip, strafe);
-      this.gun.decay(dt, weapon.flashT);
+      this.gunById[this.weaponId].pose(player.bobPhase, weapon.kick, dip, strafe);
+      this.gunById[this.weaponId].decay(dt, weapon.flashT);
       this.knifeView.pose(this.knife.swingT, player.bobPhase, strafe);
     }
 
@@ -1256,6 +1494,7 @@ export class Game {
 
     const m = this.model;
     m.hp = this.hp;
+    m.maxHp = this.maxHp;
     m.score = this.score;
     m.wave = this.wave;
     m.hostiles = this.waves.hostileCount(this.aliveCount);
@@ -1264,9 +1503,12 @@ export class Game {
     m.ammo = weapon.ammo;
     m.reserve = weapon.reserve;
     m.dry = weapon.isDry;
+    m.weaponName = WEAPONS[this.weaponId].name;
+    m.mag = weapon.def.mag;
     m.reloading = weapon.reloading;
     m.reloadProgress = weapon.reloadProgress;
     m.bloom = weapon.bloom;
+    m.bloomMax = weapon.def.bloomMax;
     m.moving = player.moving;
     m.stamina = player.stamina;
     m.bombDist = nearestD;
@@ -1278,6 +1520,25 @@ export class Game {
     m.xpNeed = this.meter.need;
     m.credits = this.profile.data.credits;
 
+    // The boss bar tracks the first live warden; it dies, it disappears.
+    let bossFound: Hostile | undefined;
+    for (const h of this.hostiles) {
+      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+        bossFound = h;
+        break;
+      }
+    }
+    if (bossFound) {
+      this.bossModel ??= { hp: 0, max: 0 };
+      const model = this.bossModel;
+      model.hp = bossFound.enemy.hp;
+      model.max = bossFound.enemy.stats.maxHp;
+      m.boss = model;
+    } else {
+      this.bossModel = null;
+      m.boss = null;
+    }
+
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
     }
@@ -1286,6 +1547,7 @@ export class Game {
     }
 
     this.hud.setHitmark(this.feedback.hitT);
+    this.hud.setBoss(m.boss);
     this.hud.setVignette(m, this.elapsed);
     this.hud.setADS(this.weapon.aiming);
     if (this.state === STATE.PLAYING) this.hud.update(m, this.settings.values.crosshair);

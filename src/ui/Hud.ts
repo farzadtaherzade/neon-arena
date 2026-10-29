@@ -1,10 +1,12 @@
-import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName, WEAPON } from '../game/config';
+import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName } from '../game/config';
 import { readRecord, updateRecord } from './Records';
 import type { CrosshairSettings } from './Settings';
 
 /** What the HUD reads each frame. Kept structural so `Game` doesn't leak itself. */
 export interface HudModel {
   hp: number;
+  /** What full integrity is this run — the PLATING perk raises it. */
+  maxHp: number;
   score: number;
   wave: number;
   hostiles: number;
@@ -18,6 +20,8 @@ export interface HudModel {
   reloading: boolean;
   reloadProgress: number;
   bloom: number;
+  /** The active gun's bloom ceiling — the crosshair gap scales against it. */
+  bloomMax: number;
   moving: boolean;
   /** Remaining sprint stamina, 0..100. */
   stamina: number;
@@ -33,6 +37,11 @@ export interface HudModel {
   xpNeed: number;
   /** The credits wallet — it survives a death, so it is shown, not spent. */
   credits: number;
+  /** The gun in hand, and its magazine size — the pips follow it. */
+  weaponName: string;
+  mag: number;
+  /** The WARDEN's health while one is alive; null hides the boss bar. */
+  boss: { hp: number; max: number } | null;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -59,6 +68,7 @@ export class Hud {
   private healthFill = $('healthFill');
   private healthText = $('healthText');
   private ammo = $('ammo');
+  private ammoName = $('ammoName');
   private ammoPips = $('ammoPips');
   private reloadHint = $('reloadHint');
   private scoreVal = $('scoreVal');
@@ -81,11 +91,18 @@ export class Hud {
   private captureFill = $('captureFill');
   private newBestBadge = $('newBestBadge');
   private bestRecord = $('bestRecord');
+  private perkRow = $('perkRow');
+  private bossWrap = $('bossWrap');
+  private bossFill = $('bossFill');
 
   private pips: HTMLElement[] = [];
   private static MAX_FEED = 3;
+  /** The magazine size the pip row was built for. */
+  private pipsForMag = 0;
 
-  private screens: Record<Exclude<ScreenName, 'none'>, HTMLElement> = {
+  // The perk screen manages its own visibility (like MapScreen), so it is
+  // deliberately absent here — `showScreen` must not be able to hide it.
+  private screens: Record<Exclude<ScreenName, 'none' | 'perk'>, HTMLElement> = {
     [SCREEN.MENU]: $('menuScreen'),
     [SCREEN.PAUSE]: $('pauseScreen'),
     [SCREEN.GAMEOVER]: $('gameOverScreen'),
@@ -96,7 +113,6 @@ export class Hud {
 
   constructor() {
     this.refreshBestRecord();
-    this.initPips();
   }
 
   private refreshBestRecord(): void {
@@ -104,9 +120,12 @@ export class Hud {
     this.bestRecord.textContent = rec.score > 0 ? `BEST  SCORE ${rec.score}  ·  WAVE ${rec.wave}` : '';
   }
 
-  private initPips(): void {
+  /** Rebuild the pip row when the gun in hand changes magazines. */
+  private initPips(mag: number): void {
+    if (this.pipsForMag === mag) return;
+    this.pipsForMag = mag;
     this.ammoPips.replaceChildren();
-    this.pips = Array.from({ length: WEAPON.MAG }, () => {
+    this.pips = Array.from({ length: mag }, () => {
       const pip = document.createElement('span');
       pip.className = 'pip';
       this.ammoPips.appendChild(pip);
@@ -207,9 +226,9 @@ export class Hud {
   }
 
   /** Crosshair opens up as bloom accumulates, and steadies when standing still. */
-  setCrosshair(bloom: number, moving: boolean, settings: CrosshairSettings): void {
+  setCrosshair(bloom: number, bloomMax: number, moving: boolean, settings: CrosshairSettings): void {
     const gap = settings.bloom
-      ? CAMERA.CROSSHAIR_GAP_MIN + (bloom / WEAPON.BLOOM_MAX) * CAMERA.CROSSHAIR_GAP_SPAN
+      ? CAMERA.CROSSHAIR_GAP_MIN + (bloom / Math.max(1e-6, bloomMax)) * CAMERA.CROSSHAIR_GAP_SPAN
       : settings.gap;
     if (this.last.gap !== gap) {
       this.last.gap = gap;
@@ -228,10 +247,11 @@ export class Hud {
 
     if (this.last.hp !== hp) {
       this.last.hp = hp;
-      // The bar is a fraction of its track: healing past the max must not
-      // push it out of the panel.
-      this.healthFill.style.width = `${Math.min(100, hp)}%`;
-      this.healthText.textContent = String(Math.min(100, Math.ceil(hp)));
+      // The bar is a fraction of this run's max: PLATING raises the max, and
+      // healing past the old 100 must not push the fill out of the panel.
+      const pct = Math.min(100, (hp / Math.max(1, model.maxHp)) * 100);
+      this.healthFill.style.width = `${pct}%`;
+      this.healthText.textContent = String(Math.ceil(hp));
       this.healthFill.style.background =
         hp > 50
           ? 'linear-gradient(90deg,#1fd67a,#7dffb8)'
@@ -240,6 +260,11 @@ export class Hud {
             : 'linear-gradient(90deg,#d61f3a,#ff7a7a)';
     }
 
+    if (this.last.weaponName !== model.weaponName) {
+      this.last.weaponName = model.weaponName;
+      this.ammoName.textContent = model.weaponName;
+    }
+    this.initPips(model.mag);
     if (this.last.ammo !== model.ammo || this.last.reserve !== model.reserve) {
       this.last.ammo = model.ammo;
       this.last.reserve = model.reserve;
@@ -311,7 +336,7 @@ export class Hud {
       this.xpFill.style.width = `${xpPct}%`;
     }
 
-    this.setCrosshair(model.bloom, model.moving, settings);
+    this.setCrosshair(model.bloom, model.bloomMax, model.moving, settings);
     this.setThreat(model.bombDist, model.bombFuse);
     this.setCapture(model.captureOn, model.captureProgress);
   }
@@ -351,5 +376,36 @@ export class Hud {
     const { isNew } = updateRecord({ score: stats.score, wave: stats.wave });
     this.newBestBadge.style.display = isNew ? 'block' : 'none';
     this.refreshBestRecord();
+  }
+
+  /** The perks this run owns, as "NAME ×n" chips. Rebuilt only when they change. */
+  setPerkTags(tags: string[]): void {
+    const key = tags.join('|');
+    if (this.last.perkTags === key) return;
+    this.last.perkTags = key;
+    this.perkRow.hidden = tags.length === 0;
+    this.perkRow.replaceChildren(
+      ...tags.map((tag) => {
+        const el = document.createElement('span');
+        el.className = 'ptag';
+        el.textContent = tag;
+        return el;
+      }),
+    );
+  }
+
+  /** The WARDEN's top-screen bar; hidden whenever no boss is alive. */
+  setBoss(boss: { hp: number; max: number } | null): void {
+    const on = boss != null;
+    if (this.last.bossOn !== on) {
+      this.last.bossOn = on;
+      this.bossWrap.hidden = !on;
+    }
+    if (!boss) return;
+    const pct = Math.round((boss.hp / Math.max(1, boss.max)) * 100);
+    if (this.last.bossPct !== pct) {
+      this.last.bossPct = pct;
+      this.bossFill.style.width = `${pct}%`;
+    }
   }
 }

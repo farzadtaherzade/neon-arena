@@ -1,4 +1,4 @@
-import { AMMO, WEAPON } from './config';
+import { WEAPON, type WeaponDef } from './config';
 
 /** Side effects the weapon needs from outside its own state. */
 export interface WeaponHooks {
@@ -10,17 +10,18 @@ export interface WeaponHooks {
 }
 
 /**
- * Hitscan rifle state: magazine, reserve, reload timer, and the
- * recoil/bloom/flash values that drive the viewmodel pose and the crosshair.
+ * One gun's state: magazine, reserve, reload timer, and the recoil/bloom/flash
+ * values that drive the viewmodel pose and the crosshair. The combat numbers
+ * come from the gun's `WeaponDef` — the class holds state, the table holds
+ * tuning.
  *
  * Pure — it never touches the scene graph. `render/Pick.ts` turns `onShot()`
- * into a ray, and `render/Gun.ts` reads `recoil`/`kick`/`flashT` to pose the
- * viewmodel.
+ * into rays (one per pellet), and the viewmodel reads `recoil`/`kick`/`flashT`.
  */
 export class Weapon {
-  ammo: number = WEAPON.MAG;
+  ammo: number;
   /** Rounds left outside the magazine. Mobs drop these; the wave resupply tops them up. */
-  reserve: number = AMMO.RESERVE_START;
+  reserve: number;
   reloading = false;
   /** Right-mouse ADS. Set from outside so the view and shot cone stay in sync. */
   aiming = false;
@@ -32,12 +33,22 @@ export class Weapon {
   kick = 0;
   bloom = 0;
   flashT = 0;
+  /** Perk multipliers: 1 = untuned. Set by `Game` when a perk is taken. */
+  reloadMul = 1;
+  damageMul = 1;
+  bloomMul = 1;
 
-  constructor(private readonly hooks: WeaponHooks) {}
+  constructor(
+    private readonly hooks: WeaponHooks,
+    readonly def: WeaponDef,
+  ) {
+    this.ammo = def.mag;
+    this.reserve = def.reserveStart;
+  }
 
   reset(): void {
-    this.ammo = WEAPON.MAG;
-    this.reserve = AMMO.RESERVE_START;
+    this.ammo = this.def.mag;
+    this.reserve = this.def.reserveStart;
     this.reloading = false;
     this.reloadT = 0;
     this.lastShot = -9;
@@ -55,27 +66,32 @@ export class Weapon {
 
   /** Rounds picked up from a kill or a resupply. */
   addAmmo(amount: number): void {
-    this.reserve = Math.min(this.reserve + amount, AMMO.RESERVE_MAX);
+    this.reserve = Math.min(this.reserve + amount, this.def.reserveMax);
   }
 
   /** Half-angle of the shot cone, radians. Tighter while aiming down sights. */
   get spread(): number {
-    const base = this.aiming ? WEAPON.BASE_SPREAD * WEAPON.AIM_SPREAD : WEAPON.BASE_SPREAD;
+    const base = this.aiming ? this.def.baseSpread * this.def.aimSpread : this.def.baseSpread;
     return base + this.bloom;
   }
 
   /** Reload progress 0..1, for the HUD bar. */
   get reloadProgress(): number {
-    return Math.min(this.reloadT / WEAPON.RELOAD_T, 1);
+    return Math.min(this.reloadT / this.reloadTTotal, 1);
+  }
+
+  /** How long this gun's reload takes right now — the LIGHT MAG perk shortens it. */
+  get reloadTTotal(): number {
+    return this.def.reloadT * this.reloadMul;
   }
 
   /** Damage for a hit, before the type's own HP scaling. */
   damage(headshot: boolean): number {
-    return WEAPON.DMG * (headshot ? WEAPON.HEAD_MULT : 1);
+    return this.def.dmg * this.damageMul * (headshot ? this.def.headMult : 1);
   }
 
   startReload(): void {
-    if (this.reloading || this.ammo === WEAPON.MAG || this.reserve <= 0) return;
+    if (this.reloading || this.ammo === this.def.mag || this.reserve <= 0) return;
     this.reloading = true;
     this.reloadT = 0;
     this.hooks.onReloadStart();
@@ -84,7 +100,7 @@ export class Weapon {
   update(dt: number, elapsed: number, firing: boolean): void {
     this.tickReload(dt);
 
-    if (firing && !this.reloading && elapsed - this.lastShot >= WEAPON.FIRE_T) {
+    if (firing && !this.reloading && elapsed - this.lastShot >= this.def.fireT) {
       if (this.ammo > 0) this.shoot(elapsed);
       else {
         this.lastShot = elapsed;
@@ -102,9 +118,9 @@ export class Weapon {
   private tickReload(dt: number): void {
     if (!this.reloading) return;
     this.reloadT += dt;
-    if (this.reloadT >= WEAPON.RELOAD_T) {
+    if (this.reloadT >= this.reloadTTotal) {
       this.reloading = false;
-      const take = Math.min(WEAPON.MAG - this.ammo, this.reserve);
+      const take = Math.min(this.def.mag - this.ammo, this.reserve);
       this.ammo += take;
       this.reserve -= take;
       this.hooks.onReloadEnd();
@@ -121,9 +137,9 @@ export class Weapon {
   private shoot(elapsed: number): void {
     this.ammo--;
     this.lastShot = elapsed;
-    this.recoil = Math.min(this.recoil + WEAPON.RECOIL_PER_SHOT, WEAPON.RECOIL_MAX);
-    this.kick = Math.min(this.kick + WEAPON.KICK_PER_SHOT, WEAPON.KICK_MAX);
-    this.bloom = Math.min(this.bloom + WEAPON.BLOOM_PER_SHOT, WEAPON.BLOOM_MAX);
+    this.recoil = Math.min(this.recoil + this.def.recoilPerShot, this.def.recoilMax);
+    this.kick = Math.min(this.kick + this.def.kickPerShot, this.def.kickMax);
+    this.bloom = Math.min(this.bloom + this.def.bloomPerShot * this.bloomMul, this.def.bloomMax);
     this.flashT = WEAPON.FLASH_T;
     this.hooks.onShot();
     if (this.ammo <= 0) this.startReload();

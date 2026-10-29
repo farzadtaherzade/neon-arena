@@ -10,7 +10,7 @@
  * who already tuned their crosshair keeps it.
  */
 
-import { CAMERA, VIDEO } from '../game/config';
+import { CAMERA, DEFAULT_THEME, THEMES, type ThemeId, VIDEO } from '../game/config';
 
 const KEY = 'neon.settings';
 const LEGACY_KEY = 'neon.crosshair';
@@ -56,6 +56,12 @@ export interface VideoSettings {
   quality: number;
   shadows: boolean;
   fog: boolean;
+  /** Which arena theme paints the world. */
+  theme: ThemeId;
+  /** Post-processing bloom. Off by default: it costs fill-rate. */
+  bloom: boolean;
+  /** Scanline + vignette CRT overlay. Off on touch first launch. */
+  crt: boolean;
 }
 
 /** How the trigger works on a touch screen. */
@@ -111,6 +117,9 @@ export const VIDEO_DEFAULTS: VideoSettings = {
   quality: 2,
   shadows: true,
   fog: true,
+  theme: DEFAULT_THEME,
+  bloom: false,
+  crt: true,
 };
 
 export const TOUCH_DEFAULTS: TouchSettings = {
@@ -231,10 +240,14 @@ export function sanitizeGame(raw: unknown): GameSettings {
 export function sanitizeVideo(raw: unknown): VideoSettings {
   const o = rec(raw);
   const d = VIDEO_DEFAULTS;
+  const theme = typeof o.theme === 'string' && o.theme in THEMES ? (o.theme as ThemeId) : d.theme;
   return {
     quality: num(o.quality, 0, VIDEO.QUALITY_PIXELS.length - 1, d.quality),
     shadows: bool(o.shadows, d.shadows),
     fog: bool(o.fog, d.fog),
+    theme,
+    bloom: bool(o.bloom, d.bloom),
+    crt: bool(o.crt, d.crt),
   };
 }
 
@@ -378,7 +391,10 @@ const GAME_ROWS: readonly Row[] = [
 ];
 
 const VIDEO_ROWS: readonly Row[] = [
+  { key: 'theme', label: 'ARENA THEME', type: 'select', options: Object.keys(THEMES) },
   { key: 'quality', label: 'RENDER QUALITY', type: 'number', min: [0, VIDEO.QUALITY_PIXELS.length - 1] },
+  { key: 'bloom', label: 'BLOOM', type: 'toggle' },
+  { key: 'crt', label: 'CRT UI', type: 'toggle' },
   { key: 'shadows', label: 'SHADOWS', type: 'toggle' },
   { key: 'fog', label: 'FOG', type: 'toggle' },
 ];
@@ -396,6 +412,8 @@ interface Bound {
   input: HTMLInputElement | HTMLSelectElement;
   out: HTMLElement;
   row: Row;
+  /** Reads the row's current value from its own group. */
+  read(): Value;
 }
 
 export interface SettingsHooks {
@@ -425,17 +443,29 @@ export class Settings {
     this.targets = [hudCrosshair, document.getElementById('previewCross')!];
 
     this.buildPresets();
-    this.buildRows(document.getElementById('tuneList')!, CROSSHAIR_ROWS, (k, v) =>
-      this.setCrosshair({ [k]: v } as Partial<CrosshairSettings>),
+    this.buildRows(
+      document.getElementById('tuneList')!,
+      CROSSHAIR_ROWS,
+      (k, v) => this.setCrosshair({ [k]: v } as Partial<CrosshairSettings>),
+      (k) => (this.values.crosshair as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('gameList')!, GAME_ROWS, (k, v) =>
-      this.setGame({ [k]: v } as Partial<GameSettings>),
+    this.buildRows(
+      document.getElementById('gameList')!,
+      GAME_ROWS,
+      (k, v) => this.setGame({ [k]: v } as Partial<GameSettings>),
+      (k) => (this.values.game as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('gameList')!, TOUCH_ROWS, (k, v) =>
-      this.setTouch({ [k]: v } as Partial<TouchSettings>),
+    this.buildRows(
+      document.getElementById('gameList')!,
+      TOUCH_ROWS,
+      (k, v) => this.setTouch({ [k]: v } as Partial<TouchSettings>),
+      (k) => (this.values.touch as unknown as Record<string, Value>)[k] ?? '',
     );
-    this.buildRows(document.getElementById('videoList')!, VIDEO_ROWS, (k, v) =>
-      this.setVideo({ [k]: v } as Partial<VideoSettings>),
+    this.buildRows(
+      document.getElementById('videoList')!,
+      VIDEO_ROWS,
+      (k, v) => this.setVideo({ [k]: v } as Partial<VideoSettings>),
+      (k) => (this.values.video as unknown as Record<string, Value>)[k] ?? '',
     );
     this.bind();
     this.apply();
@@ -475,6 +505,7 @@ export class Settings {
     host: HTMLElement,
     rows: readonly Row[],
     write: (key: string, value: Value) => void,
+    read: (key: string) => Value,
   ): void {
     for (const row of rows) {
       const line = el('div', 'trow');
@@ -522,7 +553,9 @@ export class Settings {
       const out = el('span', 'tv');
       line.append(input, out);
       host.appendChild(line);
-      this.inputs.set(`${row.key}`, { input, out, row });
+      // Namespaced by host: the crosshair and video groups both own a `bloom`,
+      // and a shared key would silently steal the other row's binding.
+      this.inputs.set(`${host.id}.${row.key}`, { input, out, row, read: () => read(row.key) });
     }
   }
 
@@ -573,8 +606,8 @@ export class Settings {
 
   private apply(): void {
     for (const target of this.targets) renderCrosshair(target, this.values.crosshair);
-    for (const { input, out, row } of this.inputs.values()) {
-      const raw = this.readValue(row.key);
+    for (const { input, out, row, read } of this.inputs.values()) {
+      const raw = read();
       if (row.type === 'toggle') (input as HTMLInputElement).checked = raw === true;
       else input.value = String(raw);
       out.textContent = this.label(row, raw);
@@ -589,23 +622,12 @@ export class Settings {
     this.hooks.onChange(this.values);
   }
 
-  /** Current value of a control, from whichever group owns it. */
-  private readValue(key: string): Value {
-    if (key in this.values.crosshair) {
-      return (this.values.crosshair as unknown as Record<string, Value>)[key] ?? '';
-    }
-    if (key in this.values.game) {
-      return (this.values.game as unknown as Record<string, Value>)[key] ?? '';
-    }
-    if (key in this.values.touch) {
-      return (this.values.touch as unknown as Record<string, Value>)[key] ?? '';
-    }
-    return (this.values.video as unknown as Record<string, Value>)[key] ?? '';
-  }
-
   private label(row: Row, value: Value): string {
     if (row.type === 'toggle') return value ? 'ON' : 'OFF';
-    if (row.type === 'select') return '';
+    if (row.type === 'select') {
+      if (row.key === 'theme') return THEMES[value as ThemeId]?.name ?? '';
+      return '';
+    }
     if (row.key === 'quality') return QUALITY_NAMES[Number(value)] ?? '';
     if (row.key === 'shootMode') return SHOOT_MODE_NAMES[value as ShootMode] ?? '';
     return String(value);

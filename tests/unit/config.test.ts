@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   ALARM,
   AMMO,
+  BLOOM,
   BOMB,
+  BOSS,
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_THEME,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
@@ -15,6 +18,8 @@ import {
   KNIFE,
   MAX_DT,
   METEOR,
+  PERK_DEFS,
+  PERKS,
   RUNNER,
   SAPPER,
   SCREEN,
@@ -22,10 +27,15 @@ import {
   START_HP,
   STATE,
   TANK,
+  THEMES,
+  type ThemeDef,
   TOUCH,
   VIDEO,
   WAVES,
   WEAPON,
+  WEAPON_ORDER,
+  WEAPONS,
+  type WeaponDef,
   WORLD,
   XP,
   XP_LEVEL,
@@ -48,15 +58,36 @@ describe('config', () => {
     expect(WORLD.STEP_HEIGHT).toBeLessThan(WORLD.PLAYER_H);
   });
 
-  it('keeps the weapon self-consistent', () => {
-    expect(WEAPON.BLOOM_MAX).toBeGreaterThanOrEqual(WEAPON.BLOOM_PER_SHOT);
-    expect(WEAPON.RECOIL_MAX).toBeGreaterThanOrEqual(WEAPON.RECOIL_PER_SHOT);
-    expect(WEAPON.KICK_MAX).toBeGreaterThanOrEqual(WEAPON.KICK_PER_SHOT);
-    expect(WEAPON.FIRE_T).toBeGreaterThan(0);
-    expect(WEAPON.RELOAD_T).toBeGreaterThan(WEAPON.FIRE_T);
-    expect(WEAPON.HEAD_MULT).toBeGreaterThan(1);
-    expect(WEAPON.MAG).toBeGreaterThan(0);
+  it('keeps every gun in the arsenal self-consistent', () => {
     expect(WEAPON.GUN_REST).toHaveLength(3);
+    expect(WEAPON_ORDER).toEqual(['rifle', 'smg', 'scatter', 'dmr']);
+    for (const [id, def] of Object.entries(WEAPONS) as [string, WeaponDef][]) {
+      expect(def.bloomMax, id).toBeGreaterThanOrEqual(def.bloomPerShot);
+      expect(def.recoilMax, id).toBeGreaterThanOrEqual(def.recoilPerShot);
+      expect(def.kickMax, id).toBeGreaterThanOrEqual(def.kickPerShot);
+      expect(def.fireT, id).toBeGreaterThan(0);
+      expect(def.reloadT, id).toBeGreaterThan(def.fireT);
+      expect(def.headMult, id).toBeGreaterThan(1);
+      expect(def.mag, id).toBeGreaterThan(0);
+      expect(def.reserveMax, id).toBeGreaterThanOrEqual(def.reserveStart);
+      expect(def.waveAmmo, id).toBeGreaterThan(0);
+      expect(def.maxRange, id).toBeGreaterThan(0);
+      expect(def.pellets, id).toBeGreaterThanOrEqual(1);
+    }
+    // The rifle is standard issue; every other gun has a price and a name.
+    expect(WEAPONS.rifle.price).toBe(0);
+    for (const id of ['smg', 'scatter', 'dmr'] as const) {
+      expect(WEAPONS[id].price, id).toBeGreaterThan(0);
+      expect(WEAPONS[id].name.length, id).toBeGreaterThan(0);
+    }
+    // Roles: the SMG is fast and light, the scatter fires a wall of pellets,
+    // the DMR hits hardest per shot.
+    expect(WEAPONS.smg.fireT).toBeLessThan(WEAPONS.rifle.fireT);
+    expect(WEAPONS.smg.dmg).toBeLessThan(WEAPONS.rifle.dmg);
+    expect(WEAPONS.scatter.pellets).toBeGreaterThan(1);
+    expect(WEAPONS.dmr.dmg).toBeGreaterThan(WEAPONS.rifle.dmg);
+    // A scattergun volley cannot trivially one-shot a tank through its armour.
+    expect(WEAPONS.scatter.dmg * WEAPONS.scatter.pellets).toBeLessThan(ENEMY_TYPES.tank.hp * 1.5);
   });
 
   it('keeps the camera usable', () => {
@@ -166,6 +197,31 @@ describe('config', () => {
     expect(BOMB.DEFUSE_SCORE).toBeGreaterThan(0);
   });
 
+  it('keeps the warden boss coherent', () => {
+    const boss = ENEMY_TYPES.warden;
+    const tank = ENEMY_TYPES.tank;
+    // The warden is the biggest, toughest thing in the arena.
+    expect(boss.hp).toBeGreaterThan(tank.hp);
+    expect(boss.scale).toBeGreaterThan(tank.scale);
+    expect(boss.dmg).toBeGreaterThan(tank.dmg);
+
+    expect(BOSS.EVERY).toBeGreaterThanOrEqual(2);
+    expect(BOSS.KEEP_MIN).toBeGreaterThan(0);
+    expect(BOSS.KEEP_MIN).toBeLessThan(BOSS.KEEP_MAX);
+    expect(BOSS.VOLLEY_T).toBeGreaterThan(BOSS.VOLLEY_TELL);
+    expect(BOSS.VOLLEY_ROCKETS).toBeGreaterThanOrEqual(1);
+    expect(BOSS.ROCKET_SPREAD).toBeGreaterThan(0);
+    expect(BOSS.VOLLEY_TELL).toBeGreaterThan(0);
+    expect(BOSS.FIRST_VOLLEY).toBeGreaterThan(0);
+    // A rocket is a faster, smaller, lighter bomb than the sapper's.
+    expect(BOSS.ROCKET_FUSE).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_FUSE).toBeLessThan(BOMB.FUSE);
+    expect(BOSS.ROCKET_RADIUS).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_RADIUS).toBeLessThan(BOMB.RADIUS);
+    expect(BOSS.ROCKET_PLAYER_DMG).toBeGreaterThan(0);
+    expect(BOSS.ROCKET_PLAYER_DMG).toBeLessThan(BOMB.PLAYER_DMG);
+  });
+
   it('gives every enemy kind at least two cosmetic looks', () => {
     for (const kind of Object.keys(ENEMY_LOOKS) as (keyof typeof ENEMY_LOOKS)[]) {
       const looks = ENEMY_LOOKS[kind];
@@ -220,6 +276,33 @@ describe('config', () => {
     expect(XP.VALUE.tank).toBeGreaterThan(XP.VALUE.grunt);
   });
 
+  it('keeps the perk offers sane', () => {
+    expect(PERKS.OFFER_COUNT).toBeGreaterThanOrEqual(1);
+    expect(PERKS.OFFER_COUNT).toBeLessThanOrEqual(PERK_DEFS.length);
+    expect(PERKS.STACK_MAX).toBeGreaterThanOrEqual(1);
+    // A cut may never zero the stat out, and a boost may at most double it —
+    // except the magnet, which widens a radius.
+    expect(PERKS.RELOAD_CUT).toBeGreaterThan(0);
+    expect(PERKS.RELOAD_CUT * PERKS.STACK_MAX).toBeLessThan(1);
+    expect(PERKS.BLOOM_CUT).toBeGreaterThan(0);
+    expect(PERKS.BLOOM_CUT * PERKS.STACK_MAX).toBeLessThan(1);
+    for (const boost of [PERKS.MOVE_SPEED, PERKS.STAMINA_REGEN, PERKS.DAMAGE, PERKS.AMMO_DROP]) {
+      expect(boost).toBeGreaterThan(0);
+      expect(boost * PERKS.STACK_MAX).toBeLessThanOrEqual(1);
+    }
+    // The magnet widens a radius, which is quadratic in area — doubling at max
+    // stacks is the design, not a runaway.
+    expect(PERKS.XP_RADIUS).toBeGreaterThan(0);
+    expect(PERKS.XP_RADIUS * PERKS.STACK_MAX).toBeLessThanOrEqual(2);
+    expect(PERKS.MAX_HP_BONUS).toBeGreaterThan(0);
+    // Every perk is named and described, and the ids are unique.
+    expect(new Set(PERK_DEFS.map((d) => d.id)).size).toBe(PERK_DEFS.length);
+    for (const def of PERK_DEFS) {
+      expect(def.name.length, def.id).toBeGreaterThan(0);
+      expect(def.flavour.length, def.id).toBeGreaterThan(0);
+    }
+  });
+
   it('caps a frame at a sane step', () => {
     expect(FIXED_STEP).toBeCloseTo(1 / 60, 10);
     expect(MAX_DT).toBeGreaterThan(FIXED_STEP);
@@ -247,24 +330,81 @@ describe('config', () => {
     // The field of view range has to contain the default camera fov.
     expect(VIDEO.FOV_MIN).toBeLessThan(CAMERA.FOV);
     expect(VIDEO.FOV_MAX).toBeGreaterThan(CAMERA.FOV);
+    // Bloom glows the neon, it must not wash the arena out.
+    expect(BLOOM.STRENGTH).toBeGreaterThan(0);
+    expect(BLOOM.STRENGTH).toBeLessThan(2);
+    expect(BLOOM.RADIUS).toBeGreaterThan(0);
+    expect(BLOOM.RADIUS).toBeLessThanOrEqual(1);
+    expect(BLOOM.THRESHOLD).toBeGreaterThan(0.5);
+    expect(BLOOM.THRESHOLD).toBeLessThan(1);
+  });
+
+  it('paints every theme completely and legibly', () => {
+    // Four presets, unique ids, and the shipped look preserved as one of them.
+    expect(Object.keys(THEMES)).toEqual(['synthwave', 'industrial', 'toxic', 'blood']);
+    expect(new Set(Object.values(THEMES).map((t) => t.id)).size).toBe(4);
+    expect(THEMES[DEFAULT_THEME]).toBeDefined();
+
+    const numberKeys = [
+      'sky',
+      'hemiSky',
+      'hemiGround',
+      'ambient',
+      'cornerLight',
+      'sun',
+      'fill',
+      'star',
+    ] as const;
+    const stringKeys = [
+      'floorBase',
+      'floorPlate',
+      'floorLane',
+      'floorZone',
+      'cssAccent',
+      'cssDanger',
+    ] as const;
+    for (const [id, theme] of Object.entries(THEMES) as [string, ThemeDef][]) {
+      expect(theme.name.length, id).toBeGreaterThan(0);
+      // Below ~1.0 hemisphere the enemies' body colours drop out and they read
+      // as black silhouettes — every theme has to stay above the line.
+      expect(theme.hemiIntensity, id).toBeGreaterThanOrEqual(1.0);
+      expect(theme.fogNear, id).toBeGreaterThan(0);
+      expect(theme.fogFar, id).toBeGreaterThan(theme.fogNear);
+      expect(theme.ambientIntensity, id).toBeGreaterThan(0);
+      expect(theme.cornerIntensity, id).toBeGreaterThan(0);
+      expect(theme.sunIntensity, id).toBeGreaterThan(0);
+      expect(theme.fillIntensity, id).toBeGreaterThan(0);
+      for (const key of numberKeys) expect(theme[key], `${id}.${key}`).toBeGreaterThan(0);
+      for (const key of stringKeys) expect(theme[key], `${id}.${key}`).toMatch(/^#[0-9a-f]{6}$/i);
+      // The structure palette is real colours, and the two neon accents differ.
+      expect(theme.cyan, id).not.toBe(theme.magenta);
+      expect(theme.hazard, id).not.toBe(theme.dark);
+    }
+    // The industrial preset is the shipped look, verbatim.
+    expect(THEMES.industrial).toMatchObject({
+      sky: 0x0c1222,
+      body: 0x38456a,
+      hazard: 0xf2b21e,
+      hemiIntensity: 1.35,
+    });
   });
 
   it('names every state and screen exactly once', () => {
     expect(Object.values(STATE)).toEqual(['menu', 'playing', 'paused', 'gameover']);
-    expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover']);
+    expect(Object.values(SCREEN)).toEqual(['none', 'menu', 'pause', 'gameover', 'perk']);
     expect(new Set(Object.values(STATE)).size).toBe(4);
   });
 
   it('keeps the ammo economy coherent', () => {
-    expect(AMMO.RESERVE_START).toBeGreaterThan(0);
-    expect(AMMO.RESERVE_MAX).toBeGreaterThanOrEqual(AMMO.RESERVE_START);
     // Every mob drops something, and a tank is worth more than a grunt.
     expect(Object.keys(AMMO.DROP).sort()).toEqual(Object.keys(ENEMY_TYPES).sort());
     for (const value of Object.values(AMMO.DROP)) expect(value).toBeGreaterThan(0);
     expect(AMMO.DROP.tank).toBeGreaterThan(AMMO.DROP.grunt);
-    // A wave hands out enough rounds to matter but not enough to replace aim.
-    expect(WAVES.AMMO_PER_WAVE).toBeGreaterThan(0);
-    expect(WAVES.AMMO_PER_WAVE).toBeLessThan(WEAPON.MAG * 3);
+    // A wave resupply matters but never replaces aim: under three magazines.
+    for (const [id, def] of Object.entries(WEAPONS) as [string, WeaponDef][]) {
+      expect(def.waveAmmo, id).toBeGreaterThan(0);
+      expect(def.waveAmmo, id).toBeLessThan(def.mag * 3);
+    }
   });
 
   it('keeps the knife coherent', () => {

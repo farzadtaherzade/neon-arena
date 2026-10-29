@@ -1,6 +1,6 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WORLD } from './config';
+import { BOSS, ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WORLD } from './config';
 import type { Vec3 } from './player';
 import type { Ramp, Vec2 } from './world/collision';
 
@@ -21,8 +21,9 @@ export interface EnemyWorld {
   damagePlayer(amount: number): void;
   /** Shove the player — the tank's ground slam. */
   knockPlayer(dirX: number, dirZ: number, force: number): void;
-  /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc. */
-  plantBomb(from: Vec2, to: Vec2, thrown: boolean): void;
+  /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc.
+   *  `heavy` is the WARDEN's rocket: a faster, smaller, lighter bomb. */
+  plantBomb(from: Vec2, to: Vec2, thrown: boolean, heavy?: boolean): void;
 }
 
 /** Where a hit came from, so the mob can work out what its armour is doing. */
@@ -116,6 +117,11 @@ export class Enemy {
   plantT = 0;
   wanderA = 0;
 
+  /** Warden only: seconds to the next volley, the tell once it starts, and which way it circles. */
+  volleyT = 0;
+  volleyTell = 0;
+  private strafe = 1;
+
   /** Distance of the nearest living neighbour at the last separation pass. */
   private reachPad: number = ENEMY.REACH_PAD;
 
@@ -150,6 +156,10 @@ export class Enemy {
     this.plantT = rng.range(SAPPER.PLANT_T * 0.4, SAPPER.PLANT_T);
     this.wanderA = rng.next() * Math.PI * 2;
     this.look = Math.floor(rng.next() * looks.length);
+    if (kind === 'warden') {
+      this.volleyT = BOSS.FIRST_VOLLEY;
+      this.strafe = rng.next() < 0.5 ? -1 : 1;
+    }
   }
 
   get hp(): number {
@@ -181,6 +191,7 @@ export class Enemy {
     this.cool -= dt;
     this.pounceCd = Math.max(0, this.pounceCd - dt);
     if (this.kind === 'sapper') this.updateSapper(dt, world);
+    else if (this.kind === 'warden') this.updateWarden(dt, world);
     else this.updateChaser(dt, world);
 
     // It turns at a limited rate, so the player can get around its front plate.
@@ -214,6 +225,12 @@ export class Enemy {
     const left = this.sapperMode === 'flee' ? this.panicT : this.plantT;
     if (left > SAPPER.TELL || left <= 0) return 0;
     return 1 - left / SAPPER.TELL;
+  }
+
+  /** 0..1 — how lit the warden's racks are just before a volley. */
+  get volleyK(): number {
+    if (this.volleyTell <= 0) return 0;
+    return 1 - this.volleyTell / BOSS.VOLLEY_TELL;
   }
 
   /** 0..1 — how far through its crouch the runner is, before it leaps. */
@@ -351,6 +368,89 @@ export class Enemy {
   }
 
   /**
+   * The WARDEN. It refuses to close: inside a distance band it circles the
+   * player and lobs rocket volleys on a timer, and it slams like a tank only
+   * when something gets under its feet. A player on a deck is shelled like
+   * any other mob besieging the ramp mouth — the rockets reach where it cannot.
+   */
+  private updateWarden(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const inv = 1 / (dist || 1);
+
+    // Up close it slams — its reach scales with its bulk.
+    const slamReach = TANK.SLAM_R * this.scale;
+    if (dist <= slamReach && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
+      this.attack(dt, world);
+      return;
+    }
+
+    // A player on a deck is out of slam reach: besiege the ramp like the rest,
+    // and keep the volley clock running — the rockets reach the deck.
+    if (world.playerY - this.pos.y > ENEMY.ATTACK_RISE) {
+      this.pursue(dt, world, this.stats.speed);
+      this.tickVolley(dt, world);
+      return;
+    }
+
+    // During the tell it plants its feet: the racks glow, then rockets walk a
+    // ring around where the player stands — spread far enough that stepping
+    // sideways dodges most of it.
+    if (this.volleyTell > 0) {
+      this.steer(dt, 0, 0, 0, world);
+      this.tickVolley(dt, world);
+      return;
+    }
+    this.tickVolley(dt, world);
+
+    // Keep the band: close the gap, back off, or circle the player.
+    let mx: number;
+    let mz: number;
+    if (dist > BOSS.KEEP_MAX) {
+      mx = dx * inv;
+      mz = dz * inv;
+    } else if (dist < BOSS.KEEP_MIN) {
+      mx = -dx * inv;
+      mz = -dz * inv;
+    } else {
+      mx = -dz * inv * this.strafe;
+      mz = dx * inv * this.strafe;
+    }
+    this.steer(dt, mx, mz, this.stats.speed, world);
+  }
+
+  /**
+   * One step of the volley clock. The tell counts down first, then the racks
+   * fire and reload — from every path, so a warden shelling a besieged deck
+   * keeps its cadence too.
+   */
+  private tickVolley(dt: number, world: EnemyWorld): void {
+    if (this.volleyTell > 0) {
+      this.volleyTell -= dt;
+      if (this.volleyTell <= 0) {
+        this.volleyT = BOSS.VOLLEY_T;
+        this.strafe *= -1;
+        for (let i = 0; i < BOSS.VOLLEY_ROCKETS; i++) {
+          const a = (i / BOSS.VOLLEY_ROCKETS) * Math.PI * 2 + this.phase;
+          world.plantBomb(
+            this.pos,
+            {
+              x: world.playerPos.x + Math.cos(a) * BOSS.ROCKET_SPREAD,
+              z: world.playerPos.z + Math.sin(a) * BOSS.ROCKET_SPREAD,
+            },
+            true,
+            true,
+          );
+        }
+      }
+      return;
+    }
+    this.volleyT -= dt;
+    if (this.volleyT <= 0) this.volleyTell = BOSS.VOLLEY_TELL;
+  }
+
+  /**
    * Steer at the player — or, when they are up on a platform we cannot reach in
    * a straight line, at the mouth of the ramp that leads there and then up it.
    * Without this a mob just grinds against the platform wall forever.
@@ -480,17 +580,19 @@ export class Enemy {
 
   /** How long this mob's tell runs before the blow lands. */
   private windupLength(): number {
-    return this.kind === 'tank' ? TANK.WINDUP : ENEMY.WINDUP;
+    return this.kind === 'tank' || this.kind === 'warden' ? TANK.WINDUP : ENEMY.WINDUP;
   }
 
-  /** The blow lands. Grunts swipe; the tank slams the ground. */
+  /** The blow lands. Grunts swipe; the tank and the warden slam the ground. */
   private swing(world: EnemyWorld): void {
     this.flash(ENEMY.ATTACK_FLASH_COLOR, ENEMY.ATTACK_FLASH);
     const dx = world.playerPos.x - this.pos.x;
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    if (this.kind === 'tank') {
-      if (dist > TANK.SLAM_R) return;
+    if (this.kind === 'tank' || this.kind === 'warden') {
+      // The warden's slam reach scales with its bulk.
+      const reach = this.kind === 'warden' ? TANK.SLAM_R * this.scale : TANK.SLAM_R;
+      if (dist > reach) return;
       world.damagePlayer(this.stats.dmg * TANK.SLAM_MULT);
       const inv = 1 / (dist || 1);
       world.knockPlayer(dx * inv, dz * inv, TANK.KNOCK);

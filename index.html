@@ -27,6 +27,7 @@
         <div><span class="k">WAVE</span><span class="v" id="waveVal">–</span></div>
         <div><span class="k">HOSTILES</span><span class="v warn" id="enemyVal">0</span></div>
         <div><span class="k">CREDITS</span><span class="v gold" id="creditVal">0</span></div>
+        <div id="perkRow" hidden></div>
       </div>
       <div class="panel" id="healthWrap">
         <div id="healthLabel">INTEGRITY <span id="healthText">100</span></div>
@@ -41,12 +42,17 @@
         </div>
       </div>
       <div class="panel" id="ammoWrap">
-        <div id="ammo">12 <small>/ ∞</small></div>
+        <div id="ammoName">RIFLE</div>
+      <div id="ammo">12 <small>/ ∞</small></div>
         <div id="reloadBar"><div id="reloadFill"></div></div>
         <div id="ammoPips"></div>
         <div id="reloadHint">R — RELOAD</div>
       </div>
       <div id="banner"><div class="big" id="bannerBig"></div><div class="sub" id="bannerSub"></div></div>
+      <div id="bossWrap" hidden>
+        <div id="bossLabel">THE WARDEN</div>
+        <div id="bossBar"><div id="bossFill"></div></div>
+      </div>
       <div id="capture">
         <div id="captureText">SECURING DECK</div>
         <div id="captureBar"><div id="captureFill"></div></div>
@@ -139,6 +145,8 @@
           <h3>SKINS</h3>
           <div class="skrow">CREDITS <span id="creditBalance">0</span></div>
           <div id="skinList"></div>
+          <h3>ARMORY</h3>
+          <div id="armoryList"></div>
         </div>
 
         <div class="srow">
@@ -157,12 +165,23 @@
       </div>
     </div>
 
+    <!-- Level-up perk offer: the run is paused behind it, exactly like the map. -->
+    <div class="screen" id="perkScreen">
+      <div class="perkbox">
+        <h1 id="perkTitle">LEVEL 2</h1>
+        <h2>CHOOSE AN UPGRADE</h2>
+        <div id="perkCards"></div>
+        <div class="shint">CLICK A CARD OR PRESS 1 / 2 / 3 — THE RUN IS PAUSED WHILE YOU PICK</div>
+      </div>
+    </div>
+
     <!-- Touch controls. Hidden on pointer devices; `ui/Touch.ts` shows the
          layer only while a run is live and owns every gesture on it. -->
     <div id="touchLayer" hidden>
       <div id="stickBase" hidden><div id="stickNub"></div></div>
       <div class="tbtn" id="btnFire">FIRE</div>
       <div class="tbtn" id="btnAim">ADS</div>
+      <div class="tbtn" id="btnSwap">SWAP</div>
       <div class="tbtn" id="btnKnife">KNIFE</div>
       <div class="tbtn" id="btnJump">JUMP</div>
       <div class="tbtn" id="btnReload">R</div>

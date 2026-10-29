@@ -18,6 +18,8 @@ export class Bomb {
     z: number,
     readonly fuseTime: number = BOMB.FUSE,
     readonly radius: number = BOMB.RADIUS,
+    /** Damage the blast deals the player, before falloff. */
+    readonly playerDmg: number = BOMB.PLAYER_DMG,
   ) {
     this.pos.x = x;
     this.pos.z = z;

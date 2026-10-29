@@ -114,8 +114,9 @@ export class EnemyView {
       g.rotation.x = crouch * 0.28 - (this.enemy.pounce > 0 ? 0.3 : 0);
       g.position.y -= crouch * 0.16 * this.enemy.scale;
 
-      // The sapper's bomb rack lights up just before it plants.
-      const tell = this.enemy.bombTell;
+      // The sapper's bomb rack lights up just before it plants; the warden's
+      // racks light up before a volley.
+      const tell = this.enemy.kind === 'warden' ? this.enemy.volleyK : this.enemy.bombTell;
       if (tell !== this.lastTell) {
         this.lastTell = tell;
         this.glowMat.color.copy(this.baseGlow).lerp(TELL_COLOR, tell);

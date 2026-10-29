@@ -22,7 +22,12 @@ describe('readProfile', () => {
 
   it('round-trips a profile', () => {
     const store = fakeStore();
-    const data = { credits: 120, unlocked: [CHEAPEST.id], equipped: { rifle: CHEAPEST.id, knife: '' } };
+    const data = {
+      credits: 120,
+      unlocked: [CHEAPEST.id],
+      equipped: { rifle: CHEAPEST.id, knife: '' },
+      unlockedWeapons: [],
+    };
     writeProfile(store, data);
     expect(readProfile(store)).toEqual(data);
   });
@@ -37,6 +42,7 @@ describe('readProfile', () => {
       'neon.profile': JSON.stringify({
         credits: -50,
         unlocked: [CHEAPEST.id, 'not-a-skin'],
+        unlockedWeapons: [],
         equipped: { rifle: 'not-a-skin', knife: CHEAPEST.id },
       }),
     });

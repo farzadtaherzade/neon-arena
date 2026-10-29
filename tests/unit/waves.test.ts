@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { ENEMY, SAPPER, WAVES } from '../../src/game/config';
-import { composition, dmgBonus, speedScale, WaveDirector } from '../../src/game/waves';
+import { BOSS, ENEMY, SAPPER, WAVES } from '../../src/game/config';
+import { composition, dmgBonus, isBossWave, speedScale, WaveDirector } from '../../src/game/waves';
 
 const count = (list: string[], kind: string) => list.filter((k) => k === kind).length;
 
@@ -16,26 +16,38 @@ describe('composition', () => {
     expect(composition(3).some((k) => k === 'tank')).toBe(true);
   });
 
-  it('never exceeds the tank cap and always grows', () => {
+  it('never exceeds the tank cap and always grows — except on boss waves', () => {
     for (let n = 2; n <= 40; n++) {
       const list = composition(n);
       expect(count(list, 'tank')).toBeLessThanOrEqual(WAVES.MAX_TANKS);
-      expect(list.length).toBeGreaterThan(composition(n - 1).length);
       expect(list.length).toBeGreaterThan(0);
+      // A boss wave thins the escort instead of growing it.
+      if (!isBossWave(n)) expect(list.length).toBeGreaterThan(composition(n - 1).length);
     }
   });
 
   it('lists only real enemy kinds', () => {
     const kinds = new Set(composition(9));
-    for (const k of kinds) expect(['grunt', 'runner', 'tank', 'sapper']).toContain(k);
+    for (const k of kinds) expect(['grunt', 'runner', 'tank', 'sapper', 'warden']).toContain(k);
   });
 
   it('adds sappers from wave 5, one more every five waves after', () => {
     expect(count(composition(SAPPER.START_WAVE - 1), 'sapper')).toBe(0);
     expect(count(composition(SAPPER.START_WAVE), 'sapper')).toBe(1);
     expect(count(composition(9), 'sapper')).toBe(1);
-    expect(count(composition(10), 'sapper')).toBe(2);
-    expect(count(composition(15), 'sapper')).toBe(3);
+    expect(count(composition(11), 'sapper')).toBe(2);
+    expect(count(composition(16), 'sapper')).toBe(3);
+  });
+
+  it('sends the warden exactly on every BOSS.EVERY-th wave, at the head of a thin escort', () => {
+    expect(composition(4).some((k) => k === 'warden')).toBe(false);
+    for (const n of [BOSS.EVERY, BOSS.EVERY * 2, BOSS.EVERY * 8]) {
+      const list = composition(n);
+      expect(count(list, 'warden')).toBe(1);
+      expect(list[0]).toBe('warden');
+      // The escort stays an escort: strictly thinner than the previous wave.
+      expect(list.length - 1).toBeLessThan(composition(n - 1).length);
+    }
   });
 });
 

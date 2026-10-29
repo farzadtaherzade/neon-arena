@@ -1,5 +1,5 @@
 import { Rng } from '../core/rng';
-import { ENEMY, type EnemyKind, SAPPER, WAVES } from './config';
+import { BOSS, ENEMY, type EnemyKind, SAPPER, WAVES } from './config';
 import type { Vec2 } from './world/collision';
 
 export interface SpawnRequest {
@@ -22,6 +22,9 @@ interface Queued {
   speedScale: number;
 }
 
+/** True when wave `n` is a boss wave — the WARDEN walks in with a thin escort. */
+export const isBossWave = (n: number): boolean => n > 0 && n % BOSS.EVERY === 0;
+
 /** Enemy types for wave `n`, by count. */
 export function composition(n: number): EnemyKind[] {
   const list: EnemyKind[] = [];
@@ -37,6 +40,11 @@ export function composition(n: number): EnemyKind[] {
   if (n >= SAPPER.START_WAVE) {
     const count = 1 + Math.floor((n - SAPPER.START_WAVE) / SAPPER.EVERY_WAVES);
     for (let i = 0; i < count; i++) list.push('sapper');
+  }
+  // On a boss wave the WARDEN is the wave: it leads, and the usual mob is
+  // thinned to every other entry so the escort stays an escort.
+  if (isBossWave(n)) {
+    return ['warden', ...list.filter((_, i) => i % 2 === 1)];
   }
   return list;
 }

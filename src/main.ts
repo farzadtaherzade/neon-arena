@@ -185,6 +185,21 @@ function exposeTestApi(game: Game) {
     /** Bank XP without waiting for a pickup. */
     grantXp: (n: number) => game.grantXp(n),
 
+    /** Sweep every XP orb off the floor, so grantXp tests are deterministic. */
+    clearOrbs: () => game.clearOrbs(),
+
+    /** The perk offer standing right now (empty while playing). */
+    perkOffer: () => game.perks.offer,
+
+    /** The live boss's health, or null when no warden walks. */
+    boss: () => game.bossInfo,
+
+    /** Perk stacks by id. */
+    perks: () => game.perks.countsSnapshot(),
+
+    /** Take the offered perk at an index, as a click or the 1/2/3 keys would. */
+    pickPerk: (i: number) => game.pickPerk(i),
+
     /** The meteor shower: phase, sky tint and stones in flight. */
     meteor: () => game.meteorStats,
 
@@ -213,6 +228,15 @@ function exposeTestApi(game: Game) {
       game.settings.setVideo(patch as never);
       return game.settings.values.video;
     },
+
+    /** The arsenal: which gun is in hand and which the armory has sold. */
+    weapons: () => ({ active: game.activeWeaponId, owned: game.ownedWeaponIds() }),
+
+    /** Draw a gun by id, as a swap key would. */
+    swapWeapon: (id: string) => game.swapWeapon(id as never),
+
+    /** Unlock a gun with credits, for testing the armory. */
+    unlockWeapon: (id: string) => game.profile.buyWeapon(id as never),
 
     /** The credits wallet and the loadout. */
     profile: () => game.profile.data,

@@ -19,6 +19,12 @@ export interface InputHooks {
   onToggleSettings(): void;
   onCloseSettings(): void;
   onToggleMap(): void;
+  /** A perk-offer card picked by key (1/2/3 → index 0/1/2). */
+  onPerkSlot(index: number): void;
+  /** A weapon drawn by key (1/2/3/4 → index into WEAPON_ORDER). */
+  onWeaponSlot(index: number): void;
+  /** The wheel stepped to the next (-1) or previous (1) owned gun. */
+  onWeaponCycle(dir: 1 | -1): void;
 }
 
 export interface MoveInput {
@@ -111,6 +117,13 @@ export class Input {
       if (e.code === 'KeyR') hooks.onReload();
       if (e.code === 'KeyQ' && !e.repeat && hooks.isPlaying()) hooks.onKnife();
       if (e.code === 'KeyC') hooks.onToggleSettings();
+      if ((e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') && !e.repeat) {
+        hooks.onPerkSlot(Number(e.code.slice(-1)) - 1);
+      }
+      if (e.code.startsWith('Digit') && !e.repeat) {
+        const slot = Number(e.code.slice(-1)) - 1;
+        if (slot >= 0 && slot < 4) hooks.onWeaponSlot(slot);
+      }
       if (e.code === 'KeyM' || e.code === 'Tab') {
         // Tab would otherwise move the focus to the next control.
         e.preventDefault();
@@ -163,6 +176,16 @@ export class Input {
       if (e.button === 0) this.firing = false;
       if (e.button === 2) this.aiming = false;
     });
+
+    // The wheel cycles the arsenal: down = next gun, up = previous.
+    addEventListener(
+      'wheel',
+      (e) => {
+        if (!hooks.isPlaying()) return;
+        hooks.onWeaponCycle(e.deltaY > 0 ? 1 : -1);
+      },
+      { passive: true },
+    );
 
     addEventListener('contextmenu', (e) => e.preventDefault());
 

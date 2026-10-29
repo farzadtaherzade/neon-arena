@@ -485,6 +485,16 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
 
   // --- xp: orbs are xp, and a level up pays a repair --------------------------
+  // The bomb blast above kills mobs right next to the player, so their orbs
+  // trickle in under the magnet. Shoo the mobs away, let anything already in
+  // flight land, then sweep twice — and assert relative to what was banked,
+  // so a stray orb before the sweep cannot skew the arithmetic.
+  await page.evaluate(() => {
+    window.__NEON.teleportEnemies(80);
+    window.__NEON.clearOrbs();
+  });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.__NEON.clearOrbs());
   const xpStart = await xpStats(page);
   expect(xpStart.level).toBe(1);
   expect(xpStart.need).toBe(60);
@@ -492,7 +502,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // this run, so bank the xp directly and check the bar and the level.
   await page.evaluate(() => window.__NEON.grantXp(30));
   const xpHalf = await xpStats(page);
-  expect(xpHalf.xp).toBe(30);
+  expect(xpHalf.xp).toBe(xpStart.xp + 30);
   // The bar's width is written by the next HUD frame, and under software
   // rendering that can be a fifth of a second away — wait for the condition,
   // not a fixed tick count.
@@ -517,6 +527,12 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForTimeout(150);
   expect((await stats(page)).hp).toBeCloseTo(60, 3);
   await page.evaluate(() => window.__NEON.grantXp(30)); // crosses the threshold
+  // The level-up pauses the run behind a perk offer. Take the first card —
+  // which resumes play — and only then does the repair pay out over time.
+  await page.waitForFunction(() => (window.__NEON.perkOffer() as string[]).length > 0, undefined, {
+    timeout: 10_000,
+  });
+  await page.evaluate(() => window.__NEON.pickPerk(0));
   await page.waitForFunction(() => (window.__NEON.stats() as Stats).hp > 60, undefined, { timeout: 20_000 });
   expect((await xpStats(page)).level).toBe(2);
   expect(await page.evaluate(() => document.getElementById('xpLabel')?.textContent)).toBe('LV 2');
@@ -584,6 +600,37 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     { timeout: 90_000 },
   );
   await page.evaluate(() => window.__NEON.teleportEnemies(24));
+
+  // --- the warden walks in on the boss wave, with a top-screen bar -----------
+  await page.waitForFunction(
+    () => (window.__NEON.enemyPos() as EnemyPos[]).some((e) => e.kind === 'warden'),
+    undefined,
+    { timeout: 90_000 },
+  );
+  expect(await page.evaluate(() => document.getElementById('bossWrap')?.hidden)).toBe(false);
+  // Meteor the boss off its feet. A stone falls for 1.4 s and the warden
+  // strafes ~4 units in that time, so a single aimed stone always lands where
+  // it was — instead, walk a hexagon of stones around it every poll: the
+  // lattice re-centres faster than the warden can strafe out of it, and the
+  // blasts (radius 2 around a 1.4 ring) always clip its footprint.
+  await page.waitForFunction(
+    () => {
+      const g = window.__NEON;
+      const warden = (g.enemyPos() as EnemyPos[]).find((e) => e.kind === 'warden' && e.state === 'alive');
+      if (!warden) return true;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        g.dropStone(warden.x + Math.cos(a) * 1.4, warden.z + Math.sin(a) * 1.4);
+      }
+      return false;
+    },
+    undefined,
+    { timeout: 90_000 },
+  );
+  await page.waitForFunction(() => document.getElementById('bossWrap')?.hidden === true, undefined, {
+    timeout: 30_000,
+  });
+  await page.evaluate(() => window.__NEON.clearOrbs());
 
   const info = await renderInfo(page);
   expect(info.calls).toBeGreaterThan(0);
