@@ -12,9 +12,12 @@
 
 import { CAMERA, DEFAULT_THEME, THEMES, type ThemeId, VIDEO } from '../game/config';
 import { APP_VERSION } from '../version';
+import { loadVersioned, saveVersioned } from './versionedStore';
 
 const KEY = 'neon.settings';
 const LEGACY_KEY = 'neon.crosshair';
+/** v1 = the bare bundle (pre-envelope). v2 = the `{ v, data }` envelope. */
+const SCHEMA_VERSION = 2;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export type CrosshairShape = 'none' | 'circle' | 'triangle' | 'square' | 'diamond';
@@ -283,10 +286,10 @@ function parse(raw: string | null): unknown {
 }
 
 export function readSettings(store: Pick<Storage, 'getItem'>): SettingsBundle {
+  const current = loadVersioned(store, KEY, SCHEMA_VERSION, sanitizeAll);
+  if (current) return current;
+  // Migrate the old flat crosshair blob so an existing crosshair is not lost.
   try {
-    const current = parse(store.getItem(KEY));
-    if (current && typeof current === 'object') return sanitizeAll(current);
-    // Migrate the old flat crosshair blob so an existing crosshair is not lost.
     const legacy = rec(parse(store.getItem(LEGACY_KEY)));
     if (Object.keys(legacy).length > 0) {
       return sanitizeAll({
@@ -301,11 +304,7 @@ export function readSettings(store: Pick<Storage, 'getItem'>): SettingsBundle {
 }
 
 export function writeSettings(store: Pick<Storage, 'setItem'>, values: SettingsBundle): void {
-  try {
-    store.setItem(KEY, JSON.stringify(values));
-  } catch {
-    // Private mode / quota: the settings simply do not persist.
-  }
+  saveVersioned(store, KEY, SCHEMA_VERSION, values);
 }
 
 // -------------------------------------------------------------------- drawing

@@ -9,8 +9,11 @@
  */
 
 import { SKINS, type SkinDef, type SkinWeapon, WEAPONS, type WeaponId } from '../game/config';
+import { loadVersioned, saveVersioned } from './versionedStore';
 
 const KEY = 'neon.profile';
+/** v1 = the bare profile object (pre-envelope). v2 = the `{ v, data }` envelope. */
+const SCHEMA_VERSION = 2;
 
 export interface ProfileData {
   /** The wallet. */
@@ -32,42 +35,39 @@ export function findSkin(id: string): SkinDef | null {
   return SKINS.find((s) => s.id === id) ?? null;
 }
 
-export function readProfile(store: Pick<Storage, 'getItem'>): ProfileData {
+/** Per-field validation: anything unknown, corrupt or negative becomes a default. */
+export function sanitizeProfile(raw: unknown): ProfileData {
   const base = defaultProfile();
-  try {
-    const raw = store.getItem(KEY);
-    if (!raw) return base;
-    const p = JSON.parse(raw);
-    const known = new Set<string>(SKINS.map((s) => s.id));
-    const unlocked = Array.isArray(p?.unlocked)
-      ? p.unlocked.filter((id: unknown): id is string => typeof id === 'string' && known.has(id))
-      : [];
-    const equipped: Record<SkinWeapon, string> = { rifle: '', knife: '' };
-    for (const weapon of ['rifle', 'knife'] as const) {
-      const id = p?.equipped?.[weapon];
-      if (typeof id === 'string' && (id === '' || known.has(id))) equipped[weapon] = id;
-    }
-    const weaponIds = new Set<string>(Object.keys(WEAPONS));
-    const unlockedWeapons = Array.isArray(p?.unlockedWeapons)
-      ? p.unlockedWeapons.filter((id: unknown): id is WeaponId => typeof id === 'string' && weaponIds.has(id))
-      : [];
-    return {
-      credits: typeof p?.credits === 'number' && p.credits >= 0 ? p.credits : 0,
-      unlocked,
-      equipped,
-      unlockedWeapons,
-    };
-  } catch {
-    return base;
+  if (raw === null || typeof raw !== 'object') return base;
+  const p = raw as Record<string, unknown>;
+  const known = new Set<string>(SKINS.map((s) => s.id));
+  const unlocked = Array.isArray(p.unlocked)
+    ? p.unlocked.filter((id: unknown): id is string => typeof id === 'string' && known.has(id))
+    : [];
+  const equipped: Record<SkinWeapon, string> = { rifle: '', knife: '' };
+  const equippedRaw = typeof p.equipped === 'object' && p.equipped !== null ? p.equipped : {};
+  for (const weapon of ['rifle', 'knife'] as const) {
+    const id = (equippedRaw as Record<string, unknown>)[weapon];
+    if (typeof id === 'string' && (id === '' || known.has(id))) equipped[weapon] = id;
   }
+  const weaponIds = new Set<string>(Object.keys(WEAPONS));
+  const unlockedWeapons = Array.isArray(p.unlockedWeapons)
+    ? p.unlockedWeapons.filter((id: unknown): id is WeaponId => typeof id === 'string' && weaponIds.has(id))
+    : [];
+  return {
+    credits: typeof p.credits === 'number' && p.credits >= 0 ? p.credits : 0,
+    unlocked,
+    equipped,
+    unlockedWeapons,
+  };
+}
+
+export function readProfile(store: Pick<Storage, 'getItem'>): ProfileData {
+  return loadVersioned(store, KEY, SCHEMA_VERSION, sanitizeProfile) ?? defaultProfile();
 }
 
 export function writeProfile(store: Pick<Storage, 'setItem'>, data: ProfileData): void {
-  try {
-    store.setItem(KEY, JSON.stringify(data));
-  } catch {
-    // Storage blocked or full — the credits still count for this session.
-  }
+  saveVersioned(store, KEY, SCHEMA_VERSION, data);
 }
 
 /** The persisted wallet and loadout. */
