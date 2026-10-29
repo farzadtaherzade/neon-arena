@@ -185,6 +185,15 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(consoleErrors, consoleErrors.slice(0, 3).join('; ')).toEqual([]);
 
   // --- boot -----------------------------------------------------------------
+  // The boot build must register the whole collision registry — a theme-swap
+  // regression once left it empty and the player walked through every wall.
+  // 46 obstacles = 4 perimeter walls + 32 maze cover + reactor + 4 decks +
+  // clock tower + 4 capture masts; 4 ramps.
+  const colliders = await page.evaluate(
+    () => window.__NEON.colliders() as { obstacles: number; ramps: number },
+  );
+  expect(colliders.obstacles).toBe(46);
+  expect(colliders.ramps).toBe(4);
   await page.waitForTimeout(2500); // let the first wave spawn
   const boot = await stats(page);
   expect(boot.state).toBe('playing');

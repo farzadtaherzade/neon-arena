@@ -194,6 +194,12 @@ function exposeTestApi(game: Game) {
     /** The live boss's health, or null when no warden walks. */
     boss: () => game.bossInfo,
 
+    /** Collision registry size — the E2E asserts the boot registration happened. */
+    colliders: () => ({
+      obstacles: game.arena.collisionCount().obstacles,
+      ramps: game.arena.collisionCount().ramps,
+    }),
+
     /** Perk stacks by id. */
     perks: () => game.perks.countsSnapshot(),
 

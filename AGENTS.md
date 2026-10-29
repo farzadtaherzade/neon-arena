@@ -522,10 +522,12 @@ input sources each step (`move` vectors add, triggers OR, ADS ORs), so
   settings hook snapshots `arena.solids` before `setVideo`, removes them from
   `pick`, and re-adds the fresh list after. Forget it and every shot after a
   theme change raycasts against disposed meshes.
-- **`Arena.rebuildWorld` must not re-register collision.** The builders are
-  shared between the boot path (registers) and the rebuild path (skips, via
-  `registerCollision`). Re-registering stacks colliders; a theme change would
-  silently thicken every wall.
+- **`Arena.rebuildWorld` must not re-register collision.** Registration is
+  once-per-process: the boot build registers every collider, and theme rebuilds
+  skip by state (`collisionRegistered`), never by an unconditional flag — one
+  of those left the registry empty at boot and the player walked through every
+  wall while bullets still stopped on meshes. The smoke spec pins the boot
+  counts (46 obstacles, 4 ramps).
 - **Settings rows are namespaced by group.** The crosshair group already had a
   `bloom` key when the VIDEO tab gained one — a shared key map stole the other
   row's binding and displayed the wrong value. `buildRows` takes a per-group

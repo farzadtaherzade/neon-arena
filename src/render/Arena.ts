@@ -64,10 +64,14 @@ export class Arena {
   private theme: ThemeDef = THEMES[DEFAULT_THEME];
 
   /**
-   * False while a theme rebuild is in flight: the meshes are rebuilt from the
-   * same layout tables, so registering their AABBs again would stack colliders.
+   * False while a build is in flight when the colliders already exist: the
+   * meshes are rebuilt from the same layout tables, so registering their AABBs
+   * again would stack colliders. The FIRST build (boot) must register — see
+   * `collisionRegistered`.
    */
   private registerCollision = true;
+  /** Whether this process has registered collision at least once. */
+  private collisionRegistered = false;
 
   /** The sky. Mutated in place by `setSkyTint`, so the renderer sees the change. */
   private readonly bg = new THREE.Color(0x0c1222);
@@ -153,6 +157,11 @@ export class Arena {
 
   get rig(): { yawObj: THREE.Group; pitchObj: THREE.Group } {
     return { yawObj: this.yawObj, pitchObj: this.pitchObj };
+  }
+
+  /** Collider counts, for the headless suite's boot-registration assertion. */
+  collisionCount(): { obstacles: number; ramps: number } {
+    return { obstacles: this.collision.obstacles.length, ramps: this.collision.ramps.length };
   }
 
   /**
@@ -365,7 +374,9 @@ export class Arena {
     this.reactorRings = [];
     this.reactorCore = null;
     this.reactorLight = null;
-    this.registerCollision = false;
+    // The boot build registers every collider exactly once; theme rebuilds
+    // reuse those colliders (a theme is render-only) and must not stack them.
+    this.registerCollision = !this.collisionRegistered;
     this.floor();
     this.walls();
     this.cover();
@@ -375,6 +386,9 @@ export class Arena {
     this.clockTower();
     this.stars();
     this.registerCollision = true;
+    // A build either just registered (boot) or reused existing colliders
+    // (theme swap); either way the registry is populated from here on.
+    this.collisionRegistered = true;
     // The capture masts are not theme-styled, but their solids were cleared
     // with everything else — re-list them without re-registering collision.
     for (const pad of this.pads) this.solids.push(pad.mast);
