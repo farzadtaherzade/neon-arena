@@ -11,6 +11,7 @@
  */
 
 import { CAMERA, DEFAULT_THEME, THEMES, type ThemeId, VIDEO } from '../game/config';
+import { APP_VERSION } from '../version';
 
 const KEY = 'neon.settings';
 const LEGACY_KEY = 'neon.crosshair';
@@ -439,6 +440,7 @@ export class Settings {
     private readonly hooks: SettingsHooks,
     private readonly store: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
   ) {
+    document.getElementById('settingsVersion')!.textContent = `NEON ARENA ${APP_VERSION}`;
     this.values = readSettings(store);
     this.targets = [hudCrosshair, document.getElementById('previewCross')!];
 

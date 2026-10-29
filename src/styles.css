@@ -1443,3 +1443,13 @@ input.toggle {
   bottom: calc(130px + env(safe-area-inset-bottom));
   color: #7ce4ff;
 }
+
+/* ------------------------------------------------------------- version */
+
+.vtag {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #7f8ba0;
+  margin-top: 10px;
+}

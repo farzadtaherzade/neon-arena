@@ -1,4 +1,5 @@
 import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName } from '../game/config';
+import { APP_VERSION } from '../version';
 import { readRecord, updateRecord } from './Records';
 import type { CrosshairSettings } from './Settings';
 
@@ -92,6 +93,7 @@ export class Hud {
   private newBestBadge = $('newBestBadge');
   private bestRecord = $('bestRecord');
   private perkRow = $('perkRow');
+  private versionTag = $('versionTag');
   private bossWrap = $('bossWrap');
   private bossFill = $('bossFill');
 
@@ -113,6 +115,7 @@ export class Hud {
 
   constructor() {
     this.refreshBestRecord();
+    this.versionTag.textContent = `NEON ARENA ${APP_VERSION}`;
   }
 
   private refreshBestRecord(): void {

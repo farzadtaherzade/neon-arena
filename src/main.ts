@@ -3,6 +3,7 @@ import './styles.css';
 import { Game } from './app/Game';
 import { FixedLoop } from './core/loop';
 import { FIXED_STEP, MAX_DT, WORLD } from './game/config';
+import { APP_VERSION, versionParts } from './version';
 
 /**
  * Bootstrap: build the game, run the fixed-timestep loop, and expose the
@@ -30,7 +31,7 @@ function frame(now: number): void {
   game.render(dt);
 }
 
-console.log('[neon-arena] init ok');
+console.log(`[neon-arena] v${APP_VERSION} init ok`);
 exposeTestApi(game);
 
 requestAnimationFrame(frame);
@@ -193,6 +194,9 @@ function exposeTestApi(game: Game) {
 
     /** The live boss's health, or null when no warden walks. */
     boss: () => game.bossInfo,
+
+    /** The running version — the E2E asserts the build injected one. */
+    version: () => versionParts(),
 
     /** Collision registry size — the E2E asserts the boot registration happened. */
     colliders: () => ({
