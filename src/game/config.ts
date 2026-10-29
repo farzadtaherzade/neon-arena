@@ -323,7 +323,41 @@ export interface ThemeDef extends KitPalette {
 }
 
 export const THEMES = {
-  /** The default: a black-violet void under a magenta sun, cyan grid on the floor. */
+  /** The default: EMBER OPS — gunmetal under an amber sun, hot signal trim. */
+  ember: {
+    id: 'ember',
+    name: 'EMBER OPS',
+    sky: 0x0d0b09,
+    fogNear: 42,
+    fogFar: 190,
+    hemiSky: 0xb08a5a,
+    hemiGround: 0x2a221a,
+    hemiIntensity: 1.2,
+    ambient: 0x30281e,
+    ambientIntensity: 1.0,
+    cornerLight: 0xff8a2a,
+    cornerIntensity: 26,
+    sun: 0xffb46a,
+    sunIntensity: 2.2,
+    fill: 0x9ab4d8,
+    fillIntensity: 0.7,
+    body: 0x3a3630,
+    light: 0x6a6055,
+    dark: 0x1c1915,
+    panel: 0x8a5a1e,
+    panelDark: 0x4a2f10,
+    hazard: 0xffa01e,
+    cyan: 0xffa53a,
+    magenta: 0xff4a1e,
+    floorBase: '#131110',
+    floorPlate: '#ffa53a',
+    floorLane: '#ff8a1e',
+    floorZone: '#ffc53d',
+    star: 0xffd9a0,
+    cssAccent: '#ffb347',
+    cssDanger: '#ff3b4e',
+  },
+  /** A black-violet void under a magenta sun, cyan grid on the floor. */
   synthwave: {
     id: 'synthwave',
     name: 'SYNTHWAVE',
@@ -462,7 +496,7 @@ export const THEMES = {
 } as const satisfies Record<string, ThemeDef>;
 
 export type ThemeId = keyof typeof THEMES;
-export const DEFAULT_THEME: ThemeId = 'synthwave';
+export const DEFAULT_THEME: ThemeId = 'ember';
 
 // ------------------------------------------------------------------ skins
 

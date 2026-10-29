@@ -66,6 +66,7 @@ import { Profile } from '../ui/Profile';
 import { Settings } from '../ui/Settings';
 import { Skins } from '../ui/Skins';
 import { isTouchDevice, Touch } from '../ui/Touch';
+import { setAccent } from '../ui/theme';
 
 /** Display strings by perk id, for the offer cards and the HUD tags. */
 const PERK_BY_ID = new Map(PERK_DEFS.map((d) => [d.id, d]));
@@ -487,6 +488,7 @@ export class Game {
     const root = document.documentElement.style;
     root.setProperty('--accent', t.cssAccent);
     root.setProperty('--danger', t.cssDanger);
+    setAccent(t.cssAccent);
   }
 
   /**

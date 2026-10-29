@@ -13,6 +13,7 @@ import type { Bomb } from '../game/bomb';
 import { ENEMY_TYPES, WORLD } from '../game/config';
 import { project } from '../game/minimap';
 import { CLOCK_TOWER, OBSTACLES, PLATFORMS, RAMPS, REACTOR } from '../game/world/layout';
+import { accent } from './theme';
 
 /** Structural view of the live data, so `Game` passes its own array straight in. */
 export interface MapEnemy {
@@ -85,7 +86,7 @@ export class MapScreen {
     }
 
     // Ramps, then the decks they reach.
-    ctx.strokeStyle = '#2aa5c4';
+    ctx.strokeStyle = accent(0.75);
     ctx.lineWidth = 3;
     for (const [x, z, width, length, upX, upZ] of RAMPS) {
       const halfX = upX !== 0 ? length / 2 : width / 2;
@@ -94,7 +95,7 @@ export class MapScreen {
       const e = this.p(x + halfX, z + halfZ);
       ctx.strokeRect(c.x, c.y, e.x - c.x, e.y - c.y);
     }
-    ctx.strokeStyle = '#46e0ff';
+    ctx.strokeStyle = accent(1);
     ctx.lineWidth = 3;
     for (const [x, z, w, , d] of PLATFORMS) {
       const c = this.p(x - w / 2, z - d / 2);
@@ -150,7 +151,7 @@ export class MapScreen {
     const me = this.p(px, pz);
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
-    ctx.fillStyle = '#46e0ff';
+    ctx.fillStyle = accent(1);
     ctx.beginPath();
     ctx.moveTo(me.x + fx * 11, me.y + fz * 11);
     ctx.lineTo(me.x - fz * 7 - fx * 5, me.y + fx * 7 - fz * 5);

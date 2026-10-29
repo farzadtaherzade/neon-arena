@@ -100,7 +100,7 @@ export const CROSSHAIR_DEFAULTS: CrosshairSettings = {
   shapeSize: 26,
   outline: false,
   outlineWidth: 2,
-  color: '#46e0ff',
+  color: '#ffb347',
   outlineColor: '#000000',
   bloom: true,
   dimStill: true,

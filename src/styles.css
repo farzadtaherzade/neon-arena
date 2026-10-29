@@ -1,5 +1,7 @@
+/* The boot defaults MUST match DEFAULT_THEME.cssAccent in config.ts — Game
+   skips the theme application when the stored theme equals the default. */
 :root {
-  --accent: #46e0ff;
+  --accent: #ffb347;
   --danger: #ff3b4e;
   /* Derived from the two base accents, so a theme only has to set those. */
   --accent-soft: color-mix(in srgb, var(--accent) 72%, #fff);
@@ -211,11 +213,31 @@ canvas {
 .panel {
   position: absolute;
   font-family: Consolas, Menlo, monospace;
-  background: rgba(6, 10, 20, 0.55);
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-  backdrop-filter: blur(4px);
+  background: rgba(8, 7, 5, 0.72);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
   padding: 10px 14px;
-  border-radius: 2px;
+  border-radius: 0;
+}
+/* Tactical readout brackets: an L in two opposite corners. */
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+.panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
 }
 #stats {
   left: 24px;
@@ -511,13 +533,13 @@ canvas {
   visibility: visible;
 }
 .screen h1 {
-  font-size: 72px;
-  font-weight: 900;
-  letter-spacing: 14px;
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 10px;
   color: #fff;
-  text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 55%, transparent);
-  padding-bottom: 12px;
-  border-bottom: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 50%, transparent);
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .screen h1 span {
   color: var(--accent);
@@ -614,6 +636,7 @@ canvas {
 .btn {
   margin-top: 26px;
   padding: 11px 24px;
+  border-radius: 0;
   font-family: Consolas, Menlo, monospace;
   font-size: 12px;
   letter-spacing: 3px;

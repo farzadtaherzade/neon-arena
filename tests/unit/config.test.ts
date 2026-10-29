@@ -340,10 +340,11 @@ describe('config', () => {
   });
 
   it('paints every theme completely and legibly', () => {
-    // Four presets, unique ids, and the shipped look preserved as one of them.
-    expect(Object.keys(THEMES)).toEqual(['synthwave', 'industrial', 'toxic', 'blood']);
-    expect(new Set(Object.values(THEMES).map((t) => t.id)).size).toBe(4);
+    // Five presets, unique ids, and the shipped look preserved as one of them.
+    expect(Object.keys(THEMES)).toEqual(['ember', 'synthwave', 'industrial', 'toxic', 'blood']);
+    expect(new Set(Object.values(THEMES).map((t) => t.id)).size).toBe(5);
     expect(THEMES[DEFAULT_THEME]).toBeDefined();
+    expect(DEFAULT_THEME).toBe('ember');
 
     const numberKeys = [
       'sky',

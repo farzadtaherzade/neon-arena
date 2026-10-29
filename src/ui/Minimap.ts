@@ -1,6 +1,7 @@
 import type { Bomb } from '../game/bomb';
 import { BOMB, ENEMY_TYPES, WORLD } from '../game/config';
 import { MAP_RANGE, project } from '../game/minimap';
+import { accent } from './theme';
 
 /** Structural view of the live data, so `Game` passes its own array straight in. */
 export interface MapEnemy {
@@ -79,7 +80,7 @@ export class Minimap {
       Math.hypot(q.x - HALF_PX, q.y - HALF_PX) < HALF_PX - 3;
 
     // Arena boundary.
-    ctx.strokeStyle = 'rgba(70,224,255,0.40)';
+    ctx.strokeStyle = accent(0.4);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     let first = true;
@@ -107,7 +108,7 @@ export class Minimap {
         ctx.arc(q.x, q.y, pulse, 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.strokeStyle = t.hot ? 'rgba(255,90,70,0.9)' : 'rgba(70,224,255,0.35)';
+      ctx.strokeStyle = t.hot ? 'rgba(255,90,70,0.9)' : accent(0.35);
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.arc(q.x, q.y, 3.4, 0, Math.PI * 2);
@@ -153,7 +154,7 @@ export class Minimap {
 
     ctx.restore();
 
-    ctx.strokeStyle = 'rgba(70,224,255,0.5)';
+    ctx.strokeStyle = accent(0.5);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(HALF_PX, HALF_PX, HALF_PX - 2, 0, Math.PI * 2);
