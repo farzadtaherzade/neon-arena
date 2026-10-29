@@ -1254,47 +1254,82 @@ input.toggle {
   padding: 2px 5px;
 }
 
+/* The offer is a modal: it owns the cursor, the cards borrow it back. */
+#perkScreen {
+  cursor: default;
+}
 #perkScreen .perkbox {
   text-align: center;
-  max-width: 780px;
+  max-width: 860px;
   padding: 20px;
 }
 #perkCards {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   justify-content: center;
   margin: 26px 0 18px;
   flex-wrap: wrap;
 }
 .perk-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 9px;
-  width: 216px;
-  min-height: 150px;
+  gap: 8px;
+  width: 236px;
+  min-height: 208px;
   justify-content: center;
-  padding: 18px 16px;
+  padding: 22px 16px 18px;
   cursor: pointer;
-  background: rgba(6, 10, 20, 0.72);
+  background: rgba(6, 10, 20, 0.78);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   color: #dfe9f5;
   transition:
     border-color 0.12s,
     box-shadow 0.12s,
-    transform 0.12s;
+    transform 0.12s,
+    background 0.12s;
 }
-.perk-card:hover {
+.perk-card:hover,
+.perk-card.hl {
   border-color: var(--accent);
-  box-shadow: 0 0 26px color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, rgba(6, 10, 20, 0.82));
+  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 45%, transparent);
   transform: translateY(-3px);
 }
+.perk-card:active {
+  transform: translateY(-1px) scale(0.97);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+}
 .perk-num {
+  position: absolute;
+  top: 8px;
+  left: 8px;
   font-family: Consolas, Menlo, monospace;
   font-size: 11px;
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  padding: 2px 9px;
+  padding: 1px 7px;
+}
+.perk-icon {
+  width: 46px;
+  height: 46px;
+  display: block;
+}
+.perk-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 65%, transparent));
+  transition: filter 0.12s;
+}
+.perk-card:hover .perk-icon svg,
+.perk-card.hl .perk-icon svg {
+  filter: drop-shadow(0 0 10px var(--accent));
 }
 .perk-name {
   font-family: Consolas, Menlo, monospace;
@@ -1303,16 +1338,40 @@ input.toggle {
   color: var(--accent-soft);
   text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.perk-flavour {
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: #9aa7bd;
-}
-.perk-stacks {
+.perk-value {
   font-family: Consolas, Menlo, monospace;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1px;
-  color: #7f8ba0;
+  color: #dfe9f5;
+}
+.perk-pips {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* Phone landscape: three compact cards have to fit under the shorter title. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .perk-card {
+    width: 196px;
+    min-height: 148px;
+    padding: 14px 10px 12px;
+    gap: 5px;
+  }
+  .perk-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .perk-name {
+    font-size: 15px;
+  }
+  .perk-value {
+    font-size: 10px;
+  }
+  #perkCards {
+    gap: 10px;
+    margin: 14px 0 10px;
+  }
 }
 
 /* ------------------------------------------------------------ boss bar */
