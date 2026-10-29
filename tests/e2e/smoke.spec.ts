@@ -486,12 +486,15 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
 
   // --- xp: orbs are xp, and a level up pays a repair --------------------------
   // The bomb blast above kills mobs right next to the player, so their orbs
-  // trickle in under the magnet, and a live wave keeps dropping more. Shoo the
-  // mobs away and sweep the floor, so the banking below is the only xp in flight.
+  // trickle in under the magnet. Shoo the mobs away, let anything already in
+  // flight land, then sweep twice — and assert relative to what was banked,
+  // so a stray orb before the sweep cannot skew the arithmetic.
   await page.evaluate(() => {
     window.__NEON.teleportEnemies(80);
     window.__NEON.clearOrbs();
   });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.__NEON.clearOrbs());
   const xpStart = await xpStats(page);
   expect(xpStart.level).toBe(1);
   expect(xpStart.need).toBe(60);
@@ -499,7 +502,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // this run, so bank the xp directly and check the bar and the level.
   await page.evaluate(() => window.__NEON.grantXp(30));
   const xpHalf = await xpStats(page);
-  expect(xpHalf.xp).toBe(30);
+  expect(xpHalf.xp).toBe(xpStart.xp + 30);
   // The bar's width is written by the next HUD frame, and under software
   // rendering that can be a fifth of a second away — wait for the condition,
   // not a fixed tick count.
@@ -605,14 +608,20 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     { timeout: 90_000 },
   );
   expect(await page.evaluate(() => document.getElementById('bossWrap')?.hidden)).toBe(false);
-  // Meteor the boss off its feet: stones land for 60 a hit wherever they drop,
-  // so raining them on the warden is a deterministic kill the suite can wait on.
+  // Meteor the boss off its feet. A stone falls for 1.4 s and the warden
+  // strafes ~4 units in that time, so a single aimed stone always lands where
+  // it was — instead, walk a hexagon of stones around it every poll: the
+  // lattice re-centres faster than the warden can strafe out of it, and the
+  // blasts (radius 2 around a 1.4 ring) always clip its footprint.
   await page.waitForFunction(
     () => {
       const g = window.__NEON;
       const warden = (g.enemyPos() as EnemyPos[]).find((e) => e.kind === 'warden' && e.state === 'alive');
       if (!warden) return true;
-      g.dropStone(warden.x, warden.z);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        g.dropStone(warden.x + Math.cos(a) * 1.4, warden.z + Math.sin(a) * 1.4);
+      }
       return false;
     },
     undefined,
