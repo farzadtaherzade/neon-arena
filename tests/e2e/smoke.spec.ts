@@ -673,7 +673,8 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   const clamped = await setCrosshair(page, { lineLen: 9999, shape: 'nope', color: 'red' });
   expect(clamped.lineLen).toBe(30);
   expect(clamped.shape).toBe('none');
-  expect(clamped.color).toBe('#46e0ff');
+  // Junk clamps to the default crosshair colour — the ember default.
+  expect(clamped.color).toBe('#ffb347');
 
   await page.keyboard.press('KeyC');
   await page.waitForTimeout(200);
@@ -682,7 +683,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
   expect(openVisible).toBe(true);
   const preview = await crosshair(page);
-  expect(preview.color).toBe('#46e0ff');
+  expect(preview.color).toBe('#ffb347');
 
   // --- the panel has three tabs, and the other two are their own -----------
   const tabs = await page.evaluate(() => ({
