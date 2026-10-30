@@ -1,7 +1,7 @@
 {
   "name": "neon-arena",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "allowScripts": {
     "@opencode/cli": true,
@@ -16,7 +16,8 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "release": "npm version && git push --follow-tags"
   },
   "dependencies": {
     "three": "^0.170.0"

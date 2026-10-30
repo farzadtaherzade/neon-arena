@@ -544,6 +544,26 @@ input sources each step (`move` vectors add, triggers OR, ADS ORs), so
   the shower's schedule and lands exactly where it is told, so the E2E kills
   the warden by raining stones on its position instead of waiting on a fight.
 
+## Releases and versions
+
+`package.json` is the single version source: vite injects it plus the short
+git hash as `__APP_VERSION__`, the menu and settings footer display it, and
+`__NEON.version()` hands it to the suite. To cut a release: bump the version
+(`npm version minor|patch`), add a matching `CHANGELOG.md` entry, run the full
+gates, then `npm run release` (which pushes the tag). `version.test.ts` fails
+when package.json and the changelog disagree.
+
+- **The storage version lives outside the payload.** `neon.settings`,
+  `neon.profile` and `neon.record` persist as `{ v, data }` through
+  `ui/versionedStore.ts`; both sanitisers strip unknown fields, so a version
+  field inside the bundle would not survive a round trip. Bare payloads read
+  as v1; a payload newer than this build is sanitized best-effort and never
+  written back.
+- **The stylesheet `:root` tokens must track `DEFAULT_THEME`.** Boot with the
+  stored theme equal to the default never runs the apply path, so the CSS
+  defaults, the default crosshair colour and `ui/theme.ts`'s canvas accent all
+  read the default theme — change them together.
+
 ## Freeze / pause recovery notes
 
 - `Input` now holds a short delay on `pointerlockchange` failure before pausing,

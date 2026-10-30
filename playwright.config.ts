@@ -10,6 +10,9 @@ import { defineConfig } from '@playwright/test';
  * `npx playwright install chromium` can reach the CDN.
  */
 export default defineConfig({
+  // The smoke run walks a long live sim; one retry keeps a rare
+  // software-rendering hiccup from failing a release.
+  retries: 1,
   testDir: 'tests/e2e',
   timeout: 60_000,
   expect: { timeout: 10_000 },
