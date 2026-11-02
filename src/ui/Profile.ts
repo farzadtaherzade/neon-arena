@@ -8,7 +8,7 @@
  * (private windows, a full disk) and a shop must never break the game.
  */
 
-import { SKINS, type SkinDef, type SkinWeapon, WEAPONS, type WeaponId } from '../game/config';
+import { SKIN_WEAPONS, SKINS, type SkinDef, type SkinWeapon, WEAPONS, type WeaponId } from '../game/config';
 import { loadVersioned, saveVersioned } from './versionedStore';
 
 const KEY = 'neon.profile';
@@ -27,7 +27,12 @@ export interface ProfileData {
 }
 
 export function defaultProfile(): ProfileData {
-  return { credits: 0, unlocked: [], equipped: { rifle: '', knife: '' }, unlockedWeapons: [] };
+  return {
+    credits: 0,
+    unlocked: [],
+    equipped: Object.fromEntries(SKIN_WEAPONS.map((w) => [w, ''])) as Record<SkinWeapon, string>,
+    unlockedWeapons: [],
+  };
 }
 
 /** The skin with this id, or null. */
@@ -44,9 +49,9 @@ export function sanitizeProfile(raw: unknown): ProfileData {
   const unlocked = Array.isArray(p.unlocked)
     ? p.unlocked.filter((id: unknown): id is string => typeof id === 'string' && known.has(id))
     : [];
-  const equipped: Record<SkinWeapon, string> = { rifle: '', knife: '' };
+  const equipped = Object.fromEntries(SKIN_WEAPONS.map((w) => [w, ''])) as Record<SkinWeapon, string>;
   const equippedRaw = typeof p.equipped === 'object' && p.equipped !== null ? p.equipped : {};
-  for (const weapon of ['rifle', 'knife'] as const) {
+  for (const weapon of SKIN_WEAPONS) {
     const id = (equippedRaw as Record<string, unknown>)[weapon];
     if (typeof id === 'string' && (id === '' || known.has(id))) equipped[weapon] = id;
   }

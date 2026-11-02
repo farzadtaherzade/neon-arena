@@ -500,10 +500,13 @@ export const DEFAULT_THEME: ThemeId = 'ember';
 
 // ------------------------------------------------------------------ skins
 
-export type SkinWeapon = 'rifle' | 'knife';
+export type SkinWeapon = 'rifle' | 'knife' | 'smg' | 'scatter' | 'dmr';
+export const SKIN_WEAPONS: readonly SkinWeapon[] = ['rifle', 'knife', 'smg', 'scatter', 'dmr'];
 /** The rifle skin swaps the optic; the knife skin swaps the blade. */
 export type RifleOptic = 'iron' | 'reddot' | 'holo' | 'scope';
 export type KnifeBlade = 'straight' | 'cleaver' | 'saw' | 'hook';
+/** Guns without a swappable part wear their palette straight. */
+export type GunSkinPart = 'standard';
 
 export interface SkinPalette {
   readonly metal: number;
@@ -519,7 +522,7 @@ export interface SkinDef {
   readonly flavour: string;
   readonly price: number;
   readonly palette: SkinPalette;
-  readonly part: RifleOptic | KnifeBlade;
+  readonly part: RifleOptic | KnifeBlade | GunSkinPart;
 }
 
 /** What the weapons look like before anything is bought. */
@@ -607,6 +610,33 @@ export const SKINS = [
     price: 4500,
     palette: { metal: 0x1d1f26, dark: 0x0d0e12, glow: 0xff3ba8, hazard: 0xff3ba8 },
     part: 'hook',
+  },
+  {
+    id: 'midnight-smg',
+    weapon: 'smg',
+    name: 'MIDNIGHT SMG',
+    flavour: 'The blacked-out run-and-gun. It never catches the light.',
+    price: 1200,
+    palette: { metal: 0x2a3350, dark: 0x151a28, glow: 0x46e0ff, hazard: 0x8f6bff },
+    part: 'standard',
+  },
+  {
+    id: 'scrap-scatter',
+    weapon: 'scatter',
+    name: 'SCRAP SCATTER',
+    flavour: 'Depot paint on a depot gun. It kicks like the price suggests.',
+    price: 1200,
+    palette: { metal: 0x6a6f78, dark: 0x353a42, glow: 0xffc53d, hazard: 0xff8a1e },
+    part: 'standard',
+  },
+  {
+    id: 'void-dmr',
+    weapon: 'dmr',
+    name: 'VOID DMR',
+    flavour: 'A barrel that long should hum. It only whispers.',
+    price: 2500,
+    palette: { metal: 0x1d1f26, dark: 0x0d0e12, glow: 0xff3ba8, hazard: 0xff3ba8 },
+    part: 'standard',
   },
 ] as const satisfies readonly SkinDef[];
 

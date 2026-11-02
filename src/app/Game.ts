@@ -53,6 +53,7 @@ import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
 import { KnifeView } from '../render/Knife';
+import { MAT } from '../render/Materials';
 import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
 import { DmrView, ScatterView, SmgView } from '../render/ViewModels';
@@ -782,6 +783,7 @@ export class Game {
     if (id === this.weaponId || !this.ownedWeaponIds().includes(id)) return false;
     this.weaponId = id;
     this.sfx.swap();
+    this.applyShotTint();
     return true;
   }
 
@@ -824,10 +826,21 @@ export class Game {
     return equipped;
   }
 
-  /** Wear the equipped skins. */
+  /** Wear the equipped skins, and tint the shots to match the gun in hand. */
   private applySkins(): void {
     this.gun.applySkin(this.profile.equippedSkin('rifle'));
     this.knifeView.applySkin(this.profile.equippedSkin('knife'));
+    for (const id of ['smg', 'scatter', 'dmr'] as const) {
+      this.gunById[id].applySkin(this.profile.equippedSkin(id));
+    }
+    this.applyShotTint();
+  }
+
+  /** The gun in hand decides what its shots look like. */
+  private applyShotTint(): void {
+    const skin = this.profile.equippedSkin(this.weaponId);
+    this.fx.setTracerTint(skin?.palette.glow ?? 0xffd27a);
+    MAT.muzzleFlash().color.setHex(skin?.palette.glow ?? 0xffd27a);
   }
 
   private killEnemy(enemy: Enemy, headshot: boolean): void {

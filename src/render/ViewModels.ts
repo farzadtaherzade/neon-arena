@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Rng } from '../core/rng';
-import { CAMERA, STANDARD_SKIN, WEAPON } from '../game/config';
+import { CAMERA, type SkinDef, STANDARD_SKIN, WEAPON } from '../game/config';
 import { MAT } from './Materials';
 
 /**
@@ -87,6 +87,15 @@ abstract class ViewModel {
       rx?: number,
     ) => THREE.Mesh,
   ): void;
+
+  /** Wear a skin: recolor the four slots. Guns have no swappable part. */
+  applySkin(skin: SkinDef | null): void {
+    const palette = skin?.palette ?? STANDARD_SKIN;
+    this.slots.metal.color.setHex(palette.metal);
+    this.slots.dark.color.setHex(palette.dark);
+    this.slots.glow.color.setHex(palette.glow);
+    this.slots.hazard.color.setHex(palette.hazard);
+  }
 
   show(on: boolean): void {
     this.group.visible = on;

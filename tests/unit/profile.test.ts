@@ -25,7 +25,7 @@ describe('readProfile', () => {
     const data = {
       credits: 120,
       unlocked: [CHEAPEST.id],
-      equipped: { rifle: CHEAPEST.id, knife: '' },
+      equipped: { rifle: CHEAPEST.id, knife: '', smg: '', scatter: '', dmr: '' },
       unlockedWeapons: [],
     };
     writeProfile(store, data);

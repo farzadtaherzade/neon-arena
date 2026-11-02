@@ -10,17 +10,19 @@
  */
 
 import {
+  type GunSkinPart,
   type KnifeBlade,
   type RifleOptic,
   SKINS,
   type SkinDef,
+  type SkinWeapon,
   WEAPON_ORDER,
   WEAPONS,
   type WeaponId,
 } from '../game/config';
 import type { ProfileData } from './Profile';
 
-const PART_NAMES: Record<RifleOptic | KnifeBlade, string> = {
+const PART_NAMES: Record<RifleOptic | KnifeBlade | GunSkinPart, string> = {
   iron: 'IRON SIGHTS',
   reddot: 'RED DOT',
   holo: 'HOLO SIGHT',
@@ -29,6 +31,15 @@ const PART_NAMES: Record<RifleOptic | KnifeBlade, string> = {
   cleaver: 'CLEAVER',
   saw: 'SAW BLADE',
   hook: 'HOOK BLADE',
+  standard: 'STANDARD FIT',
+};
+
+const WEAPON_NAMES: Record<SkinWeapon, string> = {
+  rifle: 'RIFLE',
+  knife: 'KNIFE',
+  smg: 'SMG',
+  scatter: 'SCATTERGUN',
+  dmr: 'DMR',
 };
 
 export interface SkinsHooks {
@@ -43,7 +54,13 @@ export interface SkinsHooks {
 }
 
 export class Skins {
-  private list = document.getElementById('skinList')!;
+  private lists: Record<SkinWeapon, HTMLElement> = {
+    rifle: document.getElementById('skinListRifles')!,
+    knife: document.getElementById('skinListBlades')!,
+    smg: document.getElementById('skinListGuns')!,
+    scatter: document.getElementById('skinListGuns')!,
+    dmr: document.getElementById('skinListGuns')!,
+  };
   private balance = document.getElementById('creditBalance')!;
   private armory = document.getElementById('armoryList')!;
   private cards: { skin: SkinDef; root: HTMLElement; button: HTMLButtonElement }[] = [];
@@ -107,7 +124,7 @@ export class Skins {
       name.textContent = skin.name;
       const weapon = document.createElement('span');
       weapon.className = 'skweap';
-      weapon.textContent = skin.weapon === 'rifle' ? 'RIFLE' : 'KNIFE';
+      weapon.textContent = WEAPON_NAMES[skin.weapon];
       head.append(name, weapon);
 
       const flavour = document.createElement('div');
@@ -141,7 +158,7 @@ export class Skins {
       foot.append(part, price, button);
 
       root.append(head, flavour, chips, foot);
-      this.list.appendChild(root);
+      this.lists[skin.weapon].appendChild(root);
       this.cards.push({ skin, root, button });
     }
   }

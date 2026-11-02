@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+
+/** The standard-issue tracer warm; skins recolor it. */
+const TRACER_TINT = 0xffd27a;
+
 import type { Rng } from '../core/rng';
 import { FX } from '../game/config';
 import type { BurstOpts } from '../game/fx';
@@ -46,7 +50,7 @@ export class Fx {
         new THREE.BufferAttribute(new Float32Array(6), 3).setUsage(THREE.DynamicDrawUsage),
       );
       const mat = new THREE.LineBasicMaterial({
-        color: 0xffd27a,
+        color: TRACER_TINT,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -66,6 +70,11 @@ export class Fx {
 
   fire(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): void {
     this.tracers.fire(a, b);
+  }
+
+  /** The equipped skin's glow — every tracer in flight wears it. */
+  setTracerTint(hex: number): void {
+    for (const { mat } of this.lines) mat.color.setHex(hex);
   }
 
   update(dt: number): void {

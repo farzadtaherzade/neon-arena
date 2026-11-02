@@ -707,6 +707,14 @@ canvas {
   font-size: 26px;
   letter-spacing: 8px;
 }
+.sbox h4 {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--accent);
+  margin: 18px 0 8px;
+  opacity: 0.85;
+}
 .sbox h3 {
   margin: 18px 0 8px;
   font-family: Consolas, Menlo, monospace;

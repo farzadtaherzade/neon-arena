@@ -449,10 +449,16 @@ describe('config', () => {
   });
 
   it('keeps the shop coherent', () => {
-    // Four rifle skins and four knife skins, every id unique.
-    expect(SKINS).toHaveLength(8);
+    // Four rifle + four knife themes and one skin per extra gun, every id unique.
+    expect(SKINS).toHaveLength(11);
     expect(SKINS.filter((s) => s.weapon === 'rifle')).toHaveLength(4);
     expect(SKINS.filter((s) => s.weapon === 'knife')).toHaveLength(4);
+    for (const gun of ['smg', 'scatter', 'dmr'] as const) {
+      expect(
+        SKINS.filter((s) => s.weapon === gun),
+        gun,
+      ).toHaveLength(1);
+    }
     expect(new Set(SKINS.map((s) => s.id)).size).toBe(SKINS.length);
     // Every skin is named, priced and has a part the viewmodel can build.
     for (const skin of SKINS) {
@@ -460,10 +466,13 @@ describe('config', () => {
       expect(skin.flavour.length).toBeGreaterThan(0);
       expect(skin.price).toBeGreaterThan(0);
       if (skin.weapon === 'rifle') expect(['iron', 'reddot', 'holo', 'scope']).toContain(skin.part);
-      else expect(['straight', 'cleaver', 'saw', 'hook']).toContain(skin.part);
+      else if (skin.weapon === 'knife') expect(['straight', 'cleaver', 'saw', 'hook']).toContain(skin.part);
+      else expect(skin.part).toBe('standard');
     }
-    // The four tiers, cheapest first.
-    const prices = [...new Set(SKINS.map((s) => s.price))].sort((a, b) => a - b);
+    // The rifle tiers, cheapest first.
+    const prices = [...new Set(SKINS.filter((s) => s.weapon === 'rifle').map((s) => s.price))].sort(
+      (a, b) => a - b,
+    );
     expect(prices).toEqual([300, 900, 2000, 4500]);
     // Every palette colour is a real colour, and the two weapons of a theme match.
     for (const skin of SKINS) {
