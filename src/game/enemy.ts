@@ -179,6 +179,14 @@ export class Enemy {
     this.reachPad = ENEMY.REACH_PAD * this.scale;
   }
 
+  /** Apply the difficulty knob once at spawn — the last word on base stats. */
+  applyDifficulty(hp: number, speed: number, dmg: number): void {
+    this.stats.maxHp *= hp;
+    this.stats.hp *= hp;
+    this.stats.speed *= speed;
+    this.stats.dmg *= dmg;
+  }
+
   flash(hex: number, duration: number): void {
     this.flashHex = hex;
     this.flashT = Math.max(this.flashT, duration);

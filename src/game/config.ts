@@ -1074,6 +1074,21 @@ export const FX = {
   TRACER_OPACITY: 0.9,
 } as const;
 
+/**
+ * Difficulty multipliers, chosen on the menu. They scale the enemies' base
+ * HP/damage/speed at spawn and every credit payout; XP and score stay put so
+ * leveling pace and the leaderboard shape do not swing with the knob.
+ */
+export const DIFFICULTIES = {
+  easy: { name: 'EASY', hp: 0.75, dmg: 0.75, speed: 0.9, credits: 0.8 },
+  normal: { name: 'NORMAL', hp: 1, dmg: 1, speed: 1, credits: 1 },
+  hard: { name: 'HARD', hp: 1.4, dmg: 1.3, speed: 1.08, credits: 1.35 },
+} as const;
+
+export type DifficultyId = keyof typeof DIFFICULTIES;
+export const DIFFICULTY_IDS: readonly DifficultyId[] = ['easy', 'normal', 'hard'];
+export const DEFAULT_DIFFICULTY: DifficultyId = 'normal';
+
 export const START_HP = 100;
 export const MAX_DT = 0.05;
 export const FIXED_STEP = 1 / 60;

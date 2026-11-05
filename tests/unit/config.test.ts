@@ -8,7 +8,10 @@ import {
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_DIFFICULTY,
   DEFAULT_THEME,
+  DIFFICULTIES,
+  DIFFICULTY_IDS,
   ENEMY,
   ENEMY_LOOKS,
   ENEMY_TYPES,
@@ -274,6 +277,17 @@ describe('config', () => {
       expect(value, kind).toBeGreaterThan(0);
     }
     expect(XP.VALUE.tank).toBeGreaterThan(XP.VALUE.grunt);
+  });
+
+  it('keeps the difficulty knobs ordered', () => {
+    expect(DIFFICULTY_IDS).toEqual(['easy', 'normal', 'hard']);
+    expect(DEFAULT_DIFFICULTY).toBe('normal');
+    // Normal is the identity: everything else scales around it.
+    for (const key of ['hp', 'dmg', 'speed', 'credits'] as const) {
+      expect(DIFFICULTIES.normal[key], key).toBe(1);
+      expect(DIFFICULTIES.easy[key], key).toBeLessThan(DIFFICULTIES.normal[key]);
+      expect(DIFFICULTIES.hard[key], key).toBeGreaterThan(DIFFICULTIES.normal[key]);
+    }
   });
 
   it('keeps the perk offers sane', () => {

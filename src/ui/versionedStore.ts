@@ -20,12 +20,15 @@
 export type VersionedReader = Pick<Storage, 'getItem'>;
 export type VersionedWriter = Pick<Storage, 'setItem'>;
 
-/** Read `key`, migrate and sanitize. Null when absent or corrupt. */
+/** Read `key`, migrate and sanitize. Null when absent or corrupt.
+ *  `migrate` transforms older payloads forward; it never runs on v-latest
+ *  data or on a newer version's payload. */
 export function loadVersioned<T>(
   store: VersionedReader,
   key: string,
   latest: number,
   sanitize: (raw: unknown) => T,
+  migrate?: (data: unknown, fromVersion: number) => unknown,
 ): T | null {
   let parsed: unknown;
   try {
@@ -41,7 +44,7 @@ export function loadVersioned<T>(
   const version = typeof o.v === 'number' && 'data' in o ? o.v : 1;
   const data = 'data' in o ? o.data : parsed;
   if (version > latest) return sanitize(data);
-  return sanitize(data);
+  return sanitize(migrate && version < latest ? migrate(data, version) : data);
 }
 
 /** Stamp `data` with the latest schema version and write it. */

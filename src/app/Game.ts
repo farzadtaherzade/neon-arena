@@ -15,7 +15,11 @@ import {
   CAMERA,
   CAPTURE,
   CREDITS,
+  DEFAULT_DIFFICULTY,
   DEFAULT_THEME,
+  DIFFICULTIES,
+  DIFFICULTY_IDS,
+  type DifficultyId,
   ENEMY,
   FEEDBACK,
   type GameState,
@@ -110,6 +114,8 @@ export class Game {
   readonly perks = new Perks();
   /** What full integrity is this run — PLATING raises it above `START_HP`. */
   maxHp = START_HP;
+  /** The difficulty knob, read at spawn and on every payout. */
+  difficulty: DifficultyId = DEFAULT_DIFFICULTY;
   /** The random sky event: a meteor shower that drops rocks around the player. */
   readonly shower = new MeteorShower();
   aliveCount = 0;
@@ -453,6 +459,19 @@ export class Game {
     };
 
     document.getElementById('menuDeploy')!.addEventListener('click', () => this.start(false));
+    // The difficulty pick lives on the menu, persists in the profile, and
+    // decides how hard the mobs hit before the first wave starts.
+    for (const btn of document.querySelectorAll('#difficultyPick [data-diff]')) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-diff') as DifficultyId;
+        if (!DIFFICULTY_IDS.includes(id)) return;
+        this.setDifficulty(id);
+      });
+    }
+    this.difficulty = this.profile.data.difficulty;
+    this.hud.setDifficulty(this.difficulty);
+    this.paintDifficulty();
     document.getElementById('menuControls')!.addEventListener('click', (e) => {
       e.stopPropagation();
       document.getElementById('menuKeys')!.toggleAttribute('hidden');
@@ -486,6 +505,20 @@ export class Game {
     this.hud.setVisible(false);
     this.hud.showScreen(SCREEN.MENU);
     this.music.stop();
+  }
+
+  /** The menu's difficulty pick: persist it and repaint the selection. */
+  setDifficulty(id: DifficultyId): void {
+    this.difficulty = id;
+    this.profile.setDifficulty(id);
+    this.hud.setDifficulty(id);
+    this.paintDifficulty();
+  }
+
+  private paintDifficulty(): void {
+    for (const btn of document.querySelectorAll('#difficultyPick [data-diff]')) {
+      btn.classList.toggle('on', btn.getAttribute('data-diff') === this.difficulty);
+    }
   }
 
   /** Paint the HUD and menus in the arena theme's two accents. */
@@ -863,7 +896,10 @@ export class Game {
     // SCAVENGER fattens the drop.
     this.weapon.addAmmo(Math.round(AMMO.DROP[enemy.kind] * this.perks.ammoDropMul));
     // A knife kill pays the same as a gun kill.
-    this.profile.addCredits(CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0));
+    const creditMul = DIFFICULTIES[this.difficulty].credits;
+    this.profile.addCredits(
+      Math.round((CREDITS.KILL[enemy.kind] + (headshot ? CREDITS.HEADSHOT : 0)) * creditMul),
+    );
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
@@ -1147,7 +1183,7 @@ export class Game {
       // Added, not replaced: a level-up repair mid-payout has to survive the
       // capture. The START_HP cap below keeps the pool from overhealing.
       this.healLeft += CAPTURE.HEAL;
-      this.profile.addCredits(CREDITS.CAPTURE);
+      this.profile.addCredits(Math.round(CREDITS.CAPTURE * DIFFICULTIES[this.difficulty].credits));
       this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
       this.sfx.xpCollect();
     }
@@ -1362,6 +1398,8 @@ export class Game {
         req.speedScale,
         dmgBonus(this.waves.wave),
       );
+      const diff = DIFFICULTIES[this.difficulty];
+      enemy.applyDifficulty(diff.hp, diff.speed, diff.dmg);
       const view = new EnemyView(enemy);
       view.addTo(this.arena.scene);
       this.pick.add(view.body, view.head);
@@ -1397,7 +1435,7 @@ export class Game {
 
     if (result.cleared && !this.waveClearPending) {
       this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
-      this.profile.addCredits(CREDITS.WAVE);
+      this.profile.addCredits(Math.round(CREDITS.WAVE * DIFFICULTIES[this.difficulty].credits));
       this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
       this.sfx.wave();
       this.waveClearPending = true;

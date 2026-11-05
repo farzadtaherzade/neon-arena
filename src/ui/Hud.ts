@@ -1,4 +1,12 @@
-import { BOMB, CAMERA, FEEDBACK, SCREEN, type ScreenName } from '../game/config';
+import {
+  BOMB,
+  CAMERA,
+  DEFAULT_DIFFICULTY,
+  type DifficultyId,
+  FEEDBACK,
+  SCREEN,
+  type ScreenName,
+} from '../game/config';
 import { APP_VERSION } from '../version';
 import { readRecord, updateRecord } from './Records';
 import type { CrosshairSettings } from './Settings';
@@ -113,13 +121,22 @@ export class Hud {
   private last: Record<string, unknown> = {};
   private bannerTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** The difficulty the best-record line reads — Game updates it on the pick. */
+  private difficulty: DifficultyId = DEFAULT_DIFFICULTY;
+
   constructor() {
     this.refreshBestRecord();
     this.versionTag.textContent = `NEON ARENA ${APP_VERSION}`;
   }
 
+  /** Follow the menu's difficulty pick and re-read the best line. */
+  setDifficulty(d: DifficultyId): void {
+    this.difficulty = d;
+    this.refreshBestRecord();
+  }
+
   private refreshBestRecord(): void {
-    const rec = readRecord();
+    const rec = readRecord(this.difficulty);
     this.bestRecord.textContent = rec.score > 0 ? `BEST  SCORE ${rec.score}  ·  WAVE ${rec.wave}` : '';
   }
 
@@ -376,7 +393,7 @@ export class Hud {
 
   setFinalStats(stats: { score: number; wave: number; kills: number }): void {
     this.finalStats.innerHTML = `SCORE <b>${stats.score}</b> &nbsp;·&nbsp; WAVE <b>${stats.wave}</b> &nbsp;·&nbsp; KILLS <b>${stats.kills}</b>`;
-    const { isNew } = updateRecord({ score: stats.score, wave: stats.wave });
+    const { isNew } = updateRecord({ score: stats.score, wave: stats.wave }, this.difficulty);
     this.newBestBadge.style.display = isNew ? 'block' : 'none';
     this.refreshBestRecord();
   }

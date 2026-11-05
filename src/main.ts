@@ -195,6 +195,10 @@ function exposeTestApi(game: Game) {
     /** The live boss's health, or null when no warden walks. */
     boss: () => game.bossInfo,
 
+    /** The difficulty knob, and a way for the suite to turn it. */
+    difficulty: () => game.difficulty,
+    setDifficulty: (id: string) => game.setDifficulty(id as never),
+
     /** The running version — the E2E asserts the build injected one. */
     version: () => versionParts(),
 

@@ -27,6 +27,7 @@ describe('readProfile', () => {
       unlocked: [CHEAPEST.id],
       equipped: { rifle: CHEAPEST.id, knife: '', smg: '', scatter: '', dmr: '' },
       unlockedWeapons: [],
+      difficulty: 'normal' as const,
     };
     writeProfile(store, data);
     expect(readProfile(store)).toEqual(data);

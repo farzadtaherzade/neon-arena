@@ -8,7 +8,17 @@
  * (private windows, a full disk) and a shop must never break the game.
  */
 
-import { SKIN_WEAPONS, SKINS, type SkinDef, type SkinWeapon, WEAPONS, type WeaponId } from '../game/config';
+import {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTY_IDS,
+  type DifficultyId,
+  SKIN_WEAPONS,
+  SKINS,
+  type SkinDef,
+  type SkinWeapon,
+  WEAPONS,
+  type WeaponId,
+} from '../game/config';
 import { loadVersioned, saveVersioned } from './versionedStore';
 
 const KEY = 'neon.profile';
@@ -18,6 +28,8 @@ const SCHEMA_VERSION = 2;
 export interface ProfileData {
   /** The wallet. */
   credits: number;
+  /** The last difficulty the player deployed on — the menu's starting pick. */
+  difficulty: DifficultyId;
   /** The ids of the skins the player owns. */
   unlocked: string[];
   /** One equipped skin per weapon; an empty id is the standard issue. */
@@ -32,6 +44,7 @@ export function defaultProfile(): ProfileData {
     unlocked: [],
     equipped: Object.fromEntries(SKIN_WEAPONS.map((w) => [w, ''])) as Record<SkinWeapon, string>,
     unlockedWeapons: [],
+    difficulty: DEFAULT_DIFFICULTY,
   };
 }
 
@@ -64,6 +77,9 @@ export function sanitizeProfile(raw: unknown): ProfileData {
     unlocked,
     equipped,
     unlockedWeapons,
+    difficulty: DIFFICULTY_IDS.includes(p.difficulty as DifficultyId)
+      ? (p.difficulty as DifficultyId)
+      : DEFAULT_DIFFICULTY,
   };
 }
 
@@ -96,6 +112,12 @@ export class Profile {
 
   owns(id: string): boolean {
     return this.data.unlocked.includes(id);
+  }
+
+  /** Remember the menu's difficulty pick. */
+  setDifficulty(id: DifficultyId): void {
+    this.data.difficulty = id;
+    this.save();
   }
 
   ownsWeapon(id: WeaponId): boolean {
