@@ -135,7 +135,12 @@ export class Game {
   private readonly gunById: Record<WeaponId, GunView | SmgView | ScatterView | DmrView>;
   private knifeView = new KnifeView();
   /** The level-up perk offer screen; visible only while an offer stands. */
-  private perkScreen = new PerkScreen({ onPick: (id) => this.pickPerkId(id) });
+  /** One reroll token per run: spends on the offer screen, gone for good. */
+  private rerolls = 1;
+  private perkScreen = new PerkScreen({
+    onPick: (id) => this.pickPerkId(id),
+    onReroll: () => this.rerollOffer(),
+  });
   /** The knife: a cone in front of the player, on its own cooldown. */
   readonly knife = new Knife();
   /** Reused: the mobs a knife swing caught this frame. */
@@ -587,6 +592,7 @@ export class Game {
     this.healLeft = 0;
     this.meter.reset();
     this.perks.reset();
+    this.rerolls = 1;
     this.applyPerks();
     this.perkScreen.hide();
     this.hud.setPerkTags([]);
@@ -1039,7 +1045,17 @@ export class Game {
    */
   private offerPerks(): void {
     if (this.perks.isOffering) return;
-    const offer = this.perks.makeOffer(this.rng);
+    this.showOffer(this.perks.makeOffer(this.rng));
+  }
+
+  /** Regenerate the standing offer — the reroll token's whole job. */
+  private rerollOffer(): void {
+    if (this.rerolls <= 0 || !this.perks.isOffering) return;
+    this.rerolls--;
+    this.showOffer(this.perks.makeOffer(this.rng));
+  }
+
+  private showOffer(offer: readonly PerkId[]): void {
     if (offer.length === 0) return;
     this.state = STATE.PAUSED;
     this.input.firing = false;
@@ -1052,9 +1068,11 @@ export class Game {
           id,
           name: def?.name ?? id.toUpperCase(),
           flavour: def?.flavour ?? '',
+          tag: def?.tag ?? 'utility',
           stacks: this.perks.count(id),
         };
       }),
+      this.rerolls > 0,
     );
     // Clicking a card needs the cursor back, exactly like the map does.
     this.input.release();

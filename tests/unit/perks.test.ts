@@ -44,6 +44,27 @@ describe('Perks', () => {
     expect(perks.count('overclock')).toBe(PERKS.STACK_MAX);
   });
 
+  it('leans the first offer slot toward the dominant tag', () => {
+    const perks = new Perks();
+    perks.take('overclock');
+    perks.take('adrenaline');
+    expect(perks.dominantTag()).toBe('mobility');
+    for (let i = 0; i < 30; i++) {
+      const offer = perks.makeOffer(rng);
+      const first = offer[0];
+      if (!first) continue;
+      const def = PERK_DEFS.find((d) => d.id === first);
+      expect(def?.tag, first).toBe('mobility');
+    }
+  });
+
+  it('stays unleaned on a tag tie', () => {
+    const perks = new Perks();
+    perks.take('overclock'); // mobility
+    perks.take('heavy'); // firepower
+    expect(perks.dominantTag()).toBeNull();
+  });
+
   it('multiplies exactly per stack, and resets clean', () => {
     const perks = new Perks();
     perks.take('overclock');

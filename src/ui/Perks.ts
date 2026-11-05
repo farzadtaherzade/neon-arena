@@ -1,17 +1,26 @@
-import { PERK_DEFS, PERKS, type PerkId } from '../game/config';
+import { PERK_DEFS, PERKS, type PerkId, type PerkTag } from '../game/config';
 
 /** One card on the perk screen: the perk, what it does, what the player owns. */
 export interface PerkCard {
   id: PerkId;
   name: string;
   flavour: string;
+  tag: PerkTag;
   /** Stacks already owned, before this pick. */
   stacks: number;
 }
 
 export interface PerkScreenHooks {
   onPick(id: PerkId): void;
+  /** Spend the run's reroll token; the caller regenerates the offer. */
+  onReroll(): void;
 }
+
+const TAG_COLORS: Record<PerkTag, string> = {
+  mobility: '#7ce4ff',
+  firepower: '#ff8a5a',
+  utility: '#7dffb8',
+};
 
 /**
  * Inline-SVG icon per perk — inner markup for a 24×24 stroke drawing, in the
@@ -86,11 +95,21 @@ export class PerkScreen {
   private highlight = 0;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
-  constructor(private readonly hooks: PerkScreenHooks) {}
+  constructor(private readonly hooks: PerkScreenHooks) {
+    document.getElementById('perkReroll')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.hooks.onReroll();
+    });
+  }
 
-  show(level: number, offer: readonly PerkCard[]): void {
+  show(level: number, offer: readonly PerkCard[], canReroll: boolean): void {
     if (!this.root || !this.title || !this.cards) return;
     this.title.textContent = `LEVEL ${level}`;
+    const reroll = document.getElementById('perkReroll') as HTMLButtonElement | null;
+    if (reroll) {
+      reroll.hidden = !canReroll;
+      reroll.disabled = !canReroll;
+    }
     this.offerIds = offer.map((p) => p.id);
     this.highlight = 0;
     this.cards.replaceChildren();
@@ -114,6 +133,12 @@ export class PerkScreen {
       name.className = 'perk-name';
       name.textContent = perk.name;
 
+      const tag = document.createElement('span');
+      tag.className = 'perk-tag';
+      tag.textContent = perk.tag.toUpperCase();
+      tag.style.color = TAG_COLORS[perk.tag];
+      tag.style.borderColor = TAG_COLORS[perk.tag];
+
       const value = document.createElement('span');
       value.className = 'perk-value';
       value.textContent = perkValueLine(perk.id, perk.stacks);
@@ -126,7 +151,7 @@ export class PerkScreen {
         pips.appendChild(pip);
       }
 
-      card.append(num, icon, name, value, pips);
+      card.append(num, icon, name, tag, value, pips);
       card.addEventListener('click', (e) => {
         e.stopPropagation();
         this.hooks.onPick(perk.id);

@@ -1,5 +1,5 @@
 import type { Rng } from '../core/rng';
-import { PERK_DEFS, PERKS, type PerkId } from './config';
+import { PERK_DEFS, PERKS, type PerkId, type PerkTag } from './config';
 
 /**
  * The perks a run has banked, and what they multiply.
@@ -37,13 +37,52 @@ export class Perks {
   }
 
   /**
+   * The tag the player has invested in most, or null at 0–0 ties. Ties stay
+   * unleaned: a build should earn its pull.
+   */
+  dominantTag(): PerkTag | null {
+    const totals = new Map<PerkTag, number>();
+    for (const def of PERK_DEFS) {
+      totals.set(def.tag, (totals.get(def.tag) ?? 0) + this.count(def.id));
+    }
+    let best: PerkTag | null = null;
+    let bestCount = 0;
+    let ties = 0;
+    for (const [tag, n] of totals) {
+      if (n > bestCount) {
+        best = tag;
+        bestCount = n;
+        ties = 1;
+      } else if (n === bestCount && n > 0) {
+        ties++;
+      }
+    }
+    return ties > 1 ? null : best;
+  }
+
+  /**
    * Build the next offer: `OFFER_COUNT` distinct perks the player may still
    * stack. A pool that shrank below the offer size (late game, everything
-   * maxed) offers what is left; an empty pool offers nothing.
+   * maxed) offers what is left; an empty pool offers nothing. The first slot
+   * leans toward the player's dominant tag when there is one — a build should
+   * feel like it is going somewhere.
    */
   makeOffer(rng: Rng): readonly PerkId[] {
     const pool = PERK_DEFS.map((d) => d.id).filter((id) => this.count(id) < PERKS.STACK_MAX);
     const offer: PerkId[] = [];
+
+    const dominant = this.dominantTag();
+    const leanPool =
+      dominant == null ? [] : pool.filter((id) => PERK_DEFS.find((d) => d.id === id)?.tag === dominant);
+    if (leanPool.length > 0) {
+      const i = Math.floor(rng.next() * leanPool.length);
+      const pick = leanPool[i];
+      if (pick) {
+        offer.push(pick);
+        pool.splice(pool.indexOf(pick), 1);
+      }
+    }
+
     while (offer.length < PERKS.OFFER_COUNT && pool.length > 0) {
       const i = Math.floor(rng.next() * pool.length);
       const pick = pool.splice(i, 1)[0];

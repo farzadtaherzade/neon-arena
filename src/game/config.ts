@@ -1001,15 +1001,18 @@ export const PERKS = {
   AMMO_DROP: 0.5,
 } as const;
 
+/** What a perk is for — offers lean toward the tags the player already took. */
+export type PerkTag = 'mobility' | 'firepower' | 'utility';
+
 export const PERK_DEFS = [
-  { id: 'overclock', name: 'OVERCLOCK', flavour: 'MOVE 15% FASTER' },
-  { id: 'lightmag', name: 'LIGHT MAG', flavour: 'RELOAD 25% FASTER' },
-  { id: 'plating', name: 'PLATING', flavour: '+25 MAX INTEGRITY, REPAIRED NOW' },
-  { id: 'adrenaline', name: 'ADRENALINE', flavour: 'STAMINA REGENERATES 30% FASTER' },
-  { id: 'heavy', name: 'HEAVY ROUNDS', flavour: 'BULLETS DEAL 15% MORE DAMAGE' },
-  { id: 'magnet', name: 'MAGNET', flavour: 'XP ORBS REACH 60% FARTHER' },
-  { id: 'coolant', name: 'COOLANT', flavour: 'BLOOM GROWS 30% SLOWER' },
-  { id: 'scavenger', name: 'SCAVENGER', flavour: 'MOBS DROP 50% MORE AMMO' },
+  { id: 'overclock', name: 'OVERCLOCK', flavour: 'MOVE 15% FASTER', tag: 'mobility' },
+  { id: 'lightmag', name: 'LIGHT MAG', flavour: 'RELOAD 25% FASTER', tag: 'firepower' },
+  { id: 'plating', name: 'PLATING', flavour: '+25 MAX INTEGRITY, REPAIRED NOW', tag: 'utility' },
+  { id: 'adrenaline', name: 'ADRENALINE', flavour: 'STAMINA REGENERATES 30% FASTER', tag: 'mobility' },
+  { id: 'heavy', name: 'HEAVY ROUNDS', flavour: 'BULLETS DEAL 15% MORE DAMAGE', tag: 'firepower' },
+  { id: 'magnet', name: 'MAGNET', flavour: 'XP ORBS REACH 60% FARTHER', tag: 'utility' },
+  { id: 'coolant', name: 'COOLANT', flavour: 'BLOOM GROWS 30% SLOWER', tag: 'firepower' },
+  { id: 'scavenger', name: 'SCAVENGER', flavour: 'MOBS DROP 50% MORE AMMO', tag: 'utility' },
 ] as const;
 
 export type PerkId = (typeof PERK_DEFS)[number]['id'];

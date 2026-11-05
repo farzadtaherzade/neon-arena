@@ -1369,6 +1369,19 @@ input.toggle {
   color: var(--accent-soft);
   text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
 }
+.perk-tag {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  border: 1px solid;
+  padding: 1px 6px;
+}
+.perk-reroll-row {
+  margin-bottom: 6px;
+}
+#perkReroll[hidden] {
+  display: none;
+}
 .perk-value {
   font-family: Consolas, Menlo, monospace;
   font-size: 12px;
