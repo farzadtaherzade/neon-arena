@@ -29,6 +29,8 @@ export interface HudModel {
   /** Distance to the nearest live bomb, and its remaining fuse. */
   bombDist: number;
   bombFuse: number;
+  /** Seconds of poison left from a witch's potion; 0 means clean. */
+  poison: number;
   /** Deck capture hold progress 0..1, and whether the player is on the pad. */
   captureProgress: number;
   captureOn: boolean;
@@ -88,6 +90,8 @@ export class Hud {
   private finalStats = $('finalStats');
   private bombWarn = $('bombWarn');
   private bombWarnText = $('bombWarnText');
+  private poisonWarn = $('poisonWarn');
+  private poisonWarnText = $('poisonWarnText');
   private capture = $('capture');
   private captureFill = $('captureFill');
   private newBestBadge = $('newBestBadge');
@@ -199,6 +203,7 @@ export class Hud {
     this.vignette.style.opacity = '0';
     this.reloadBar.style.opacity = '0';
     this.bombWarn.classList.remove('on');
+    this.poisonWarn.classList.remove('on');
     this.capture.classList.remove('on');
     this.scopeRing.classList.remove('on');
     this.xpBar.classList.remove('levelup');
@@ -341,6 +346,7 @@ export class Hud {
 
     this.setCrosshair(model.bloom, model.bloomMax, model.moving, settings);
     this.setThreat(model.bombDist, model.bombFuse);
+    this.setPoison(model.poison);
     this.setCapture(model.captureOn, model.captureProgress);
   }
 
@@ -371,6 +377,21 @@ export class Hud {
     if (this.last.threatText !== label) {
       this.last.threatText = label;
       this.bombWarnText.textContent = label;
+    }
+  }
+
+  /** Violet pulse plus a countdown while a witch's poison is in the blood. */
+  setPoison(seconds: number): void {
+    const on = seconds > 0;
+    if (this.last.poisonOn !== on) {
+      this.last.poisonOn = on;
+      this.poisonWarn.classList.toggle('on', on);
+    }
+    if (!on) return;
+    const label = `☠ POISON ${seconds.toFixed(0)}s`;
+    if (this.last.poisonText !== label) {
+      this.last.poisonText = label;
+      this.poisonWarnText.textContent = label;
     }
   }
 

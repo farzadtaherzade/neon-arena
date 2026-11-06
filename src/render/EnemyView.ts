@@ -115,8 +115,21 @@ export class EnemyView {
       g.position.y -= crouch * 0.16 * this.enemy.scale;
 
       // The sapper's bomb rack lights up just before it plants; the warden's
-      // racks light up before a volley.
-      const tell = this.enemy.kind === 'warden' ? this.enemy.volleyK : this.enemy.bombTell;
+      // racks light up before a volley; the creeper's face burns as its fuse
+      // runs; the witch and the blinker glow before a potion and a blink; the
+      // colossus's seams ember before the charge.
+      const tell =
+        this.enemy.kind === 'warden'
+          ? this.enemy.volleyK
+          : this.enemy.kind === 'creeper'
+            ? this.enemy.fuseK
+            : this.enemy.kind === 'witch'
+              ? this.enemy.potionK
+              : this.enemy.kind === 'blinker'
+                ? this.enemy.blinkK
+                : this.enemy.kind === 'colossus'
+                  ? this.enemy.pounceK
+                  : this.enemy.bombTell;
       if (tell !== this.lastTell) {
         this.lastTell = tell;
         this.glowMat.color.copy(this.baseGlow).lerp(TELL_COLOR, tell);

@@ -42,7 +42,8 @@ src/game/        simulation — pure logic, no Three.js, no DOM
   minimap.ts     world→radar projection (pure maths)
   fx.ts          particle + tracer pools
   touch.ts       touch stick maths: dead zone, rim clamp, auto-sprint
-  world/         collision.ts (AABB + ramp height fields), layout.ts (arena constants)
+  world/         collision.ts (AABB + ramp height fields), layout.ts (authored arena),
+                 chunks.ts (infinite-crawl chunk generation, pure)
 src/render/      everything that owns meshes
   Arena.ts       renderer, scene, camera rig, lights, floor, walls, cover
   CapturePad.ts  the live deck's ring, progress disc and beacon beam
@@ -105,13 +106,15 @@ src/main.ts      bootstrap, fixed-step loop, test API
 
 ## The map: 84×84 maze, four gatehouse decks
 
-The floor is 84×84 of dense maze — one quadrant of cover mirrored four ways, a
+The **authored chunk** — chunk (0,0) of the infinite crawl (see below) — is 84×84
+of dense maze: one quadrant of cover mirrored four ways, a
 magenta reactor at the centre as the landmark every lane is navigated by, and
 four gatehouse decks on the **mid-edges, never the corners**. Each deck is
 reached by exactly one ramp and carries a capture pad plus an alarm mast. This
 is the only terrain that is not a flat box, and it touches collision, player
 movement, enemy AI and the renderer at once — so the whole contract is spelled
-out here.
+out here. Every invariant in this section is unit-pinned for the authored
+tables and re-asserted for generated districts in `tests/unit/chunks.test.ts`.
 
 ### The design intent
 
@@ -195,15 +198,18 @@ they cannot climb a platform side.
 
 ### Deck capture
 
-The reward that makes high ground worth the walk. One platform per wave carries
-a live pad; standing on it for `CAPTURE.HOLD_T` seconds banks a heal-over-time
-(`CAPTURE.HEAL` HP over `HEAL_T`), then that deck cools down for
-`CAPTURE.COOLDOWN`.
+The reward that makes high ground worth the walk. The live pad is the **nearest
+deck whose cooldown has expired**; standing on it for `CAPTURE.HOLD_T` seconds
+banks a heal-over-time (`CAPTURE.HEAL` HP over `HEAL_T`), then that deck cools
+down for `CAPTURE.COOLDOWN`.
 
-- `src/game/capture.ts` is pure and owns rotation, hold progress and cooldowns.
-  The live deck is **derived** (`(wave − 1) % 4`) rather than set explicitly, so
-  it cannot desync from the HUD's wave counter — including when the wave
-  advances inside `WaveDirector` instead of `beginWave()`.
+- `src/game/capture.ts` is pure and owns pad registration, the hold timer and
+  the per-deck cooldowns. The live deck is **derived** — nearest available, with
+  a tie broken by registration order — rather than set explicitly. Deck
+  districts register and unregister through `CapturePoints.addDeck/removeDeck`
+  as their chunks stream; cooldowns ride parallel arrays and the active index
+  follows removals. When every pad is cooling there is no live pad (no beam, no
+  hold).
 - Progress *drains* at `CAPTURE.DECAY` per second off the pad rather than
   resetting, so a bomb that forces you off costs progress but not the attempt.
 - The pad checks `feetY >= deck.y − CAPTURE.RISE` as well as XZ radius, so
@@ -222,8 +228,59 @@ which towers see hostiles inside `ALARM.RADIUS`; the class holds the state for
 once instead of every frame. The beacon reads that state — red and fast-pulsing
 while hot, amber on the live deck, dim cyan on the other three — and the minimap
 pulses a ring there. Break the edge detection and the siren screams non-stop;
-break the hold and it strobes whenever a mob steps behind cover.
+break the hold and it strobes whenever a mob steps behind cover. Towers are
+**id-keyed, not indexed**: deck districts stream their masts in and out with
+their chunks, so `TowerAlarm` keeps its state in Maps keyed by tower id and a
+departed tower's state simply goes idle.
 
+
+### The infinite crawl: streaming world, deck districts, the Colossus
+
+The world is **infinite**. The authored arena is chunk (0,0); everything else
+is generated on demand. The design contract lives in
+`docs/superpowers/specs/2026-11-01-infinite-crawl-design.md`; the short form:
+
+- **Chunks are pure functions of `(cx, cz, runSeed)`.** `game/world/chunks.ts`
+  returns a chunk's cover tables (and, for ~1-in-5 wilds chunks, a deck
+  district) from a seeded Rng — no persistence anywhere. Unloading discards the
+  meshes; walking back regenerates the identical chunk. The outer 3 units of
+  every generated chunk are cover-free, so the world can never seal a route.
+- **Streaming lives in `Game.ensureChunks()`**: a 5×5 window of 84-unit chunks
+  re-centres when the player crosses a chunk boundary, builds at most one chunk
+  per frame (synchronously when within `CRAWL.EMERGENCY_AHEAD` of the loaded
+  boundary), and unloads past `CRAWL.UNLOAD_RADIUS` — hysteresis on purpose.
+  Each chunk registers its colliders under its own collision **region**
+  (`collision.addObstacle/addRamp(..., region)`, `removeRegion`) and retracts
+  them on unload. The hard safety net is a player clamp to the loaded square
+  (`loadedBounds`) in `Game.step()` — the boundary is deep in the fog, so it is
+  invisible.
+- **There are no perimeter walls.** The old `resolveCircle` arena clamp is
+  gone (the constructor takes no half-size), and `plantBomb`/meteor targets no
+  clamp to ±HALF — every target is player-relative. `SpatialHash` keys wrap
+  bitwise, so the broadphase works anywhere.
+- **A district is a dungeon**: deck + ramp + capture pad + alarm mast inside a
+  compound ring of tall slabs with two gaps as gates, all authored per chunk in
+  `buildChunk()` and streamed by `Arena.loadChunk/unloadChunk` (which also
+  create/dispose the district's `CapturePad`). The ramp's high edge lands
+  exactly on its deck face — the authored invariant, re-asserted per generated
+  district in `chunks.test.ts`.
+- **The Colossus guards each district.** The first time the player starts a
+  hold on a *wild* pad, `Game.summonGuardian()` spawns a distance-scaled
+  `colossus` (a real enemy kind — own model, charge tell, quake slam that is
+  the one mob whose slam ignores the height gate, front armour like the
+  tank's). The capture hold pauses **at full** while any live colossus is
+  within `COLOSSUS.GATE_RADIUS` of the pad — the gate is spatial and
+  stateless, so it survives chunk unload and two districts gate independently.
+- **The crawl has a curve.** `WaveDirector` tracks a smoothed heading from the
+  player's own motion and biases `SPAWN_BIAS` of ring angles into
+  `SPAWN_BIAS_ARC` around it; `distScale(crawlDist(x, z))` multiplies the
+  per-spawn HP and damage bonuses. All knobs are `WAVES`/`CRAWL`/`COLOSSUS`
+  groups in `config.ts`.
+- The sky follows the player: `Arena.followPlayer()` re-centres the starfield,
+  the sun and its shadow ortho, and repositions the four corner lamps to the
+  current chunk's corners. A theme swap rebuilds streamed chunks too — chunk
+  tables survive in `Arena.chunks`, meshes rebuild with `register=false` so
+  colliders never stack.
 
 ### Arena themes
 
@@ -270,11 +327,12 @@ the escort stays an escort. It refuses to close: inside `KEEP_MIN..KEEP_MAX`
 it circles and lobs `VOLLEY_ROCKETS` rockets on a tell, and slams like a tank
 (slam reach scales with its bulk) only when something gets under its feet. A
 player on a deck is besieged like any other mob while the rockets reach over
-the wall. Rockets are the sapper's bomb pipeline with a `heavy` flag —
-`plantBomb(..., heavy)` builds a faster, smaller, lighter `Bomb`, so shooting
-a rocket out of the air stays the same deliberate act as defusing a bomb.
-`HudModel.boss` drives the top-screen bar; it hides the moment no live warden
-walks.
+the wall. Rockets ride the sapper's bomb pipeline through its **variant** flag —
+`plantBomb(..., 'rocket')` builds a faster, smaller, lighter `Bomb` (the
+creeper's `'blast'` and the witch's `'potion'` ride the same parameter), so
+shooting a rocket out of the air stays the same deliberate act as defusing a
+bomb. `HudModel.boss` drives the top-screen bar; it hides the moment no live
+warden — or Colossus — walks.
 
 ### The arsenal
 
@@ -358,7 +416,8 @@ The game has a headless entry point for automation:
   `setAmmo(mag, reserve)`, `knife()`, `swingKnife()`, `perkOffer()`,
   `pickPerk(i)`, `perks()`, `clearOrbs()`, `boss()`, `weapons()`,
   `swapWeapon(id)`, `unlockWeapon(id)`, `profile()`,
-  `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`.
+  `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`,
+  `chunks()` — `{ loaded, pending, colliders }` for the streaming assertions.
   `ammo()` reads the gun in hand, so it stays per-active-weapon.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
@@ -374,7 +433,12 @@ so the spec re-declares the shapes it uses.
   under the `SpatialHash` cell width (2 units) or separation silently misses
   neighbours. `config.test.ts` asserts this.
 - Adding to `ENEMY_TYPES` means touching `WAVES.HP_PER_WAVE`, `composition()`,
-  and the `Object.entries(ENEMY_TYPES)` assertions in `config.test.ts`.
+  and the `Object.entries(ENEMY_TYPES)` assertions in `config.test.ts` — plus
+  `ENEMY_LOOKS` (≥2 skins), `ENEMY.TURN_RATE`, `CREDITS.KILL`, `AMMO.DROP` and
+  `XP.VALUE`; a new kind also needs a `MobModel` builder **and an entry in
+  `mobWarmup()`**, or its first spawn reads as a GPU leak in the smoke test.
+  Kinds that never appear in `composition()` (the colossus) still need every
+  map — the parity assertions are mechanical.
 - Orbs are XP, not score: `Game.updateXps()` feeds `XpMeter`, and a level up pays
   `XP_LEVEL.HEAL` through the same `healLeft` pool the capture uses.
 - The meteor shower is pure in `game/meteor.ts`; `Game` supplies the ground
@@ -527,7 +591,18 @@ input sources each step (`move` vectors add, triggers OR, ADS ORs), so
   skip by state (`collisionRegistered`), never by an unconditional flag — one
   of those left the registry empty at boot and the player walked through every
   wall while bullets still stopped on meshes. The smoke spec pins the boot
-  counts (46 obstacles, 4 ramps).
+  counts for **region 0 only** (`collisionCount()` reads
+  `countRegion(0)`): 42 obstacles, 4 ramps — the four perimeter walls are gone
+  with the infinite world, and streamed chunks register under their own
+  regions.
+- **Chunks are pure, so they are never persisted.** Never add save-state to
+  `chunks.ts`; determinism from `(cx, cz, runSeed)` is what makes unload/reload
+  free. `runSeed` is fixed under `?test` — that is what makes the E2E's
+  collider counts deterministic.
+- **The leak assertion tolerates one-time uploads.** The smoke GPU check allows
+  `|Δ| ≤ 2` geometries/textures between kill batches — a first bomb view or a
+  first district effect uploads once and stays; a real per-kill leak shows up
+  as +2 **per kill**, far outside the band.
 - **Settings rows are namespaced by group.** The crosshair group already had a
   `bloom` key when the VIDEO tab gained one — a shared key map stole the other
   row's binding and displayed the wrong value. `buildRows` takes a per-group

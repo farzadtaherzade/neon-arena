@@ -14,11 +14,16 @@ import type { Enemy } from './enemy';
  */
 
 const CELL = 2;
-/** Arena spans ±30, so ±64 cells is more than enough; keeps the key collision-free. */
-const KEY_OFFSET = 64;
-const KEY_SPAN = 129;
+/**
+ * Keys wrap bitwise so the grid works in an infinite world: unique within
+ * ±512 cells (±1024 units) of the origin, and beyond that two far-apart cells
+ * can share a key — harmless, because the population clusters around the
+ * player and neighbours are always truly adjacent in space.
+ */
+const KEY_SPAN = 1024;
 
-const cellKey = (cx: number, cz: number): number => (cx + KEY_OFFSET) * KEY_SPAN + (cz + KEY_OFFSET);
+const cellKey = (cx: number, cz: number): number =>
+  ((cx + KEY_SPAN / 2) & (KEY_SPAN - 1)) * KEY_SPAN + ((cz + KEY_SPAN / 2) & (KEY_SPAN - 1));
 
 /** Reused so the neighbour scan never allocates. */
 const EMPTY: readonly Enemy[] = [];

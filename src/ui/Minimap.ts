@@ -1,5 +1,5 @@
 import type { Bomb } from '../game/bomb';
-import { BOMB, ENEMY_TYPES, WORLD } from '../game/config';
+import { BOMB, ENEMY_TYPES } from '../game/config';
 import { MAP_RANGE, project } from '../game/minimap';
 import { accent } from './theme';
 
@@ -13,6 +13,8 @@ export interface MapEnemy {
  * so the array is allocated once and mutated rather than rebuilt.
  */
 export interface MapTower {
+  /** Stable id — authored towers `a0..a3`, districts their chunk key. */
+  readonly id: string;
   readonly x: number;
   readonly z: number;
   hot: boolean;
@@ -21,14 +23,6 @@ export interface MapTower {
 const SIZE = 168;
 const HALF_PX = SIZE / 2;
 const SCALE = SIZE / (2 * MAP_RANGE);
-
-/** The four arena corners, in draw order. */
-const CORNERS: readonly (readonly [number, number])[] = [
-  [-WORLD.HALF, -WORLD.HALF],
-  [WORLD.HALF, -WORLD.HALF],
-  [WORLD.HALF, WORLD.HALF],
-  [-WORLD.HALF, WORLD.HALF],
-];
 
 const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
 
@@ -78,23 +72,6 @@ export class Minimap {
     const at = (wx: number, wz: number) => project(px, pz, yaw, wx, wz, SIZE);
     const visible = (q: { x: number; y: number }): boolean =>
       Math.hypot(q.x - HALF_PX, q.y - HALF_PX) < HALF_PX - 3;
-
-    // Arena boundary.
-    ctx.strokeStyle = accent(0.4);
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    let first = true;
-    for (const corner of CORNERS) {
-      const q = at(corner[0], corner[1]);
-      if (first) {
-        ctx.moveTo(q.x, q.y);
-        first = false;
-      } else {
-        ctx.lineTo(q.x, q.y);
-      }
-    }
-    ctx.closePath();
-    ctx.stroke();
 
     // Watchtowers: a steady blip, pulsing red while their alarm is up.
     for (const t of towers) {

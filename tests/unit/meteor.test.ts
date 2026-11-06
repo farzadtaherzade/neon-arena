@@ -110,7 +110,7 @@ describe('MeteorShower', () => {
     expect(shower.stones.length).toBe(0);
   });
 
-  it('never lands a stone outside the arena', () => {
+  it('aims every stone at a ring around the player, wherever that is', () => {
     const shower = new MeteorShower();
     const far = { x: 10_000, z: 10_000 };
     const dt = 1 / 60;
@@ -119,7 +119,13 @@ describe('MeteorShower', () => {
     for (let i = 0; i < n; i++) {
       step(shower, dt, far, rng);
     }
-    expect(shower.stones.length).toBe(0);
+    // The world is infinite: the shower follows the player instead of giving up.
+    expect(shower.stones.length).toBeGreaterThan(0);
+    for (const stone of shower.stones) {
+      const d = Math.hypot(stone.impact.x - far.x, stone.impact.z - far.z);
+      expect(d).toBeGreaterThanOrEqual(METEOR.TARGET_MIN - 0.01);
+      expect(d).toBeLessThanOrEqual(METEOR.TARGET_MAX + 0.01);
+    }
   });
 
   it('ramps the sky tint in, holds it, then lets it decay', () => {

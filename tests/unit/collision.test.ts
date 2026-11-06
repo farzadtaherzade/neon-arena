@@ -39,13 +39,31 @@ const rampBoxes = (): Ramp[] =>
   });
 
 describe('CollisionWorld.resolveCircle', () => {
-  it('keeps a circle inside the arena walls', () => {
+  it('leaves a circle far outside every collider alone — the world has no edge', () => {
     const w = new CollisionWorld();
     const p = { x: 999, z: -999 };
     w.resolveCircle(p, WORLD.PLAYER_R);
-    const b = WORLD.HALF - WORLD.WALL_INSET - WORLD.PLAYER_R;
-    expect(p.x).toBe(b);
-    expect(p.z).toBe(-b);
+    expect(p).toEqual({ x: 999, z: -999 });
+  });
+
+  it('retracts a region: removing a chunk takes its colliders out of every query', () => {
+    const w = new CollisionWorld();
+    w.addObstacle({ minX: 4, maxX: 6, minZ: -1, maxZ: 1 }, 3, 7);
+    w.addRamp({ minX: 10, maxX: 12, minZ: -1, maxZ: 1, lowY: 0, highY: 2, upX: 1, upZ: 0 }, 7);
+    const inside = { x: 5, z: 0 };
+    w.resolveCircle(inside, 0.45);
+    expect(inside.x).toBeLessThan(4); // pushed out while the region is loaded
+
+    w.removeRegion(7);
+    const freed = { x: 5, z: 0 };
+    w.resolveCircle(freed, 0.45);
+    expect(freed).toEqual({ x: 5, z: 0 }); // nothing left to push against
+    expect(w.obstacles).toHaveLength(0);
+    expect(w.ramps).toHaveLength(0);
+    // The authored region survives a chunk unload.
+    w.addObstacle({ minX: 4, maxX: 6, minZ: -1, maxZ: 1 }, 3, 0);
+    w.removeRegion(7);
+    expect(w.obstacles).toHaveLength(1);
   });
 
   it('leaves a circle that touches nothing alone', () => {

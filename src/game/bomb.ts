@@ -2,6 +2,13 @@ import { BOMB } from './config';
 import type { Vec3 } from './player';
 
 /**
+ * What flavour of explosive this is. `bomb` is the sapper's standard issue;
+ * the variants ride the same pipeline with their own fuse, radius and damage
+ * (see `BOSS.ROCKET_*`, `CREEPER.BLAST_*`, `WITCH.POTION_*`).
+ */
+export type BombVariant = 'bomb' | 'rocket' | 'blast' | 'potion';
+
+/**
  * A planted bomb: a position, a fuse, and a blast radius.
  *
  * Pure — it counts down and reports detonation; `Game` owns the damage and
@@ -20,6 +27,7 @@ export class Bomb {
     readonly radius: number = BOMB.RADIUS,
     /** Damage the blast deals the player, before falloff. */
     readonly playerDmg: number = BOMB.PLAYER_DMG,
+    readonly variant: BombVariant = 'bomb',
   ) {
     this.pos.x = x;
     this.pos.z = z;

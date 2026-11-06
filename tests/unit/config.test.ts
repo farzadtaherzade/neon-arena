@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   ALARM,
   AMMO,
+  BLINKER,
   BLOOM,
   BOMB,
   BOSS,
   CAMERA,
   CAPTURE,
+  COLOSSUS,
   CREDITS,
+  CREEPER,
   DEFAULT_THEME,
   ENEMY,
   ENEMY_LOOKS,
@@ -36,6 +39,7 @@ import {
   WEAPON_ORDER,
   WEAPONS,
   type WeaponDef,
+  WITCH,
   WORLD,
   XP,
   XP_LEVEL,
@@ -220,6 +224,55 @@ describe('config', () => {
     expect(BOSS.ROCKET_RADIUS).toBeLessThan(BOMB.RADIUS);
     expect(BOSS.ROCKET_PLAYER_DMG).toBeGreaterThan(0);
     expect(BOSS.ROCKET_PLAYER_DMG).toBeLessThan(BOMB.PLAYER_DMG);
+  });
+
+  it('keeps the creeper, witch and blinker tuning sane', () => {
+    expect(CREEPER.START_WAVE).toBeGreaterThan(1);
+    // Backing off must be a real escape: the cancel ring sits outside the trigger.
+    expect(CREEPER.CANCEL_DIST).toBeGreaterThan(CREEPER.TRIGGER_DIST);
+    expect(CREEPER.FUSE).toBeGreaterThan(CREEPER.TELL);
+    // The creeper's blast is the big one: worse than a sapper bomb, quicker fuse.
+    expect(CREEPER.BLAST_DMG).toBeGreaterThan(BOMB.PLAYER_DMG);
+    expect(CREEPER.BLAST_RADIUS).toBeGreaterThan(BOMB.RADIUS);
+    expect(CREEPER.BLAST_FUSE).toBeLessThan(BOMB.FUSE);
+
+    expect(WITCH.START_WAVE).toBeGreaterThan(CREEPER.START_WAVE);
+    expect(WITCH.MAX_WITCHES).toBeGreaterThanOrEqual(1);
+    expect(WITCH.POTION_RADIUS).toBeLessThan(BOMB.RADIUS);
+    expect(WITCH.POTION_FUSE).toBeLessThan(BOMB.FUSE);
+    expect(WITCH.POISON_T).toBeGreaterThan(0);
+    expect(WITCH.POISON_DPS).toBeGreaterThan(0);
+    expect(WITCH.HEAL).toBeGreaterThan(0);
+    expect(WITCH.HEAL_RADIUS).toBeGreaterThan(0);
+
+    // The blink lands close enough to menace, and never from closer than it.
+    expect(BLINKER.LAND_MIN).toBeLessThan(BLINKER.LAND_MAX);
+    expect(BLINKER.BLINK_MIN).toBeGreaterThan(BLINKER.LAND_MAX);
+    expect(BLINKER.BLINK_T).toBeGreaterThan(BLINKER.TELL);
+
+    for (const tell of [CREEPER.TELL, WITCH.TELL, BLINKER.TELL]) expect(tell).toBeGreaterThan(0);
+  });
+
+  it('keeps the colossus guardian and the crawl curve sane', () => {
+    const guardian = ENEMY_TYPES.colossus;
+    // A boss: above a tank, below the warden.
+    expect(guardian.hp).toBeGreaterThan(ENEMY_TYPES.tank.hp);
+    expect(guardian.hp).toBeLessThan(ENEMY_TYPES.warden.hp);
+    expect(guardian.scale).toBeGreaterThan(ENEMY_TYPES.tank.scale);
+
+    expect(COLOSSUS.SLAM_R).toBeGreaterThan(ENEMY.REACH_PAD);
+    expect(COLOSSUS.SLAM_MULT).toBeGreaterThan(1);
+    expect(COLOSSUS.CHARGE_MAX).toBeGreaterThan(COLOSSUS.CHARGE_MIN);
+    expect(COLOSSUS.CHARGE_COOLDOWN).toBeGreaterThan(COLOSSUS.CHARGE_T + COLOSSUS.RECOVER_T);
+    expect(COLOSSUS.GATE_RADIUS).toBeGreaterThan(COLOSSUS.SLAM_R);
+    expect(ENEMY_TYPES.colossus.dmg * COLOSSUS.SLAM_MULT).toBeLessThan(START_HP);
+
+    // The crawl curve: distance helps the mobs, the bias never covers the ring.
+    expect(WAVES.DIST_GAIN).toBeGreaterThan(0);
+    expect(WAVES.DIST_SCALE_MAX).toBeGreaterThan(1);
+    expect(WAVES.SPAWN_BIAS).toBeGreaterThan(0);
+    expect(WAVES.SPAWN_BIAS).toBeLessThan(1);
+    expect(WAVES.SPAWN_BIAS_ARC).toBeLessThan(Math.PI / 2);
   });
 
   it('gives every enemy kind at least two cosmetic looks', () => {

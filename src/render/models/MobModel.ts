@@ -72,6 +72,10 @@ const LAYOUT: Record<EnemyKind, BodyLayout> = {
   tank: { bodyY: 1.04, headY: 1.57, hipX: 0.25, hipY: 0.66, shoulderX: 0.56, shoulderY: 1.3 },
   sapper: { bodyY: 1.0, headY: 1.53, hipX: 0.18, hipY: 0.63, shoulderX: 0.42, shoulderY: 1.27 },
   warden: { bodyY: 1.14, headY: 1.86, hipX: 0.36, hipY: 0.74, shoulderX: 0.72, shoulderY: 1.52 },
+  creeper: { bodyY: 0.95, headY: 1.62, hipX: 0.2, hipY: 0.42, shoulderX: 0.3, shoulderY: 1.1 },
+  witch: { bodyY: 0.98, headY: 1.62, hipX: 0.14, hipY: 0.45, shoulderX: 0.36, shoulderY: 1.25 },
+  blinker: { bodyY: 1.15, headY: 1.95, hipX: 0.16, hipY: 0.7, shoulderX: 0.3, shoulderY: 1.55 },
+  colossus: { bodyY: 1.1, headY: 1.62, hipX: 0.32, hipY: 0.72, shoulderX: 0.62, shoulderY: 1.42 },
 };
 
 const cache = new Map<EnemyKind, MobGeos>();
@@ -449,6 +453,197 @@ function warden(): MobGeos {
   };
 }
 
+/**
+ * The creeper: a tall green column on four stub legs, no arms to speak of, and
+ * the glowing face is the whole read — eyes and the downturned mouth ramp up
+ * with `fuseK` as the fuse burns. Each leg pivot carries a front-and-back pair
+ * baked into one geometry, so the four-legged walk rides the same two hips.
+ */
+function creeper(): MobGeos {
+  const p = blank();
+
+  box(p.body, 0.5, 0.85, 0.34, 0, 0, 0);
+  box(p.body, 0.42, 0.2, 0.3, 0, -0.5, 0);
+
+  // Mottled plates — the camo read without a texture.
+  box(p.accent, 0.52, 0.18, 0.36, 0, 0.28, 0);
+  box(p.accent, 0.2, 0.3, 0.36, -0.14, -0.12, 0);
+  box(p.accent, 0.16, 0.22, 0.36, 0.16, 0.02, 0);
+  box(p.accent, 0.44, 0.14, 0.32, 0, -0.52, 0);
+
+  box(p.head, 0.46, 0.44, 0.46, 0, 0, 0);
+
+  // The face: eyes above, mouth below with two fangs. Sits at head height in
+  // body space (glow is a child of the body mesh).
+  box(p.glow, 0.09, 0.09, 0.04, -0.12, 0.72, 0.25);
+  box(p.glow, 0.09, 0.09, 0.04, 0.12, 0.72, 0.25);
+  box(p.glow, 0.06, 0.12, 0.04, 0, 0.58, 0.25);
+  box(p.glow, 0.05, 0.06, 0.04, -0.09, 0.61, 0.25);
+  box(p.glow, 0.05, 0.06, 0.04, 0.09, 0.61, 0.25);
+
+  // Four stubs: the front-and-back pair per side, baked into one geometry.
+  box(p.leg, 0.2, 0.42, 0.2, 0, -0.21, 0.14);
+  box(p.leg, 0.2, 0.42, 0.2, 0, -0.21, -0.14);
+
+  // Arm nubs — the rig always builds two pivots; the creeper barely uses them.
+  box(p.armL, 0.1, 0.16, 0.12, 0, -0.08, 0.02);
+  box(p.armR, 0.1, 0.16, 0.12, 0, -0.08, 0.02);
+
+  return {
+    body: merged(p.body),
+    head: merged(p.head),
+    accent: merged(p.accent),
+    glow: merged(p.glow),
+    leg: merged(p.leg),
+    armL: merged(p.armL),
+    armR: merged(p.armR),
+    armSwing: 0.05,
+    armBaseL: -0.1,
+    armBaseR: -0.1,
+  };
+}
+
+/** The witch: a layered robe, a wide brim with a pointed crown, and a vial. */
+function witch(): MobGeos {
+  const p = blank();
+
+  box(p.body, 0.5, 0.4, 0.36, 0, 0.12, 0);
+  box(p.body, 0.58, 0.5, 0.44, 0, -0.28, 0);
+  box(p.body, 0.66, 0.14, 0.5, 0, -0.52, 0);
+  box(p.body, 0.3, 0.18, 0.26, -0.3, 0.3, 0);
+  box(p.body, 0.3, 0.18, 0.26, 0.3, 0.3, 0);
+
+  box(p.head, 0.36, 0.36, 0.38, 0, 0, 0);
+
+  // The hat sits at head height in body space: brim, crown, then the point.
+  box(p.accent, 0.62, 0.05, 0.62, 0, 0.86, 0);
+  box(p.accent, 0.32, 0.22, 0.34, 0, 0.98, 0);
+  cyl(p.accent, 0.02, 0.18, 0.32, 6, 0, 1.24, 0);
+  // A belt across the robe.
+  box(p.accent, 0.52, 0.08, 0.38, 0, -0.06, 0);
+
+  box(p.glow, 0.08, 0.05, 0.04, -0.1, 0.66, 0.2);
+  box(p.glow, 0.08, 0.05, 0.04, 0.1, 0.66, 0.2);
+  box(p.glow, 0.04, 0.2, 0.03, 0, 0.02, 0.24);
+
+  leg(p.leg);
+  arm(p.armL, -1, true);
+  arm(p.armR, 1, true);
+  // The potion vial on the right hand.
+  box(p.armR, 0.09, 0.13, 0.09, 0, -0.66, 0.1);
+
+  return {
+    body: merged(p.body),
+    head: merged(p.head),
+    accent: merged(p.accent),
+    glow: merged(p.glow),
+    leg: merged(p.leg),
+    armL: merged(p.armL),
+    armR: merged(p.armR),
+    armSwing: 0.3,
+    armBaseL: -0.35,
+    armBaseR: -0.35,
+  };
+}
+
+/** The blinker: narrow, tall, all limbs — a silhouette built out of stalks. */
+function blinker(): MobGeos {
+  const p = blank();
+
+  box(p.body, 0.4, 0.5, 0.28, 0, 0, 0);
+  box(p.body, 0.3, 0.24, 0.24, 0, -0.36, 0);
+  box(p.body, 0.34, 0.1, 0.26, 0, 0.3, 0);
+  box(p.body, 0.1, 0.46, 0.12, 0, -0.02, -0.2);
+
+  box(p.head, 0.3, 0.4, 0.32, 0, 0, 0);
+
+  box(p.accent, 0.34, 0.06, 0.36, 0, 0.21, 0);
+  box(p.accent, 0.12, 0.16, 0.16, -0.19, 0.1, 0);
+  box(p.accent, 0.12, 0.16, 0.16, 0.19, 0.1, 0);
+
+  // The tall paired eyes — the purple stare is the blinker's identity.
+  box(p.glow, 0.14, 0.07, 0.04, -0.08, 0.82, 0.17);
+  box(p.glow, 0.14, 0.07, 0.04, 0.08, 0.82, 0.17);
+  box(p.glow, 0.05, 0.3, 0.03, 0, 0.0, 0.29);
+
+  leg(p.leg, true);
+  arm(p.armL, -1);
+  arm(p.armR, 1);
+  // Elongate the limbs: stalk arms and stalk legs.
+  box(p.armL, 0.09, 0.42, 0.11, 0, -0.72, 0.02);
+  box(p.armR, 0.09, 0.42, 0.11, 0, -0.72, 0.02);
+  box(p.leg, 0.12, 0.3, 0.14, 0, -0.56, 0);
+
+  return {
+    body: merged(p.body),
+    head: merged(p.head),
+    accent: merged(p.accent),
+    glow: merged(p.glow),
+    leg: merged(p.leg),
+    armL: merged(p.armL),
+    armR: merged(p.armR),
+    armSwing: 0.5,
+    armBaseL: 0.05,
+    armBaseR: 0.05,
+  };
+}
+
+/**
+ * The COLOSSUS: the district guardian. A low-slung siege frame — wide hull,
+ * massive shoulder blocks, stub head sunk between them, ember-glow seams that
+ * ramp with the charge tell. Reads as "the wall that walks".
+ */
+function colossus(): MobGeos {
+  const p = blank();
+
+  box(p.body, 1.0, 0.52, 0.7, 0, 0, 0);
+  box(p.body, 0.8, 0.3, 0.6, 0, -0.4, 0);
+  box(p.body, 0.9, 0.16, 0.64, 0, 0.32, 0);
+  box(p.body, 0.5, 0.4, 0.4, 0, 0.05, -0.42);
+  box(p.body, 0.44, 0.14, 0.56, 0, -0.5, 0);
+
+  // The head sinks between the shoulders: a slab with a brow.
+  box(p.head, 0.44, 0.26, 0.44, 0, 0, 0);
+  box(p.head, 0.52, 0.08, 0.2, 0, 0.16, 0.14);
+
+  // Shoulder towers and a blast plate across the chest.
+  box(p.accent, 0.34, 0.34, 0.44, -0.62, 0.3, 0);
+  box(p.accent, 0.34, 0.34, 0.44, 0.62, 0.3, 0);
+  box(p.accent, 0.7, 0.4, 0.12, 0, 0.02, 0.4);
+  box(p.accent, 0.72, 0.18, 0.14, 0, 0.26, -0.46);
+  box(p.accent, 0.24, 0.12, 0.5, -0.5, -0.22, 0.2);
+  box(p.accent, 0.24, 0.12, 0.5, 0.5, -0.22, 0.2);
+
+  // The ember seams: chest core, shoulder strips, arm bands. These are what
+  // the charge tell lights up.
+  cyl(p.glow, 0.13, 0.13, 0.06, 10, 0, 0.04, 0.47, Math.PI / 2);
+  box(p.glow, 0.05, 0.26, 0.05, -0.62, 0.52, 0);
+  box(p.glow, 0.05, 0.26, 0.05, 0.62, 0.52, 0);
+  box(p.glow, 0.06, 0.06, 0.3, -0.62, 0.05, 0.24);
+  box(p.glow, 0.06, 0.06, 0.3, 0.62, 0.05, 0.24);
+  box(p.glow, 0.3, 0.05, 0.04, 0, 0.4, -0.5);
+
+  leg(p.leg, true);
+  arm(p.armL, -1);
+  arm(p.armR, 1);
+  // Siege fists.
+  box(p.armL, 0.34, 0.3, 0.36, 0, -0.62, 0.08);
+  box(p.armR, 0.34, 0.3, 0.36, 0, -0.62, 0.08);
+
+  return {
+    body: merged(p.body),
+    head: merged(p.head),
+    accent: merged(p.accent),
+    glow: merged(p.glow),
+    leg: merged(p.leg),
+    armL: merged(p.armL),
+    armR: merged(p.armR),
+    armSwing: 0.1,
+    armBaseL: -0.2,
+    armBaseR: -0.2,
+  };
+}
+
 function geometries(kind: EnemyKind): MobGeos {
   let geo = cache.get(kind);
   if (!geo) {
@@ -461,7 +656,15 @@ function geometries(kind: EnemyKind): MobGeos {
             ? tank()
             : kind === 'warden'
               ? warden()
-              : sapper();
+              : kind === 'creeper'
+                ? creeper()
+                : kind === 'witch'
+                  ? witch()
+                  : kind === 'blinker'
+                    ? blinker()
+                    : kind === 'colossus'
+                      ? colossus()
+                      : sapper();
     cache.set(kind, geo);
   }
   return geo;
@@ -479,7 +682,7 @@ function geometries(kind: EnemyKind): MobGeos {
 export function mobWarmup(): THREE.Group {
   const group = new THREE.Group();
   let i = 0;
-  for (const kind of ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const) {
+  for (const kind of ['grunt', 'runner', 'tank', 'sapper', 'warden', 'creeper', 'witch', 'blinker', 'colossus'] as const) {
     const geo = geometries(kind);
     for (const part of [geo.body, geo.head, geo.accent, geo.glow, geo.leg, geo.armL, geo.armR]) {
       const mesh = new THREE.Mesh(part, MAT.eye());

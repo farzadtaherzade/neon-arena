@@ -1,5 +1,5 @@
 import { Rng } from '../core/rng';
-import { BOSS, ENEMY, type EnemyKind, SAPPER, WAVES } from './config';
+import { BLINKER, BOSS, CRAWL, CREEPER, ENEMY, type EnemyKind, SAPPER, WAVES, WITCH } from './config';
 import type { Vec2 } from './world/collision';
 
 export interface SpawnRequest {
@@ -41,6 +41,21 @@ export function composition(n: number): EnemyKind[] {
     const count = 1 + Math.floor((n - SAPPER.START_WAVE) / SAPPER.EVERY_WAVES);
     for (let i = 0; i < count; i++) list.push('sapper');
   }
+  // Creepers arrive early and grow steadily — the walking fuse is a fixture.
+  if (n >= CREEPER.START_WAVE) {
+    const count = 1 + Math.floor((n - CREEPER.START_WAVE) / CREEPER.EVERY_WAVES);
+    for (let i = 0; i < count; i++) list.push('creeper');
+  }
+  // Witches arrive later, one extra every `EVERY_WAVES` waves, but capped —
+  // two healers already warp a fight.
+  if (n >= WITCH.START_WAVE) {
+    const count = Math.min(1 + Math.floor((n - WITCH.START_WAVE) / WITCH.EVERY_WAVES), WITCH.MAX_WITCHES);
+    for (let i = 0; i < count; i++) list.push('witch');
+  }
+  if (n >= BLINKER.START_WAVE) {
+    const count = 1 + Math.floor((n - BLINKER.START_WAVE) / BLINKER.EVERY_WAVES);
+    for (let i = 0; i < count; i++) list.push('blinker');
+  }
   // On a boss wave the WARDEN is the wave: it leads, and the usual mob is
   // thinned to every other entry so the escort stays an escort.
   if (isBossWave(n)) {
@@ -55,6 +70,17 @@ export const speedScale = (n: number): number =>
 
 /** Damage bonus for wave `n` — grows every other wave. */
 export const dmgBonus = (n: number): number => Math.floor((n - 1) / 2) * WAVES.DMG_PER_2_WAVES;
+
+/**
+ * How much nastier the world is `dist` chunk-units from the spawn plaza — the
+ * directional crawl's difficulty curve. Capped so the far wilds stop scaling.
+ */
+export const distScale = (dist: number): number =>
+  Math.min(1 + dist * WAVES.DIST_GAIN, WAVES.DIST_SCALE_MAX);
+
+/** Chunk units from the spawn plaza to a world point. */
+export const crawlDist = (x: number, z: number): number =>
+  Math.hypot(x, z) / CRAWL.CHUNK;
 
 /**
  * Wave composition, spawn pacing and the intermission between waves.
@@ -78,11 +104,19 @@ export class WaveDirector {
 
   private queue: Queued[] = [];
   private out: WaveUpdate = { spawned: [], cleared: false };
+  /** The smoothed crawl heading, radians. Tracked from the player's own motion. */
+  private heading = 0;
+  private hasHeading = false;
+  private lastPx = 0;
+  private lastPz = 0;
 
   reset(): void {
     this.wave = 0;
     this.intermission = 0;
     this.queue.length = 0;
+    this.hasHeading = false;
+    this.lastPx = 0;
+    this.lastPz = 0;
   }
 
   /** Enemies still to come plus the ones already standing. */
@@ -110,6 +144,24 @@ export class WaveDirector {
     out.spawned.length = 0;
     out.cleared = false;
 
+    // Track the crawl heading from the player's own motion: a low-pass over the
+    // direction they have actually been travelling, so the spawn ring leans
+    // into the push without snapping when they weave between mobs.
+    const mdx = playerPos.x - this.lastPx;
+    const mdz = playerPos.z - this.lastPz;
+    const moved = Math.hypot(mdx, mdz);
+    this.lastPx = playerPos.x;
+    this.lastPz = playerPos.z;
+    if (moved > 0.02) {
+      // Same angle convention as the spawn ring: a = atan2(z, x).
+      const want = Math.atan2(mdz, mdx);
+      let d = want - this.heading;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.heading += d * Math.min(1, dt * 2);
+      this.hasHeading = true;
+    }
+
     for (let i = this.queue.length - 1; i >= 0; i--) {
       const s = this.queue[i]!;
       s.delay -= dt;
@@ -134,13 +186,20 @@ export class WaveDirector {
     return out;
   }
 
-  /** Ring around the player, rejecting spots that are too close or inside cover. */
+  /**
+   * Ring around the player, rejecting spots that are too close or inside cover.
+   * Most angles lean into the crawl heading — the push direction is where the
+   * fight lives — the rest stay uniform so behind you is never safe.
+   */
   pickSpawn(playerPos: Vec2): { x: number; z: number } {
     const ring = this.testing ? ENEMY.TEST_SPAWN_RING : ENEMY.SPAWN_RING;
     const jitter = this.testing ? ENEMY.TEST_SPAWN_JITTER : ENEMY.SPAWN_RING_JITTER;
 
     for (let i = 0; i < ENEMY.SPAWN_ATTEMPTS; i++) {
-      const a = this.rng.next() * Math.PI * 2;
+      const a =
+        this.hasHeading && this.rng.next() < WAVES.SPAWN_BIAS
+          ? this.heading + this.rng.range(-WAVES.SPAWN_BIAS_ARC, WAVES.SPAWN_BIAS_ARC)
+          : this.rng.next() * Math.PI * 2;
       const r = ring + this.rng.next() * jitter;
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
@@ -148,6 +207,7 @@ export class WaveDirector {
       if (this.blocked(x, z)) continue;
       return { x, z };
     }
-    return { x: ENEMY.SPAWN_FALLBACK[0], z: ENEMY.SPAWN_FALLBACK[1] };
+    // Player-relative: the world has no edge, so the fallback follows the push.
+    return { x: playerPos.x + ENEMY.SPAWN_FALLBACK[0], z: playerPos.z + ENEMY.SPAWN_FALLBACK[1] };
   }
 }
