@@ -314,8 +314,6 @@ export class Game {
       onEquip: (id) => this.equipSkin(id),
       onBuyWeapon: (id) => this.buyWeapon(id),
     });
-    this.applySkins();
-
     this.settings = new Settings(this.hud.crosshair, {
       onOpen: () => {
         // Desktop drops pointer lock, which pauses the run through the normal
@@ -380,6 +378,9 @@ export class Game {
     const dmrView = new DmrView();
     this.gunById = { rifle: this.gun, smg: smgView, scatter: scatterView, dmr: dmrView };
     this.arena.camera.add(smgView.group, scatterView.group, dmrView.group);
+    // Skins first — including the per-gun palettes and the shot tint, which
+    // read gunById and would throw if applied before the viewmodels exist.
+    this.applySkins();
 
     this.input = new Input(
       this.arena.renderer.domElement,
