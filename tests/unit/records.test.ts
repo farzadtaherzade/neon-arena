@@ -26,50 +26,56 @@ function withStore<T>(initial: Record<string, string>, fn: () => T): T {
 }
 
 describe('Records (per difficulty)', () => {
-  it('reads a fresh store as all zeros', () => {
+  it('reads a fresh store as all empty lists', () => {
     withStore({}, () => {
       const all = readRecords();
-      expect(all.normal).toEqual({ score: 0, wave: 0 });
-      expect(all.hard).toEqual({ score: 0, wave: 0 });
+      expect(all.normal).toEqual([]);
+      expect(all.hard).toEqual([]);
     });
   });
 
   it('migrates the v1 bare blob into normal, not everywhere', () => {
     withStore({ 'neon.record': '{"score":4200,"wave":11}' }, () => {
       const all = readRecords();
-      expect(all.normal).toEqual({ score: 4200, wave: 11 });
-      expect(all.easy).toEqual({ score: 0, wave: 0 });
-      expect(all.hard).toEqual({ score: 0, wave: 0 });
+      expect(all.normal).toEqual([{ score: 4200, wave: 11 }]);
+      expect(all.easy).toEqual([]);
+      expect(all.hard).toEqual([]);
       // A read never writes back: storage keeps the bare blob until the next
-      // updateRecord, which stamps it v3.
+      // updateRecord, which stamps it v4.
       expect(JSON.parse(localStorage.getItem('neon.record')!)).toEqual({ score: 4200, wave: 11 });
       updateRecord({ score: 4200, wave: 11 }, 'normal');
-      expect(JSON.parse(localStorage.getItem('neon.record')!).v).toBe(3);
+      expect(JSON.parse(localStorage.getItem('neon.record')!).v).toBe(4);
     });
   });
 
-  it('keeps difficulties isolated', () => {
+  it('keeps a top-5 list per difficulty, difficulties isolated', () => {
     withStore({}, () => {
       updateRecord({ score: 900, wave: 4 }, 'easy');
       updateRecord({ score: 900, wave: 4 }, 'hard');
+      for (const score of [300, 700, 500, 100, 600, 200]) {
+        updateRecord({ score, wave: 1 }, 'normal');
+      }
       const all = readRecords();
-      expect(all.easy.score).toBe(900);
-      expect(all.hard.score).toBe(900);
-      expect(all.normal.score).toBe(0);
+      expect(all.easy.map((r) => r.score)).toEqual([900]);
+      expect(all.normal.map((r) => r.score)).toEqual([700, 600, 500, 300, 200]);
+      expect(all.hard.map((r) => r.score)).toEqual([900]);
     });
   });
 
-  it('reports NEW BEST only within its own difficulty', () => {
+  it('reports NEW BEST and rank within its own difficulty', () => {
     withStore({}, () => {
-      expect(updateRecord({ score: 500, wave: 3 }, 'normal').isNew).toBe(true);
-      expect(updateRecord({ score: 100, wave: 1 }, 'normal').isNew).toBe(false);
-      expect(updateRecord({ score: 100, wave: 1 }, 'hard').isNew).toBe(true);
+      expect(updateRecord({ score: 500, wave: 3 }, 'normal')).toMatchObject({ isNewBest: true, rank: 1 });
+      expect(updateRecord({ score: 100, wave: 1 }, 'normal').isNewBest).toBe(false);
+      expect(updateRecord({ score: 100, wave: 1 }, 'hard').isNewBest).toBe(true);
+      // Same score, later run: a tie with #1 — not a new best. (Its rank is
+      // ambiguous: identical entries are indistinguishable in the list.)
+      expect(updateRecord({ score: 500, wave: 3 }, 'normal').isNewBest).toBe(false);
     });
   });
 
   it('survives corrupt storage', () => {
     withStore({ 'neon.record': '{oops' }, () => {
-      expect(readRecords().normal).toEqual({ score: 0, wave: 0 });
+      expect(readRecords().normal).toEqual([]);
     });
   });
 });

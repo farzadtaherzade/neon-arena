@@ -62,12 +62,14 @@ import { MeteorView } from '../render/MeteorView';
 import { Pick } from '../render/Pick';
 import { DmrView, ScatterView, SmgView } from '../render/ViewModels';
 import { XpView } from '../render/XpView';
+import { Career } from '../ui/Career';
 import { Hud, type HudModel } from '../ui/Hud';
 import { Input } from '../ui/Input';
 import { MapScreen } from '../ui/MapScreen';
 import { type MapTower, Minimap } from '../ui/Minimap';
 import { PerkScreen } from '../ui/Perks';
 import { Profile } from '../ui/Profile';
+import { readRecords } from '../ui/Records';
 import { Settings } from '../ui/Settings';
 import { Skins } from '../ui/Skins';
 import { isTouchDevice, Touch } from '../ui/Touch';
@@ -116,6 +118,8 @@ export class Game {
   maxHp = START_HP;
   /** The difficulty knob, read at spawn and on every payout. */
   difficulty: DifficultyId = DEFAULT_DIFFICULTY;
+  /** Sim time when this run started — career secondsPlayed accumulates it. */
+  private runStart = 0;
   /** The random sky event: a meteor shower that drops rocks around the player. */
   readonly shower = new MeteorShower();
   aliveCount = 0;
@@ -140,6 +144,8 @@ export class Game {
   /** One viewmodel per gun; `render()` shows the one in hand. */
   private readonly gunById: Record<WeaponId, GunView | SmgView | ScatterView | DmrView>;
   private knifeView = new KnifeView();
+  /** The career/records screen, opened from the menu. */
+  private career = new Career();
   /** The level-up perk offer screen; visible only while an offer stands. */
   /** One reroll token per run: spends on the offer screen, gone for good. */
   private rerolls = 1;
@@ -472,6 +478,10 @@ export class Game {
     this.difficulty = this.profile.data.difficulty;
     this.hud.setDifficulty(this.difficulty);
     this.paintDifficulty();
+    document.getElementById('menuRecords')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.career.show(this.profile.data.stats, readRecords(), this.difficulty);
+    });
     document.getElementById('menuControls')!.addEventListener('click', (e) => {
       e.stopPropagation();
       document.getElementById('menuKeys')!.toggleAttribute('hidden');
@@ -600,6 +610,8 @@ export class Game {
     this.music.setMuted(this.settings.values.game.mute);
     this.music.start();
     this.reset();
+    this.profile.data.stats.runs++;
+    this.runStart = this.elapsed;
     this.beginWave(1);
     this.hud.setVisible(true);
     this.state = STATE.PLAYING;
@@ -645,6 +657,10 @@ export class Game {
   }
 
   private gameOver(): void {
+    const st = this.profile.data.stats;
+    st.secondsPlayed += Math.max(0, this.elapsed - this.runStart);
+    st.bestWave = Math.max(st.bestWave, this.wave);
+    this.profile.save();
     this.state = STATE.GAMEOVER;
     this.input.firing = false;
     this.hud.setVisible(false);
@@ -710,6 +726,7 @@ export class Game {
     const vm = this.gunById[this.weaponId];
     vm.fire(this.rng);
     this.sfx.shoot(this.weaponId);
+    this.profile.data.stats.shots++;
 
     vm.muzzle.updateWorldMatrix(true, false);
     vm.muzzle.getWorldPosition(this.scratch);
@@ -734,6 +751,7 @@ export class Game {
         );
         this.feedback.hitT = 1;
         this.sfx.hit();
+        this.profile.data.stats.hits++;
 
         const enemy = hit.enemy;
         const dir = this.pick.direction;
@@ -903,6 +921,8 @@ export class Game {
 
     this.score += enemy.stats.score + (headshot ? WEAPON.HEADSHOT_BONUS : 0);
     this.kills++;
+    const kills = this.profile.data.stats.kills;
+    kills[enemy.kind] = (kills[enemy.kind] ?? 0) + 1;
     this.feedback.hitT = 1;
     this.hud.markKill();
     this.hud.pushKill(enemy.kind, headshot);

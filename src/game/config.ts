@@ -1110,7 +1110,7 @@ export const SCREEN = {
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const;
+export const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 /**

@@ -393,8 +393,10 @@ export class Hud {
 
   setFinalStats(stats: { score: number; wave: number; kills: number }): void {
     this.finalStats.innerHTML = `SCORE <b>${stats.score}</b> &nbsp;·&nbsp; WAVE <b>${stats.wave}</b> &nbsp;·&nbsp; KILLS <b>${stats.kills}</b>`;
-    const { isNew } = updateRecord({ score: stats.score, wave: stats.wave }, this.difficulty);
-    this.newBestBadge.style.display = isNew ? 'block' : 'none';
+    const { rank, isNewBest } = updateRecord({ score: stats.score, wave: stats.wave }, this.difficulty);
+    const rankText = rank != null ? ` &nbsp;·&nbsp; RANK <b>#${rank}</b>` : '';
+    this.finalStats.innerHTML = `SCORE <b>${stats.score}</b> &nbsp;·&nbsp; WAVE <b>${stats.wave}</b> &nbsp;·&nbsp; KILLS <b>${stats.kills}</b>${rankText}`;
+    this.newBestBadge.style.display = isNewBest ? 'block' : 'none';
     this.refreshBestRecord();
   }
 

@@ -22,12 +22,28 @@ import {
 import { loadVersioned, saveVersioned } from './versionedStore';
 
 const KEY = 'neon.profile';
-/** v1 = the bare profile object (pre-envelope). v2 = the `{ v, data }` envelope. */
-const SCHEMA_VERSION = 2;
+/** v1 = the bare object. v2 = the envelope. v3 = difficulty. v4 = stats. */
+const SCHEMA_VERSION = 4;
+
+/** Career counters, accumulated across runs. */
+export interface CareerStats {
+  kills: Record<string, number>;
+  shots: number;
+  hits: number;
+  runs: number;
+  bestWave: number;
+  secondsPlayed: number;
+}
+
+export function zeroStats(): CareerStats {
+  return { kills: {}, shots: 0, hits: 0, runs: 0, bestWave: 0, secondsPlayed: 0 };
+}
 
 export interface ProfileData {
   /** The wallet. */
   credits: number;
+  /** Career counters — the RECORDS screen reads these. */
+  stats: CareerStats;
   /** The last difficulty the player deployed on — the menu's starting pick. */
   difficulty: DifficultyId;
   /** The ids of the skins the player owns. */
@@ -45,6 +61,7 @@ export function defaultProfile(): ProfileData {
     equipped: Object.fromEntries(SKIN_WEAPONS.map((w) => [w, ''])) as Record<SkinWeapon, string>,
     unlockedWeapons: [],
     difficulty: DEFAULT_DIFFICULTY,
+    stats: zeroStats(),
   };
 }
 
@@ -80,7 +97,27 @@ export function sanitizeProfile(raw: unknown): ProfileData {
     difficulty: DIFFICULTY_IDS.includes(p.difficulty as DifficultyId)
       ? (p.difficulty as DifficultyId)
       : DEFAULT_DIFFICULTY,
+    stats: sanitizeStats(p.stats),
   };
+}
+
+/** Career counters: junk and negatives become zeros, kills round to ints. */
+function sanitizeStats(raw: unknown): CareerStats {
+  const out = zeroStats();
+  if (raw === null || typeof raw !== 'object') return out;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === 'number' && v >= 0 && Number.isFinite(v) ? v : 0);
+  if (typeof r.kills === 'object' && r.kills !== null) {
+    for (const [kind, n] of Object.entries(r.kills as Record<string, unknown>)) {
+      if (typeof n === 'number' && n > 0) out.kills[kind] = Math.round(n);
+    }
+  }
+  out.shots = num(r.shots);
+  out.hits = num(r.hits);
+  out.runs = num(r.runs);
+  out.bestWave = num(r.bestWave);
+  out.secondsPlayed = num(r.secondsPlayed);
+  return out;
 }
 
 export function readProfile(store: Pick<Storage, 'getItem'>): ProfileData {
