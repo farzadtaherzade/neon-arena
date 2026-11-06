@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
 import { BLINKER, BOSS, CRAWL, CREEPER, ENEMY, SAPPER, WAVES, WITCH } from '../../src/game/config';
-import { composition, crawlDist, distScale, dmgBonus, isBossWave, speedScale, WaveDirector } from '../../src/game/waves';
+import {
+  composition,
+  crawlDist,
+  distScale,
+  dmgBonus,
+  isBossWave,
+  speedScale,
+  WaveDirector,
+} from '../../src/game/waves';
 
 const count = (list: string[], kind: string) => list.filter((k) => k === kind).length;
 

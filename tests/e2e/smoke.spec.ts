@@ -218,14 +218,10 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // Teleport two chunks east: the window re-centres, fresh chunks (and their
   // colliders) join, and the old far ring unloads. Then come home.
   await page.evaluate(() => window.__NEON.teleportPlayer(176, 0));
-  await page.waitForFunction(
-    () => (window.__NEON.chunks() as { loaded: number }).loaded >= 20,
-    undefined,
-    { timeout: 30_000 },
-  );
-  const streamed = await page.evaluate(
-    () => window.__NEON.chunks() as { loaded: number; colliders: number },
-  );
+  await page.waitForFunction(() => (window.__NEON.chunks() as { loaded: number }).loaded >= 20, undefined, {
+    timeout: 30_000,
+  });
+  const streamed = await page.evaluate(() => window.__NEON.chunks() as { loaded: number; colliders: number });
   expect(streamed.loaded).toBeGreaterThanOrEqual(20);
   expect(streamed.colliders).toBeGreaterThan(46); // generated ground joined region 0's
   await page.evaluate(() => window.__NEON.teleportPlayer(0, 14));
@@ -356,9 +352,10 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     Math.abs(third.geometries - second.geometries),
     `geometries ${first.geometries} -> ${second.geometries} -> ${third.geometries} over ${end - mid} kills`,
   ).toBeLessThanOrEqual(2);
-  expect(Math.abs(third.textures - second.textures), `textures ${second.textures} -> ${third.textures}`).toBeLessThanOrEqual(
-    2,
-  );
+  expect(
+    Math.abs(third.textures - second.textures),
+    `textures ${second.textures} -> ${third.textures}`,
+  ).toBeLessThanOrEqual(2);
 
   // --- damage and death -----------------------------------------------------
   // Park the mobs first: this check is about the damage path, not about

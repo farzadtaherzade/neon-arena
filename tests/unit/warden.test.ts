@@ -24,8 +24,7 @@ function makeWorld(px = 0, pz = 0, playerY = 0) {
     knockPlayer: () => {
       events.knocks++;
     },
-    plantBomb: (_from, to, thrown, variant) =>
-      events.bombs.push({ x: to.x, z: to.z, thrown, variant }),
+    plantBomb: (_from, to, thrown, variant) => events.bombs.push({ x: to.x, z: to.z, thrown, variant }),
   };
   return { world, events };
 }

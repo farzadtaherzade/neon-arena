@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
 import type { BombVariant } from '../../src/game/bomb';
-import { BLINKER, COLOSSUS, CREEPER, ENEMY, ENEMY_TYPES, RUNNER, SAPPER, TANK, WITCH } from '../../src/game/config';
+import {
+  BLINKER,
+  COLOSSUS,
+  CREEPER,
+  ENEMY,
+  ENEMY_TYPES,
+  RUNNER,
+  SAPPER,
+  TANK,
+  WITCH,
+} from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
 import { CollisionWorld, type Vec2 } from '../../src/game/world/collision';
@@ -558,7 +568,7 @@ describe('Blinker', () => {
     expect(e.blinkTell).toBeLessThanOrEqual(0);
   });
 
-  it('lands at the player\'s feet height — a deck is no shelter', () => {
+  it("lands at the player's feet height — a deck is no shelter", () => {
     const { e } = blinkFrom(0, 20, PLATFORM_H);
     // It starts falling the next tick; the same-tick height is what proves the rule.
     expect(e.pos.y).toBeGreaterThan(1.5);

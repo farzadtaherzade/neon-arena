@@ -8,7 +8,13 @@ const map = (entries: [string, boolean][]): Map<string, boolean> => new Map(entr
 describe('TowerAlarm', () => {
   it('lights a tower while it sees hostiles', () => {
     const a = new TowerAlarm();
-    a.update(dt, map([['a0', true], ['a1', false]]));
+    a.update(
+      dt,
+      map([
+        ['a0', true],
+        ['a1', false],
+      ]),
+    );
     expect(a.hot.get('a0')).toBe(true);
     expect(a.hot.get('a1')).toBe(false);
   });
@@ -42,10 +48,24 @@ describe('TowerAlarm', () => {
 
   it('tracks towers independently', () => {
     const a = new TowerAlarm();
-    a.update(dt, map([['a0', false], ['a1', true], ['a2', false]]));
+    a.update(
+      dt,
+      map([
+        ['a0', false],
+        ['a1', true],
+        ['a2', false],
+      ]),
+    );
     expect(a.isHot('a1')).toBe(true);
     expect(a.isHot('a0')).toBe(false);
-    a.update(dt, map([['a0', false], ['a1', true], ['a2', true]]));
+    a.update(
+      dt,
+      map([
+        ['a0', false],
+        ['a1', true],
+        ['a2', true],
+      ]),
+    );
     expect(a.isHot('a2')).toBe(true);
   });
 
@@ -61,7 +81,13 @@ describe('TowerAlarm', () => {
 
   it('resets to cold', () => {
     const a = new TowerAlarm();
-    a.update(dt, map([['a0', true], ['a1', true]]));
+    a.update(
+      dt,
+      map([
+        ['a0', true],
+        ['a1', true],
+      ]),
+    );
     a.reset();
     expect(a.isHot('a0')).toBe(false);
     expect(a.isHot('a1')).toBe(false);

@@ -682,7 +682,17 @@ function geometries(kind: EnemyKind): MobGeos {
 export function mobWarmup(): THREE.Group {
   const group = new THREE.Group();
   let i = 0;
-  for (const kind of ['grunt', 'runner', 'tank', 'sapper', 'warden', 'creeper', 'witch', 'blinker', 'colossus'] as const) {
+  for (const kind of [
+    'grunt',
+    'runner',
+    'tank',
+    'sapper',
+    'warden',
+    'creeper',
+    'witch',
+    'blinker',
+    'colossus',
+  ] as const) {
     const geo = geometries(kind);
     for (const part of [geo.body, geo.head, geo.accent, geo.glow, geo.leg, geo.armL, geo.armR]) {
       const mesh = new THREE.Mesh(part, MAT.eye());

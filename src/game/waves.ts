@@ -75,12 +75,10 @@ export const dmgBonus = (n: number): number => Math.floor((n - 1) / 2) * WAVES.D
  * How much nastier the world is `dist` chunk-units from the spawn plaza — the
  * directional crawl's difficulty curve. Capped so the far wilds stop scaling.
  */
-export const distScale = (dist: number): number =>
-  Math.min(1 + dist * WAVES.DIST_GAIN, WAVES.DIST_SCALE_MAX);
+export const distScale = (dist: number): number => Math.min(1 + dist * WAVES.DIST_GAIN, WAVES.DIST_SCALE_MAX);
 
 /** Chunk units from the spawn plaza to a world point. */
-export const crawlDist = (x: number, z: number): number =>
-  Math.hypot(x, z) / CRAWL.CHUNK;
+export const crawlDist = (x: number, z: number): number => Math.hypot(x, z) / CRAWL.CHUNK;
 
 /**
  * Wave composition, spawn pacing and the intermission between waves.

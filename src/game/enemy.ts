@@ -1,7 +1,21 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
 import type { BombVariant } from './bomb';
-import { BLINKER, BOSS, COLOSSUS, CREEPER, ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WITCH, WORLD } from './config';
+import {
+  BLINKER,
+  BOSS,
+  COLOSSUS,
+  CREEPER,
+  ENEMY,
+  ENEMY_LOOKS,
+  ENEMY_TYPES,
+  type EnemyKind,
+  RUNNER,
+  SAPPER,
+  TANK,
+  WITCH,
+  WORLD,
+} from './config';
 import type { Vec3 } from './player';
 import type { Ramp, Vec2 } from './world/collision';
 
@@ -811,7 +825,12 @@ export class Enemy {
     if (this.kind === 'tank' || this.kind === 'warden' || this.kind === 'colossus') {
       // The warden's slam reach scales with its bulk; the colossus's quake is
       // the district guardian's answer to a held pad.
-      const reach = this.kind === 'warden' ? TANK.SLAM_R * this.scale : this.kind === 'colossus' ? COLOSSUS.SLAM_R : TANK.SLAM_R;
+      const reach =
+        this.kind === 'warden'
+          ? TANK.SLAM_R * this.scale
+          : this.kind === 'colossus'
+            ? COLOSSUS.SLAM_R
+            : TANK.SLAM_R;
       if (dist > reach) return;
       world.damagePlayer(this.stats.dmg * (this.kind === 'colossus' ? COLOSSUS.SLAM_MULT : TANK.SLAM_MULT));
       const inv = 1 / (dist || 1);

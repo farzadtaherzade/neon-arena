@@ -59,7 +59,12 @@ export class MapScreen {
     return project(this.px, this.pz, 0, x, z, SIZE, RANGE);
   }
 
-  private rect(x0: number, z0: number, x1: number, z1: number): { x: number; y: number; w: number; h: number } {
+  private rect(
+    x0: number,
+    z0: number,
+    x1: number,
+    z1: number,
+  ): { x: number; y: number; w: number; h: number } {
     const a = this.p(x0, z0);
     const b = this.p(x1, z1);
     return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
@@ -85,13 +90,23 @@ export class MapScreen {
     const half = CRAWL.CHUNK / 2;
     ctx.fillStyle = '#0d1524';
     for (const t of chunks) {
-      const f = this.rect(t.cx * CRAWL.CHUNK - half, t.cz * CRAWL.CHUNK - half, t.cx * CRAWL.CHUNK + half, t.cz * CRAWL.CHUNK + half);
+      const f = this.rect(
+        t.cx * CRAWL.CHUNK - half,
+        t.cz * CRAWL.CHUNK - half,
+        t.cx * CRAWL.CHUNK + half,
+        t.cz * CRAWL.CHUNK + half,
+      );
       ctx.fillRect(f.x, f.y, f.w, f.h);
     }
     ctx.strokeStyle = 'rgba(70,224,255,0.35)';
     ctx.lineWidth = 1.5;
     for (const t of chunks) {
-      const f = this.rect(t.cx * CRAWL.CHUNK - half, t.cz * CRAWL.CHUNK - half, t.cx * CRAWL.CHUNK + half, t.cz * CRAWL.CHUNK + half);
+      const f = this.rect(
+        t.cx * CRAWL.CHUNK - half,
+        t.cz * CRAWL.CHUNK - half,
+        t.cx * CRAWL.CHUNK + half,
+        t.cz * CRAWL.CHUNK + half,
+      );
       ctx.strokeRect(f.x, f.y, f.w, f.h);
     }
 
@@ -137,7 +152,12 @@ export class MapScreen {
     }
 
     // The reactor.
-    const r0 = this.rect(REACTOR.x - REACTOR.w / 2, REACTOR.z - REACTOR.d / 2, REACTOR.x + REACTOR.w / 2, REACTOR.z + REACTOR.d / 2);
+    const r0 = this.rect(
+      REACTOR.x - REACTOR.w / 2,
+      REACTOR.z - REACTOR.d / 2,
+      REACTOR.x + REACTOR.w / 2,
+      REACTOR.z + REACTOR.d / 2,
+    );
     ctx.fillStyle = 'rgba(255,59,168,0.35)';
     ctx.fillRect(r0.x, r0.y, r0.w, r0.h);
     ctx.strokeStyle = '#ff3ba8';
@@ -145,7 +165,12 @@ export class MapScreen {
     ctx.strokeRect(r0.x, r0.y, r0.w, r0.h);
 
     // The clock tower.
-    const t0 = this.rect(CLOCK_TOWER.x - CLOCK_TOWER.w / 2, CLOCK_TOWER.z - CLOCK_TOWER.d / 2, CLOCK_TOWER.x + CLOCK_TOWER.w / 2, CLOCK_TOWER.z + CLOCK_TOWER.d / 2);
+    const t0 = this.rect(
+      CLOCK_TOWER.x - CLOCK_TOWER.w / 2,
+      CLOCK_TOWER.z - CLOCK_TOWER.d / 2,
+      CLOCK_TOWER.x + CLOCK_TOWER.w / 2,
+      CLOCK_TOWER.z + CLOCK_TOWER.d / 2,
+    );
     ctx.fillStyle = 'rgba(242,178,30,0.3)';
     ctx.fillRect(t0.x, t0.y, t0.w, t0.h);
     ctx.strokeStyle = '#f2b21e';

@@ -642,7 +642,17 @@ export const SKINS = [
 
 /** What a kill is worth. A knife kill pays the same as a gun kill. */
 export const CREDITS = {
-  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25, warden: 400, creeper: 20, witch: 30, blinker: 25, colossus: 250 },
+  KILL: {
+    grunt: 10,
+    runner: 15,
+    tank: 40,
+    sapper: 25,
+    warden: 400,
+    creeper: 20,
+    witch: 30,
+    blinker: 25,
+    colossus: 250,
+  },
   HEADSHOT: 5,
   WAVE: 50,
   CAPTURE: 40,
@@ -840,7 +850,17 @@ export const ENEMY = {
    * than a player's mouse: that is what makes flanking possible, and the
    * front plate only covers what the mob can see.
    */
-  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2, warden: 1.6, creeper: 3.0, witch: 3.2, blinker: 4.0, colossus: 1.8 },
+  TURN_RATE: {
+    grunt: 2.6,
+    runner: 5.2,
+    tank: 1.3,
+    sapper: 3.2,
+    warden: 1.6,
+    creeper: 3.0,
+    witch: 3.2,
+    blinker: 4.0,
+    colossus: 1.8,
+  },
   HIT_FLASH: 0.08,
   HIT_FLASH_COLOR: 0xffffff,
   ATTACK_FLASH_COLOR: 0xff2222,
@@ -923,7 +943,17 @@ export const AMMO = {
    * Rounds dropped by a mob of each kind when it dies. They feed whichever gun
    * is in hand — the wave resupply tops the others up.
    */
-  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30, creeper: 6, witch: 6, blinker: 8, colossus: 25 },
+  DROP: {
+    grunt: 4,
+    runner: 6,
+    tank: 12,
+    sapper: 6,
+    warden: 30,
+    creeper: 6,
+    witch: 6,
+    blinker: 8,
+    colossus: 25,
+  },
 } as const;
 
 /**
@@ -1003,7 +1033,17 @@ export const WAVES = {
   INTERMISSION: 3,
   WAVE_HEAL: 25,
 
-  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0, creeper: 8, witch: 8, blinker: 10, colossus: 0 },
+  HP_PER_WAVE: {
+    grunt: 10,
+    runner: 5,
+    tank: 25,
+    sapper: 12,
+    warden: 0,
+    creeper: 8,
+    witch: 8,
+    blinker: 10,
+    colossus: 0,
+  },
   DMG_PER_2_WAVES: 2,
 
   /**
@@ -1106,7 +1146,17 @@ export const XP = {
   /** Distance at which the orb is collected. */
   COLLECT: 0.8,
   /** Points per orb, by enemy kind. */
-  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8, warden: 120, creeper: 8, witch: 10, blinker: 10, colossus: 80 },
+  VALUE: {
+    grunt: 5,
+    runner: 6,
+    tank: 15,
+    sapper: 8,
+    warden: 120,
+    creeper: 8,
+    witch: 10,
+    blinker: 10,
+    colossus: 80,
+  },
   /** How fast the orb slides toward the player while magnetised. */
   PULL_SPEED: 7,
   /** Visual-only: how high the orb floats and how fast it bobs. */
@@ -1263,7 +1313,17 @@ export const SCREEN = {
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-export const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden', 'creeper', 'witch', 'blinker', 'colossus'] as const;
+export const ENEMY_KINDS = [
+  'grunt',
+  'runner',
+  'tank',
+  'sapper',
+  'warden',
+  'creeper',
+  'witch',
+  'blinker',
+  'colossus',
+] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 /**
