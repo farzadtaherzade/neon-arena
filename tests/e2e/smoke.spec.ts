@@ -72,6 +72,16 @@ interface TouchState {
 }
 
 const stats = (page: Page) => page.evaluate(() => window.__NEON.stats() as Stats);
+/** Level-ups pause the run behind a perk offer; take the first card so the
+ *  sim keeps running for whatever wait comes next. No-op while playing. */
+const dismissPerks = async (page: Page): Promise<void> => {
+  for (let i = 0; i < 5; i++) {
+    const standing = await page.evaluate(() => (window.__NEON.perkOffer() as string[]).length > 0);
+    if (!standing) return;
+    await page.evaluate(() => window.__NEON.pickPerk(0));
+    await page.waitForTimeout(200);
+  }
+};
 const enemies = (page: Page) => page.evaluate(() => window.__NEON.enemyPos() as EnemyPos[]);
 const cam = (page: Page) => page.evaluate(() => window.__NEON.camState() as CamState);
 const renderInfo = (page: Page) => page.evaluate(() => window.__NEON.renderInfo() as RenderInfo);
@@ -363,8 +373,15 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.waitForTimeout(250);
   await page.locator('#settingsTabs [data-tab="skins"]').click();
   await page.waitForTimeout(250);
-  // Eight swatch cards, four per weapon.
-  expect(await page.locator('#skinList .skincard').count()).toBe(8);
+  // Eleven swatch cards across the grouped lists: four rifles, four blades,
+  // one skin per extra gun.
+  const skinCards = await page.evaluate(
+    () =>
+      document.querySelectorAll(
+        '#skinListRifles .skincard, #skinListBlades .skincard, #skinListGuns .skincard',
+      ).length,
+  );
+  expect(skinCards).toBe(11);
   // The card shows what the wallet holds.
   const shown = await page.evaluate(() => ({
     dom: document.getElementById('creditBalance')?.textContent,
@@ -372,7 +389,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   }));
   expect(Number(shown.dom)).toBe(shown.live);
 
-  const scrap = page.locator('#skinList .skincard').filter({ hasText: 'SCRAP RIFLE' });
+  const scrap = page.locator('#skinListRifles .skincard').filter({ hasText: 'SCRAP RIFLE' });
   await expect(scrap.locator('.btn')).toHaveText('BUY');
   await scrap.locator('.btn').click();
   await page.waitForTimeout(200);
@@ -568,6 +585,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(hpAfterKnife).toBeLessThan(hpBeforeKnife);
 
   // --- the meteor shower: a red sky and stones to dodge ------------------------
+  await dismissPerks(page);
   // Headroom first: the level up above paid out a repair and capped the run
   // back to full, so the pool is refilled before the long wait below.
   await page.evaluate(() => window.__NEON.hurt(-20000));
@@ -590,7 +608,9 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   });
   expect((await stats(page)).hp).toBeLessThan(hpBeforeStone);
 
-  // The sky goes back to normal when the shower ends.
+  // The sky goes back to normal when the shower ends. A level-up mid-shower
+  // would pause the run behind a perk offer and freeze the tint — clear it.
+  await dismissPerks(page);
   await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint === 0, undefined, {
     timeout: 180_000,
   });
