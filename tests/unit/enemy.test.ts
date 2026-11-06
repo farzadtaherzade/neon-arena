@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { ENEMY, ENEMY_TYPES, RUNNER, SAPPER, TANK } from '../../src/game/config';
+import type { BombVariant } from '../../src/game/bomb';
+import { BLINKER, COLOSSUS, CREEPER, ENEMY, ENEMY_TYPES, RUNNER, SAPPER, TANK, WITCH } from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
 import { CollisionWorld, type Vec2 } from '../../src/game/world/collision';
@@ -8,7 +9,7 @@ import { PLATFORM_H, PLATFORMS, RAMPS } from '../../src/game/world/layout';
 
 interface TestWorld extends EnemyWorld {
   hurt: number;
-  bombs: { from: Vec2; to: Vec2; thrown: boolean }[];
+  bombs: { from: Vec2; to: Vec2; thrown: boolean; variant: BombVariant | undefined }[];
   knock: { x: number; z: number; force: number }[];
 }
 
@@ -17,6 +18,7 @@ function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []
     playerPos,
     playerY: 0,
     neighbours,
+    foes: neighbours,
     hostileCount: 99,
     ramps: [],
     hurt: 0,
@@ -30,8 +32,8 @@ function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []
     knockPlayer(x: number, z: number, force: number) {
       w.knock.push({ x, z, force });
     },
-    plantBomb(from: Vec2, to: Vec2, thrown: boolean) {
-      w.bombs.push({ from, to, thrown });
+    plantBomb(from: Vec2, to: Vec2, thrown: boolean, variant?: BombVariant) {
+      w.bombs.push({ from, to, thrown, variant });
     },
   };
   return w;
@@ -399,6 +401,235 @@ describe('Sapper', () => {
     e.update(1 / 60, world);
     expect(e.bombTell).toBeGreaterThan(0);
     expect(e.bombTell).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('Creeper', () => {
+  it('starts the fuse inside trigger range, and only there', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const close = spawn('creeper', 0, 2);
+    close.update(1 / 60, world);
+    expect(close.fuse).toBeLessThan(CREEPER.FUSE);
+
+    const far = spawn('creeper', 0, 9);
+    for (let i = 0; i < 60; i++) far.update(1 / 60, world);
+    expect(far.fuse).toBe(CREEPER.FUSE);
+    expect(world.bombs).toHaveLength(0);
+  });
+
+  it('recovers the fuse when the player backs off', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('creeper', 0, 9);
+    e.fuse = 0.3;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(e.fuse).toBeGreaterThan(0.3);
+    expect(e.fuse).toBeLessThanOrEqual(CREEPER.FUSE);
+    expect(world.bombs).toHaveLength(0);
+  });
+
+  it('never blows up while besieging a deck', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.playerY = PLATFORM_H; // within trigger distance but far above it
+    const e = spawn('creeper', 0, 3);
+    for (let i = 0; i < Math.ceil(CREEPER.FUSE * 60) + 30; i++) e.update(1 / 60, world);
+    expect(world.bombs).toHaveLength(0);
+    expect(e.state).toBe('alive');
+  });
+
+  it('detonates at its own feet and takes itself with it', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('creeper', 0, 2);
+    for (let i = 0; i < Math.ceil(CREEPER.FUSE * 60) + 30 && world.bombs.length === 0; i++) {
+      e.update(1 / 60, world);
+    }
+    expect(world.bombs).toHaveLength(1);
+    expect(world.bombs[0]?.thrown).toBe(false);
+    expect(world.bombs[0]?.variant).toBe('blast');
+    expect(world.bombs[0]?.to.x).toBeCloseTo(e.pos.x, 6);
+    expect(e.state).toBe('dying'); // no credits: it killed itself, not the player
+    expect(world.hurt).toBe(0); // the blast is Game's to apply
+  });
+
+  it('plants nothing when killed mid-fuse', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('creeper', 0, 2);
+    e.update(1 / 60, world);
+    expect(e.fuse).toBeLessThan(CREEPER.FUSE);
+    e.takeDamage(1000);
+    e.kill();
+    for (let i = 0; i < Math.ceil(CREEPER.FUSE * 60) + 60; i++) e.update(1 / 60, world);
+    expect(world.bombs).toHaveLength(0);
+  });
+
+  it('lights its face just before detonation', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('creeper', 0, 2);
+    e.fuse = CREEPER.TELL - 0.3;
+    e.update(1 / 60, world);
+    expect(e.fuseK).toBeGreaterThan(0);
+    expect(e.fuseK).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('Witch', () => {
+  it('throws a potion at the player on its throw clock', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('witch', 0, 20);
+    e.plantT = 0.05;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(world.bombs).toHaveLength(1);
+    expect(world.bombs[0]?.thrown).toBe(true);
+    expect(world.bombs[0]?.variant).toBe('potion');
+    expect(world.bombs[0]?.to).toEqual({ x: 0, z: 0 });
+  });
+
+  it('lobs the potion onto the deck when the player is up on one', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.playerY = PLATFORM_H;
+    const e = spawn('witch', 0, 5);
+    e.plantT = 0.05;
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(world.bombs[0]?.thrown).toBe(true);
+    expect(world.bombs[0]?.to).toEqual({ x: 0, z: 0 });
+  });
+
+  it('backs off when the player closes in', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('witch', 0, 10);
+    for (let i = 0; i < 60; i++) e.update(1 / 60, world);
+    expect(Math.hypot(e.pos.x, e.pos.z)).toBeGreaterThan(10);
+    expect(world.hurt).toBe(0);
+  });
+
+  it('heals the most wounded ally in range', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('witch', 0, 10);
+    const hurt = spawn('grunt', 0, 12);
+    hurt.takeDamage(30);
+    const healthy = spawn('grunt', 0, 14);
+    world.foes = [e, hurt, healthy];
+    e.healT = 0.01;
+    e.update(1 / 60, world);
+    expect(hurt.hp).toBe(ENEMY_TYPES.grunt.hp - 30 + WITCH.HEAL);
+    expect(hurt.flashT).toBeGreaterThan(0); // the heal flash marks the target
+    expect(healthy.hp).toBe(ENEMY_TYPES.grunt.hp);
+  });
+
+  it('never overheals and ignores a herd of full-health allies', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('witch', 0, 10);
+    const scraped = spawn('grunt', 0, 12);
+    scraped.takeDamage(5);
+    const healthy = spawn('grunt', 0, 14);
+    world.foes = [e, scraped, healthy];
+    e.healT = 0.01;
+    e.update(1 / 60, world);
+    expect(scraped.hp).toBe(ENEMY_TYPES.grunt.hp); // clamped at max
+    expect(healthy.flashT).toBe(0);
+  });
+
+  it('lights the vial just before a throw', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('witch', 0, 20);
+    e.plantT = WITCH.TELL - 0.3;
+    e.update(1 / 60, world);
+    expect(e.potionK).toBeGreaterThan(0);
+    expect(e.potionK).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('Blinker', () => {
+  /** Walk one blinker through a full blink with the tell already running. */
+  function blinkFrom(x: number, z: number, playerY = 0): { e: Enemy; world: ReturnType<typeof makeWorld> } {
+    const world = makeWorld({ x: 0, z: 0 });
+    world.playerY = playerY;
+    const e = spawn('blinker', x, z);
+    e.blinkTell = 0.01;
+    e.update(1 / 60, world);
+    return { e, world };
+  }
+
+  it('blinks onto a ring around the player and resets its clock', () => {
+    const { e } = blinkFrom(0, 20);
+    const d = Math.hypot(e.pos.x, e.pos.z);
+    expect(d).toBeGreaterThanOrEqual(BLINKER.LAND_MIN - 0.5);
+    expect(d).toBeLessThanOrEqual(BLINKER.LAND_MAX + 0.5);
+    expect(e.blinkT).toBe(BLINKER.BLINK_T);
+    expect(e.blinkTell).toBeLessThanOrEqual(0);
+  });
+
+  it('lands at the player\'s feet height — a deck is no shelter', () => {
+    const { e } = blinkFrom(0, 20, PLATFORM_H);
+    // It starts falling the next tick; the same-tick height is what proves the rule.
+    expect(e.pos.y).toBeGreaterThan(1.5);
+  });
+
+  it('never bothers blinking from close range', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('blinker', 0, 5);
+    for (let i = 0; i < 180; i++) e.update(1 / 60, world);
+    expect(e.blinkTell).toBeLessThanOrEqual(0);
+    expect(Math.hypot(e.pos.x, e.pos.z)).toBeLessThan(BLINKER.BLINK_MIN);
+  });
+
+  it('glows just before it teleports', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('blinker', 0, 20);
+    e.blinkT = 0; // cooldown already expired
+    e.update(1 / 60, world); // arms the tell
+    expect(e.blinkTell).toBe(BLINKER.TELL);
+    e.update(1 / 60, world);
+    expect(e.blinkK).toBeGreaterThan(0);
+    expect(e.blinkK).toBeLessThan(1);
+  });
+});
+
+describe('Colossus', () => {
+  it('charges from mid range after a glowing tell, then recovers wide open', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('colossus', 0, 15);
+    e.update(1 / 60, world); // dist 15 sits inside the charge band
+    expect(e.pounceTell).toBe(COLOSSUS.CHARGE_TELL);
+    for (let i = 0; i < Math.ceil(COLOSSUS.CHARGE_TELL * 60); i++) e.update(1 / 60, world);
+    expect(e.pounce).toBeGreaterThan(0); // the rush is on
+
+    const z0 = e.pos.z;
+    for (let i = 0; i < Math.ceil(COLOSSUS.CHARGE_T * 60); i++) e.update(1 / 60, world);
+    // Faster than its walk — the burst is the point.
+    expect(Math.abs(z0 - e.pos.z)).toBeGreaterThan(3);
+
+    for (let i = 0; i < Math.ceil(COLOSSUS.RECOVER_T * 60); i++) e.update(1 / 60, world);
+    expect(e.recover).toBe(0);
+    expect(e.pounceCd).toBeGreaterThan(0); // and it will not charge again yet
+  });
+
+  it('never bothers charging from close range', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('colossus', 0, 4);
+    for (let i = 0; i < 240; i++) e.update(1 / 60, world);
+    expect(e.pounceTell).toBeLessThanOrEqual(0);
+    expect(e.pounce).toBeLessThanOrEqual(0);
+  });
+
+  it('slams with a quake that hits harder and shoves', () => {
+    const world = makeWorld({ x: 0, z: 0 });
+    const e = spawn('colossus', 0, 3); // inside SLAM_R, on the level
+    // The spawn cooldown (up to 1s) runs before the windup starts.
+    const steps = Math.ceil((1 + COLOSSUS.WINDUP) * 60) + 2;
+    for (let i = 0; i < steps; i++) e.update(1 / 60, world);
+    expect(world.hurt).toBeCloseTo(ENEMY_TYPES.colossus.dmg * COLOSSUS.SLAM_MULT, 5);
+    expect(world.knock).toHaveLength(1);
+    expect(world.knock[0]?.force).toBe(COLOSSUS.KNOCK);
+  });
+
+  it('wears front armour like the tank — flanking is the answer', () => {
+    const e = spawn('colossus', 0, 0);
+    // Shooter dead ahead (+z): the plate covers it.
+    expect(e.takeDamage(100, { dirX: 0, dirZ: 1, headshot: false, melee: false })).toBe(false);
+    expect(e.hp).toBeCloseTo(ENEMY_TYPES.colossus.hp - 100 * (1 - TANK.ARMOUR_CUT), 6);
+    // Behind: full damage.
+    expect(e.takeDamage(100, { dirX: 0, dirZ: -1, headshot: false, melee: false })).toBe(false);
+    expect(e.hp).toBeCloseTo(ENEMY_TYPES.colossus.hp - 100 * (1 - TANK.ARMOUR_CUT) - 100, 6);
   });
 });
 

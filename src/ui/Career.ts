@@ -8,6 +8,10 @@ const KIND_NAMES: Record<EnemyKind, string> = {
   tank: 'TANKS',
   sapper: 'SAPPERS',
   warden: 'WARDENS',
+  creeper: 'CREEPERS',
+  witch: 'WITCHES',
+  blinker: 'BLINKERS',
+  colossus: 'COLOSSUS',
 };
 
 /**

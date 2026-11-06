@@ -5,8 +5,8 @@ import { Sfx } from '../audio/Sfx';
 import { clamp } from '../core/math';
 import { Rng } from '../core/rng';
 import { TowerAlarm } from '../game/alarm';
-import { Bomb } from '../game/bomb';
-import { CapturePoints } from '../game/capture';
+import { Bomb, type BombVariant } from '../game/bomb';
+import { CapturePoints, type Deck } from '../game/capture';
 import {
   ALARM,
   AMMO,
@@ -14,13 +14,17 @@ import {
   BOSS,
   CAMERA,
   CAPTURE,
+  COLOSSUS,
+  CRAWL,
   CREDITS,
+  CREEPER,
   DEFAULT_DIFFICULTY,
   DEFAULT_THEME,
   DIFFICULTIES,
   DIFFICULTY_IDS,
   type DifficultyId,
   ENEMY,
+  ENEMY_TYPES,
   FEEDBACK,
   type GameState,
   KNIFE,
@@ -38,6 +42,7 @@ import {
   WEAPON_ORDER,
   WEAPONS,
   type WeaponId,
+  WITCH,
   WORLD,
   XP_LEVEL,
 } from '../game/config';
@@ -47,12 +52,14 @@ import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
 import { Perks } from '../game/perks';
 import { Player } from '../game/player';
-import { dmgBonus, WaveDirector } from '../game/waves';
+import { crawlDist, distScale, dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
+import { buildChunk, type ChunkTables, chunkOf, loadedBounds } from '../game/world/chunks';
 import { CollisionWorld } from '../game/world/collision';
 import { XP, Xp, XpMeter } from '../game/xp';
 import { Arena } from '../render/Arena';
 import { BombView } from '../render/BombView';
+import type { CapturePad } from '../render/CapturePad';
 import { EnemyView } from '../render/EnemyView';
 import { Fx } from '../render/Fx';
 import { GunView } from '../render/Gun';
@@ -182,6 +189,113 @@ export class Game {
   private hash = new SpatialHash();
   /** Reused each step: the broadphase rebuild must not allocate an array per tick. */
   private enemyScratch: Enemy[] = [];
+  /**
+   * The run seed: every generated chunk is a pure function of its coordinates
+   * and this, so the world is infinite but deterministic per run. Headless
+   * runs fix it so the E2E can pin collider counts. Assigned in the
+   * constructor — a field initialiser cannot read the `test` parameter
+   * property under `useDefineForClassFields`.
+   */
+  runSeed = 0;
+  /** Chunk coords the loaded square is currently centred on. */
+  private crawlCx = 0;
+  private crawlCz = 0;
+  /** Set by resetChunks: force the window to re-centre even in place. */
+  private crawlDirty = true;
+  /** Generated chunks waiting for their build budget (one per frame). */
+  readonly chunkQueue: ChunkTables[] = [];
+  /** Every streamed-in chunk by "cx,cz" — its tables, for unload/rebuild. */
+  private loadedChunks = new Map<string, ChunkTables>();
+  /** District capture pads by chunk key — they stream with their chunk. */
+  private districtPads = new Map<string, CapturePad>();
+  /** Districts whose guardian has already woken this run. */
+  private guardiansSummoned = new Set<string>();
+  /** The capture hold's rising edge, for the guardian summon. */
+  private wasOnPad = false;
+
+  /** Stream the world in and out around the player. Called every step. */
+  private ensureChunks(px: number, pz: number): void {
+    const { cx, cz } = chunkOf(px, pz);
+    if (cx !== this.crawlCx || cz !== this.crawlCz || this.crawlDirty) {
+      this.crawlCx = cx;
+      this.crawlCz = cz;
+      this.crawlDirty = false;
+      // Queue whatever the re-centred window is missing, nearest-first.
+      this.chunkQueue.length = 0;
+      for (let dz = -CRAWL.VIEW_RADIUS; dz <= CRAWL.VIEW_RADIUS; dz++) {
+        for (let dx = -CRAWL.VIEW_RADIUS; dx <= CRAWL.VIEW_RADIUS; dx++) {
+          const key = `${cx + dx},${cz + dz}`;
+          if (!this.loadedChunks.has(key)) {
+            this.chunkQueue.push(buildChunk(cx + dx, cz + dz, this.runSeed));
+          }
+        }
+      }
+      this.chunkQueue.sort(
+        (a, b) =>
+          Math.max(Math.abs(a.cx - cx), Math.abs(a.cz - cz)) -
+          Math.max(Math.abs(b.cx - cx), Math.abs(b.cz - cz)),
+      );
+      // Unload everything past the unload ring.
+      for (const key of [...this.loadedChunks.keys()]) {
+        const [kx, kz] = key.split(',').map(Number) as [number, number];
+        if (Math.abs(kx - cx) > CRAWL.UNLOAD_RADIUS || Math.abs(kz - cz) > CRAWL.UNLOAD_RADIUS) {
+          const { solids, pad } = this.arena.unloadChunk(kx, kz);
+          for (const solid of solids) this.pick.remove(solid);
+          if (pad) {
+            this.districtPads.delete(key);
+            this.capture.removeDeck(pad.deck.id);
+            const ti = this.mapTowers.findIndex((t) => t.id === pad.deck.id);
+            if (ti >= 0) this.mapTowers.splice(ti, 1);
+          }
+          this.loadedChunks.delete(key);
+        }
+      }
+    }
+    if (this.chunkQueue.length === 0) return;
+    // Near the loaded boundary the next ring must exist *now* — a rare hitch
+    // beats walking off the world. Otherwise one build per frame.
+    const bounds = loadedBounds(cx, cz);
+    const emergency =
+      px - bounds.minX < CRAWL.EMERGENCY_AHEAD ||
+      bounds.maxX - px < CRAWL.EMERGENCY_AHEAD ||
+      pz - bounds.minZ < CRAWL.EMERGENCY_AHEAD ||
+      bounds.maxZ - pz < CRAWL.EMERGENCY_AHEAD;
+    const budget = emergency ? this.chunkQueue.length : 1;
+    for (let i = 0; i < budget && this.chunkQueue.length > 0; i++) {
+      const tables = this.chunkQueue.shift();
+      if (!tables) break;
+      const key = `${tables.cx},${tables.cz}`;
+      if (this.loadedChunks.has(key)) continue;
+      this.loadedChunks.set(key, tables);
+      const { solids, pad } = this.arena.loadChunk(tables);
+      for (const solid of solids) this.pick.add(solid);
+      if (pad) {
+        this.districtPads.set(key, pad);
+        this.capture.addDeck(pad.deck);
+        this.mapTowers.push({ id: pad.deck.id, x: pad.deck.x, z: pad.deck.z, hot: false });
+      }
+    }
+  }
+
+  /** Reset the crawl: forget every generated chunk and re-stream for the seed. */
+  private resetChunks(): void {
+    for (const key of [...this.loadedChunks.keys()]) {
+      const [kx, kz] = key.split(',').map(Number) as [number, number];
+      if (kx === 0 && kz === 0) continue; // authored — nothing generated to drop
+      const { solids, pad } = this.arena.unloadChunk(kx, kz);
+      for (const solid of solids) this.pick.remove(solid);
+      if (pad) {
+        this.districtPads.delete(key);
+        this.capture.removeDeck(pad.deck.id);
+        const ti = this.mapTowers.findIndex((t) => t.id === pad.deck.id);
+        if (ti >= 0) this.mapTowers.splice(ti, 1);
+      }
+      this.loadedChunks.delete(key);
+    }
+    this.chunkQueue.length = 0;
+    this.crawlDirty = true;
+  }
+
   /** The world handed to enemies each step — built once, mutated in place. */
   private readonly world: EnemyWorld;
 
@@ -211,7 +325,8 @@ export class Game {
   /** HP still to be paid out by a secured deck, at `CAPTURE.HEAL / HEAL_T` per second. */
   private healLeft = 0;
   /** Reused per-step scratch: does each tower see hostiles right now? */
-  private alarmContact: boolean[] = [];
+  /** Reused per step: which towers see hostiles, keyed by tower id. */
+  private alarmContact = new Map<string, boolean>();
   /** Reused minimap blips, mutated each frame instead of reallocated. */
   private readonly mapTowers: MapTower[] = [];
   /** Current camera FOV, lerped toward the ADS target so it never pops. */
@@ -224,6 +339,11 @@ export class Game {
   /** Exposed for the headless E2E suite: is the first-person viewmodel drawn? */
   get gunVisible(): boolean {
     return this.gunById[this.weaponId].group.visible;
+  }
+
+  /** Every collider across all regions — the streaming assertion's gauge. */
+  get totalColliders(): number {
+    return this.collision.obstacles.length + this.collision.ramps.length;
   }
 
   /**
@@ -259,6 +379,8 @@ export class Game {
   private camQuat = new THREE.Quaternion();
   /** Scratch point for `CollisionWorld.groundHeight` queries that must not allocate. */
   private groundProbe = { x: 0, z: 0 };
+  /** Seconds of poison left from a witch's potion; 0 means clean. */
+  private poisonT = 0;
   private model: HudModel = {
     hp: 0,
     maxHp: START_HP,
@@ -280,6 +402,7 @@ export class Game {
     stamina: WORLD.STAMINA_MAX,
     bombDist: Number.POSITIVE_INFINITY,
     bombFuse: 0,
+    poison: 0,
     captureProgress: 0,
     captureOn: false,
     level: 1,
@@ -293,13 +416,13 @@ export class Game {
     readonly test = false,
     touchOverride = false,
   ) {
+    this.runSeed = this.test ? 20261101 : Math.floor(Math.random() * 0x7fffffff);
     this.touchEnabled = touchOverride || (!test && isTouchDevice());
     this.arena = new Arena(this.collision, this.rng);
     this.capture = new CapturePoints(this.arena.pads.map((pad) => pad.deck));
-    this.alarm = new TowerAlarm(this.arena.pads.length);
-    this.alarmContact = new Array<boolean>(this.arena.pads.length).fill(false);
+    this.alarm = new TowerAlarm();
     for (const pad of this.arena.pads) {
-      this.mapTowers.push({ x: pad.deck.x, z: pad.deck.z, hot: false });
+      this.mapTowers.push({ id: pad.deck.id, x: pad.deck.x, z: pad.deck.z, hot: false });
     }
     this.fx = new Fx(this.arena.scene);
     this.minimap = new Minimap();
@@ -449,6 +572,7 @@ export class Game {
       playerPos: this.player.position,
       playerY: 0,
       neighbours: EMPTY,
+      foes: EMPTY,
       hostileCount: 0,
       collide: (p, r, feetY) => this.collision.resolveCircle(p, r, { feetY, step: ENEMY.STEP }),
       // Reused probe: enemies ask for the ground every step and must not
@@ -462,7 +586,7 @@ export class Game {
       ramps: this.collision.ramps,
       damagePlayer: (amount) => this.damagePlayer(amount),
       knockPlayer: (dirX, dirZ, force) => this.knockPlayer(dirX, dirZ, force),
-      plantBomb: (from, to, thrown, heavy) => this.plantBomb(from, to, thrown, heavy),
+      plantBomb: (from, to, thrown, variant) => this.plantBomb(from, to, thrown, variant),
     };
 
     document.getElementById('menuDeploy')!.addEventListener('click', () => this.start(false));
@@ -505,6 +629,13 @@ export class Game {
       this.toMenu();
     });
     document.getElementById('gameOverScreen')!.addEventListener('click', () => this.start(false));
+
+    // The authored chunk's floor must exist before the first frame paints —
+    // everything else streams in on the step budget.
+    const home = buildChunk(0, 0, this.runSeed);
+    this.loadedChunks.set('0,0', home);
+    const homeBuilt = this.arena.loadChunk(home);
+    for (const solid of homeBuilt.solids) this.pick.add(solid);
   }
 
   /** Back to the main menu, from the pause or the game-over screen. */
@@ -629,6 +760,10 @@ export class Game {
     this.fx.clear();
     for (const w of Object.values(this.weapons)) w.reset();
     this.player.reset();
+    // A fresh run rolls a fresh world: drop every generated chunk and
+    // re-stream around the spawn plaza under the new seed.
+    if (!this.test) this.runSeed = Math.floor(Math.random() * 0x7fffffff);
+    this.resetChunks();
     this.clearHostiles();
     this.clearBombs();
     this.clearXps();
@@ -636,6 +771,8 @@ export class Game {
     this.capture.reset();
     this.alarm.reset();
     this.healLeft = 0;
+    this.guardiansSummoned.clear();
+    this.wasOnPad = false;
     this.meter.reset();
     this.perks.reset();
     this.rerolls = 1;
@@ -945,22 +1082,27 @@ export class Game {
   // --------------------------------------------------------------------- bombs
 
   /**
-   * A sapper wants a bomb at `to`; `from` is where it left its hand, for the throw arc.
-   * `heavy` builds the WARDEN's rocket: shorter fuse, smaller blast, lighter hit.
+   * A mob wants an explosion at `to`; `from` is where it left its hand, for the
+   * throw arc. The variant picks the flavour — the warden's rocket, the
+   * creeper's blast, the witch's potion — default is the sapper's bomb.
    */
   plantBomb(
     from: { x: number; z: number },
     to: { x: number; z: number },
     thrown: boolean,
-    heavy = false,
+    variant: BombVariant = 'bomb',
   ): void {
-    const limit = WORLD.HALF - WORLD.WALL_INSET;
+    const rocket = variant === 'rocket';
+    const blast = variant === 'blast';
+    const potion = variant === 'potion';
+    // No bounds clamp: the world is infinite and every target is player-relative.
     const bomb = new Bomb(
-      clamp(to.x, -limit, limit),
-      clamp(to.z, -limit, limit),
-      heavy ? BOSS.ROCKET_FUSE : BOMB.FUSE,
-      heavy ? BOSS.ROCKET_RADIUS : BOMB.RADIUS,
-      heavy ? BOSS.ROCKET_PLAYER_DMG : BOMB.PLAYER_DMG,
+      to.x,
+      to.z,
+      rocket ? BOSS.ROCKET_FUSE : blast ? CREEPER.BLAST_FUSE : potion ? WITCH.POTION_FUSE : BOMB.FUSE,
+      rocket ? BOSS.ROCKET_RADIUS : blast ? CREEPER.BLAST_RADIUS : potion ? WITCH.POTION_RADIUS : BOMB.RADIUS,
+      rocket ? BOSS.ROCKET_PLAYER_DMG : blast ? CREEPER.BLAST_DMG : potion ? 0 : BOMB.PLAYER_DMG,
+      variant,
     );
     // Rest it on whatever is actually under the blast spot, so a bomb thrown at
     // someone on a platform does not blink inside the platform's geometry.
@@ -1005,8 +1147,16 @@ export class Game {
     const { x, z } = bomb.pos;
     const r = bomb.radius;
 
-    this.fx.burst({ x, y: 0.7, z, color: 0xffa23a, count: 40, speed: 9, life: 0.6, gravity: 6 }, this.rng);
-    this.fx.burst({ x, y: 0.4, z, color: 0xff3a22, count: 24, speed: 6, life: 0.8, gravity: 4 }, this.rng);
+    // A potion splashes violet and poisons; everything else burns.
+    const potion = bomb.variant === 'potion';
+    this.fx.burst(
+      { x, y: 0.7, z, color: potion ? 0x9b59d0 : 0xffa23a, count: 40, speed: 9, life: 0.6, gravity: 6 },
+      this.rng,
+    );
+    this.fx.burst(
+      { x, y: 0.4, z, color: potion ? 0x5e2b8a : 0xff3a22, count: 24, speed: 6, life: 0.8, gravity: 4 },
+      this.rng,
+    );
     this.sfx.explode();
     this.feedback.shakeT = Math.max(this.feedback.shakeT, BOMB.SHAKE);
 
@@ -1015,6 +1165,11 @@ export class Game {
       this.player.position.z - z,
       this.player.position.y - WORLD.PLAYER_H - bomb.pos.y,
     );
+    if (potion) {
+      // Poison: no shrapnel, no shred — a lingering drain instead of a blast.
+      if (pd < r) this.poisonT = WITCH.POISON_T;
+      return;
+    }
     if (pd < r) this.damagePlayer(bomb.playerDmg * (1 - pd / r));
 
     for (const h of this.hostiles) {
@@ -1028,6 +1183,13 @@ export class Game {
         enemy.knockback((enemy.pos.x - x) * inv, (enemy.pos.z - z) * inv);
       }
     }
+  }
+
+  /** Poison from a witch's potion: a small drain per second, refreshed by every hit. */
+  private updatePoison(dt: number): void {
+    if (this.poisonT <= 0) return;
+    this.poisonT = Math.max(0, this.poisonT - dt);
+    this.damagePlayer(WITCH.POISON_DPS * dt);
   }
 
   /** Shooting a live bomb pops it harmlessly for bonus points. */
@@ -1198,7 +1360,26 @@ export class Game {
   private updateCapture(dt: number): void {
     const cap = this.capture;
     const p = this.player.position;
-    cap.update(dt, this.wave, p.x, p.z, this.world.playerY);
+    const deck = cap.decks[cap.active];
+
+    // The district guardian: stepping onto a wild pad for the first time wakes
+    // its Colossus, and the hold cannot bank while any Colossus keeps the pad.
+    let gated = false;
+    if (deck) {
+      if (cap.onPad && !this.wasOnPad && !deck.id.startsWith('a') && !this.guardiansSummoned.has(deck.id)) {
+        this.summonGuardian(deck);
+      }
+      for (const h of this.hostiles) {
+        if (h.enemy.kind !== 'colossus' || h.enemy.state !== 'alive') continue;
+        if (Math.hypot(h.enemy.pos.x - deck.x, h.enemy.pos.z - deck.z) <= COLOSSUS.GATE_RADIUS) {
+          gated = true;
+          break;
+        }
+      }
+    }
+    this.wasOnPad = cap.onPad;
+
+    cap.update(dt, p.x, p.z, this.world.playerY, gated);
 
     if (cap.justCaptured) {
       // Added, not replaced: a level-up repair mid-payout has to survive the
@@ -1215,21 +1396,36 @@ export class Game {
     this.hp = Math.min(START_HP, this.hp + step);
   }
 
+  /** Wake a district's guardian: a distance-scaled Colossus beside its deck. */
+  private summonGuardian(deck: Deck): void {
+    this.guardiansSummoned.add(deck.id);
+    const k = distScale(crawlDist(deck.x, deck.z));
+    const a = this.rng.next() * Math.PI * 2;
+    const boss = new Enemy('colossus', deck.x + Math.cos(a) * 9, deck.z + Math.sin(a) * 9, this.rng);
+    boss.scaleUp(ENEMY_TYPES.colossus.hp * (k - 1), 1, dmgBonus(this.waves.wave));
+    const view = new EnemyView(boss);
+    view.addTo(this.arena.scene);
+    this.pick.add(view.body, view.head);
+    this.hostiles.push({ enemy: boss, view });
+    this.aliveCount++;
+    this.hud.showBanner('THE COLOSSUS AWAKENS', 'KILL IT TO BANK THE DECK');
+    this.sfx.alarm();
+  }
+
   // -------------------------------------------------------------------- alarm
 
   /**
    * Watchtower alarms: any hostile inside a tower's radius lights it. The siren
    * fires on the rising edge only, so a crowd milling at a gatehouse does not
-   * scream continuously.
+   * scream continuously. Towers stream with their deck districts.
    */
   private updateAlarm(dt: number): void {
-    const pads = this.arena.pads;
     const contact = this.alarmContact;
-    for (let i = 0; i < pads.length; i++) {
-      const deck = pads[i]?.deck;
-      contact[i] = deck ? this.hostileNear(deck.x, deck.z, ALARM.RADIUS) : false;
+    for (const t of this.mapTowers) {
+      contact.set(t.id, this.hostileNear(t.x, t.z, ALARM.RADIUS));
     }
     if (this.alarm.update(dt, contact)) this.sfx.alarm();
+    for (const t of this.mapTowers) t.hot = this.alarm.isHot(t.id);
   }
 
   /** Is any live hostile within `r` of (x, z)? Allocation-free. */
@@ -1354,7 +1550,7 @@ export class Game {
   /** The live boss's health, or null when none walks — for `__NEON.boss()`. */
   get bossInfo(): { hp: number; max: number } | null {
     for (const h of this.hostiles) {
-      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+      if ((h.enemy.kind === 'warden' || h.enemy.kind === 'colossus') && h.enemy.state === 'alive') {
         return { hp: h.enemy.hp, max: h.enemy.stats.maxHp };
       }
     }
@@ -1368,6 +1564,9 @@ export class Game {
     this.elapsed += dt;
 
     if (this.state === STATE.PLAYING) {
+      // Stream the world in around the player before anything moves — a body
+      // must never stand where the floor does not exist yet.
+      this.ensureChunks(this.player.position.x, this.player.position.z);
       // Keyboard/mouse intent plus the stick's, merged — the player never has
       // both at once, but the merge is what keeps `Player` input-agnostic.
       const moveIn = this.input.move();
@@ -1378,6 +1577,12 @@ export class Game {
         moveIn.sprint = moveIn.sprint || t.sprint;
       }
       this.player.update(dt, moveIn, this.collision);
+      // The hard streaming net: even a build stall cannot walk the player off
+      // the loaded square. The boundary is deep in the fog, so this is invisible.
+      const bounds = loadedBounds(this.crawlCx, this.crawlCz);
+      this.player.position.x = clamp(this.player.position.x, bounds.minX, bounds.maxX);
+      this.player.position.z = clamp(this.player.position.z, bounds.minZ, bounds.maxZ);
+      this.arena.followPlayer(this.player.position.x, this.player.position.z);
       // Enemies compare their own height against the player's feet, not the eye.
       this.world.playerY = this.player.position.y - WORLD.PLAYER_H;
       // Sync the rig to the current view before firing, so a shot's ray matches
@@ -1393,6 +1598,7 @@ export class Game {
       this.knife.update(dt);
       this.updateWaves(dt);
       this.updateBombs(dt);
+      this.updatePoison(dt);
       this.updateXps(dt);
       this.updateCapture(dt);
       this.updateAlarm(dt);
@@ -1414,10 +1620,13 @@ export class Game {
     const result = this.waves.update(dt, this.player.position, this.aliveCount);
     for (const req of result.spawned) {
       const enemy = new Enemy(req.kind, req.x, req.z, this.rng);
+      // The crawl's curve: mobs scale with the wave, and again with how far
+      // from the spawn plaza the fight is happening.
+      const k = distScale(crawlDist(req.x, req.z));
       enemy.scaleUp(
-        (this.waves.wave - 1) * WAVES.HP_PER_WAVE[req.kind],
+        (this.waves.wave - 1) * WAVES.HP_PER_WAVE[req.kind] * k,
         req.speedScale,
-        dmgBonus(this.waves.wave),
+        dmgBonus(this.waves.wave) * k,
       );
       const diff = DIFFICULTIES[this.difficulty];
       enemy.applyDifficulty(diff.hp, diff.speed, diff.dmg);
@@ -1439,6 +1648,8 @@ export class Game {
 
     const world = this.world;
     world.hostileCount = this.waves.hostileCount(this.aliveCount);
+    // The witch heals across the whole herd, beyond what the hash's 9 cells see.
+    world.foes = scratch;
 
     for (let i = this.hostiles.length - 1; i >= 0; i--) {
       const h = this.hostiles[i]!;
@@ -1560,16 +1771,17 @@ export class Game {
     }
     this.arena.setSkyTint(this.shower.tint);
 
-    // Only the live deck draws a pad; the beacons carry the rest.
+    // Only the live deck draws a pad; the beacons carry the rest. Authored
+    // pads and streamed district pads wear the same state.
     const cap = this.capture;
-    const pads = this.arena.pads;
-    const hot = this.alarm.hot;
-    for (let i = 0; i < pads.length; i++) {
-      const active = i === cap.active;
-      const alarm = hot[i] ?? false;
-      pads[i]?.sync(active, cap.ready, active ? cap.progress : 0, this.elapsed, alarm);
-      const blip = this.mapTowers[i];
-      if (blip) blip.hot = alarm;
+    const liveId = cap.decks[cap.active]?.id;
+    for (const pad of this.arena.pads) {
+      const active = pad.deck.id === liveId;
+      pad.sync(active, cap.ready, active ? cap.progress : 0, this.elapsed, this.alarm.isHot(pad.deck.id));
+    }
+    for (const pad of this.districtPads.values()) {
+      const active = pad.deck.id === liveId;
+      pad.sync(active, cap.ready, active ? cap.progress : 0, this.elapsed, this.alarm.isHot(pad.deck.id));
     }
 
     this.fx.update(dt);
@@ -1605,6 +1817,7 @@ export class Game {
     m.stamina = player.stamina;
     m.bombDist = nearestD;
     m.bombFuse = nearestFuse;
+    m.poison = this.poisonT;
     m.captureProgress = cap.progress;
     m.captureOn = cap.onPad;
     m.level = this.meter.level;
@@ -1615,7 +1828,7 @@ export class Game {
     // The boss bar tracks the first live warden; it dies, it disappears.
     let bossFound: Hostile | undefined;
     for (const h of this.hostiles) {
-      if (h.enemy.kind === 'warden' && h.enemy.state === 'alive') {
+      if ((h.enemy.kind === 'warden' || h.enemy.kind === 'colossus') && h.enemy.state === 'alive') {
         bossFound = h;
         break;
       }
@@ -1635,7 +1848,11 @@ export class Game {
       this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
     }
     if (this.mapOpen) {
-      this.map.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed);
+      // The map only draws while the run is paused, so a fresh snapshot array
+      // per frame is fine here.
+      this.map.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, [
+        ...this.loadedChunks.values(),
+      ]);
     }
 
     this.hud.setHitmark(this.feedback.hitT);

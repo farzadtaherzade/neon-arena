@@ -119,6 +119,18 @@ export class CapturePad {
     scene.add(this.group);
   }
 
+  /** Streamed districts dispose everything they own; authored pads never call this. */
+  dispose(scene: THREE.Scene): void {
+    scene.remove(this.group);
+    this.group.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as THREE.Material | undefined;
+      // The mast's hazard collar wears a shared material — keep it.
+      if (mat && mat !== MAT.hazard()) mat.dispose();
+    });
+  }
+
   /**
    * `active`: this is the live deck. `ready`: not on cooldown.
    * `alarm`: hostiles are massing inside this tower's alarm radius.

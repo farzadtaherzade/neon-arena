@@ -1,6 +1,7 @@
 import { dampFactor } from '../core/math';
 import type { Rng } from '../core/rng';
-import { BOSS, ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WORLD } from './config';
+import type { BombVariant } from './bomb';
+import { BLINKER, BOSS, COLOSSUS, CREEPER, ENEMY, ENEMY_LOOKS, ENEMY_TYPES, type EnemyKind, RUNNER, SAPPER, TANK, WITCH, WORLD } from './config';
 import type { Vec3 } from './player';
 import type { Ramp, Vec2 } from './world/collision';
 
@@ -11,6 +12,8 @@ export interface EnemyWorld {
   playerY: number;
   /** Live separation candidates from the population's spatial hash. */
   neighbours: readonly Enemy[];
+  /** Every hostile in the arena — the witch's heal scans the whole herd. */
+  foes: readonly Enemy[];
   /** Live + queued hostiles; drives the sapper's hunt trigger. */
   hostileCount: number;
   collide(pos: Vec2, r: number, feetY: number): void;
@@ -21,9 +24,10 @@ export interface EnemyWorld {
   damagePlayer(amount: number): void;
   /** Shove the player — the tank's ground slam. */
   knockPlayer(dirX: number, dirZ: number, force: number): void;
-  /** A sapper wants a bomb at `to`; `from` is where it came from, for the throw arc.
-   *  `heavy` is the WARDEN's rocket: a faster, smaller, lighter bomb. */
-  plantBomb(from: Vec2, to: Vec2, thrown: boolean, heavy?: boolean): void;
+  /** A mob wants an explosion at `to`; `from` is where it came from, for the throw arc.
+   *  The variant picks the flavour — the warden's rocket, the creeper's blast,
+   *  the witch's potion — absent is the sapper's standard bomb. */
+  plantBomb(from: Vec2, to: Vec2, thrown: boolean, variant?: BombVariant): void;
 }
 
 /** Where a hit came from, so the mob can work out what its armour is doing. */
@@ -100,11 +104,12 @@ export class Enemy {
   /** How long this mob's windup lasts, for the swing animation. */
   private windupTotal = 0;
 
-  /** Runner only: seconds left on the pounce, and on the recovery after it. */
+  /** Runner pounce / colossus charge: the burst, the recovery, the cooldown
+   *  and the telegraph — the same state machine with different numbers. */
   pounce = 0;
   recover = 0;
   pounceCd = 0;
-  /** Runner only: seconds left on the crouch that telegraphs the pounce. */
+  /** Seconds left on the crouch that telegraphs the lunge. */
   pounceTell = 0;
 
   /** Sapper only: seconds until the next bomb plant while fleeing. */
@@ -113,9 +118,19 @@ export class Enemy {
   /** Sapper only: seconds left before the herd thins enough to make it charge. */
   sapperMode: 'lurk' | 'hunt' | 'flee' = 'lurk';
 
-  /** Sapper only: seconds until the next plant, and its wander heading. */
+  /** Sapper and witch: seconds until the next plant, and the wander heading. */
   plantT = 0;
   wanderA = 0;
+
+  /** Creeper only: seconds left on the self-destruct fuse, armed at `CREEPER.FUSE`. */
+  fuse: number = CREEPER.FUSE;
+
+  /** Witch only: seconds until the next ally heal. */
+  healT = 0;
+
+  /** Blinker only: seconds to the next blink, and the tell once it starts. */
+  blinkT = 0;
+  blinkTell = 0;
 
   /** Warden only: seconds to the next volley, the tell once it starts, and which way it circles. */
   volleyT = 0;
@@ -154,6 +169,9 @@ export class Enemy {
     this.phase = rng.next() * 6;
     // Stagger the first plant so a wave of sappers doesn't fire in lockstep.
     this.plantT = rng.range(SAPPER.PLANT_T * 0.4, SAPPER.PLANT_T);
+    if (kind === 'witch') this.plantT = rng.range(WITCH.THROW_T * 0.4, WITCH.THROW_T);
+    if (kind === 'witch') this.healT = rng.range(WITCH.HEAL_T * 0.4, WITCH.HEAL_T);
+    if (kind === 'blinker') this.blinkT = rng.range(BLINKER.BLINK_T * 0.4, BLINKER.BLINK_T);
     this.wanderA = rng.next() * Math.PI * 2;
     this.look = Math.floor(rng.next() * looks.length);
     if (kind === 'warden') {
@@ -200,6 +218,9 @@ export class Enemy {
     this.pounceCd = Math.max(0, this.pounceCd - dt);
     if (this.kind === 'sapper') this.updateSapper(dt, world);
     else if (this.kind === 'warden') this.updateWarden(dt, world);
+    else if (this.kind === 'creeper') this.updateCreeper(dt, world);
+    else if (this.kind === 'witch') this.updateWitch(dt, world);
+    else if (this.kind === 'colossus') this.updateColossus(dt, world);
     else this.updateChaser(dt, world);
 
     // It turns at a limited rate, so the player can get around its front plate.
@@ -243,8 +264,27 @@ export class Enemy {
 
   /** 0..1 — how far through its crouch the runner is, before it leaps. */
   get pounceK(): number {
+    const tell = this.kind === 'colossus' ? COLOSSUS.CHARGE_TELL : RUNNER.POUNCE_TELL;
     if (this.pounceTell <= 0) return 0;
-    return 1 - this.pounceTell / RUNNER.POUNCE_TELL;
+    return 1 - this.pounceTell / tell;
+  }
+
+  /** 0..1 — how lit the creeper is as its fuse burns down. */
+  get fuseK(): number {
+    if (this.fuse >= CREEPER.TELL || this.fuse <= 0) return 0;
+    return 1 - this.fuse / CREEPER.TELL;
+  }
+
+  /** 0..1 — how lit the witch is just before a potion. */
+  get potionK(): number {
+    if (this.plantT > WITCH.TELL || this.plantT <= 0) return 0;
+    return 1 - this.plantT / WITCH.TELL;
+  }
+
+  /** 0..1 — how lit the blinker is just before it teleports. */
+  get blinkK(): number {
+    if (this.blinkTell <= 0) return 0;
+    return 1 - this.blinkTell / BLINKER.TELL;
   }
 
   /** Bounce height and leg swing for this step. */
@@ -262,6 +302,7 @@ export class Enemy {
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
     if (this.kind === 'runner') this.updatePounce(dt, dist);
+    if (this.kind === 'blinker') this.updateBlink(dt, dist, world);
     // The tank's slam has reach, so it starts its swing from further out.
     const reach = this.kind === 'tank' ? TANK.SLAM_R : this.reachPad;
     // Melee only works across a small height gap: an enemy at the foot of a
@@ -300,11 +341,94 @@ export class Enemy {
     this.pounceTell = RUNNER.POUNCE_TELL;
   }
 
+  /**
+   * The blinker's teleport, on the chaser's clock like the runner's pounce:
+   * cooldown, then a short glowing tell, then it lands on a ring around the
+   * player at the player's feet height — which is what lets it breach a deck.
+   */
+  private updateBlink(dt: number, dist: number, world: EnemyWorld): void {
+    if (this.blinkTell > 0) {
+      this.blinkTell -= dt;
+      if (this.blinkTell <= 0) this.doBlink(world);
+      return;
+    }
+    if (this.blinkT > 0) {
+      this.blinkT -= dt;
+      return;
+    }
+    if (dist < BLINKER.BLINK_MIN) return;
+    this.blinkTell = BLINKER.TELL;
+  }
+
+  /** The teleport itself. Deterministic: the golden angle walks the ring. */
+  private doBlink(world: EnemyWorld): void {
+    this.blinkT = BLINKER.BLINK_T;
+    this.wanderA += 2.399963;
+    const r = BLINKER.LAND_MIN + (BLINKER.LAND_MAX - BLINKER.LAND_MIN) * Math.abs(Math.sin(this.wanderA));
+    this.pos.x = world.playerPos.x + Math.cos(this.wanderA) * r;
+    this.pos.z = world.playerPos.z + Math.sin(this.wanderA) * r;
+    this.pos.y = world.playerY;
+    this.vx = 0;
+    this.vz = 0;
+  }
+
   /** Speed multiplier: pounce burst, recovery, or plain running. */
   private speedGain(): number {
-    if (this.pounce > 0) return RUNNER.POUNCE_GAIN;
-    if (this.recover > 0) return RUNNER.RECOVER_GAIN;
+    const chargeGain = this.kind === 'colossus' ? COLOSSUS.CHARGE_GAIN : RUNNER.POUNCE_GAIN;
+    const recoverGain = this.kind === 'colossus' ? COLOSSUS.RECOVER_GAIN : RUNNER.RECOVER_GAIN;
+    if (this.pounce > 0) return chargeGain;
+    if (this.recover > 0) return recoverGain;
     return 1;
+  }
+
+  /**
+   * The COLOSSUS: the district guardian. It stalks like a tank and closes with
+   * a telegraphed bull rush; its slam is a ground quake that reaches over a
+   * deck edge, which is what makes holding a wild pad a fight. Its front
+   * armour means the flank is the answer, as ever.
+   */
+  private updateColossus(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    this.updateCharge(dt, dist);
+
+    // The slam has boss reach, so the swing starts from further out.
+    if (dist > COLOSSUS.SLAM_R || Math.abs(world.playerY - this.pos.y) > ENEMY.ATTACK_RISE) {
+      this.pursue(dt, world, this.stats.speed * this.speedGain());
+    } else {
+      this.attack(dt, world);
+    }
+  }
+
+  /**
+   * One step of the charge clock — the runner's pounce machine with boss
+   * numbers: cooldown, glowing tell, the rush, then a wide-open recovery.
+   */
+  private updateCharge(dt: number, dist: number): void {
+    if (this.pounce > 0) {
+      this.pounce -= dt;
+      if (this.pounce <= 0) this.recover = COLOSSUS.RECOVER_T;
+      return;
+    }
+    if (this.recover > 0) {
+      this.recover = Math.max(0, this.recover - dt);
+      return;
+    }
+    if (this.pounceTell > 0) {
+      this.pounceTell -= dt;
+      if (this.pounceTell <= 0) {
+        this.pounce = COLOSSUS.CHARGE_T;
+        this.pounceCd = COLOSSUS.CHARGE_COOLDOWN + COLOSSUS.CHARGE_T + COLOSSUS.RECOVER_T;
+      }
+      return;
+    }
+    if (this.pounceCd > 0) {
+      this.pounceCd = Math.max(0, this.pounceCd - dt);
+      return;
+    }
+    if (dist < COLOSSUS.CHARGE_MIN || dist > COLOSSUS.CHARGE_MAX) return;
+    this.pounceTell = COLOSSUS.CHARGE_TELL;
   }
 
   /**
@@ -373,6 +497,92 @@ export class Enemy {
     if (dist <= this.reachPad && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
       this.attack(dt, world);
     }
+  }
+
+  /**
+   * The creeper: it has no attack but itself. The fuse counts down inside
+   * `TRIGGER_DIST` on the player's level, holds in the hysteresis band, and
+   * recovers past `CANCEL_DIST` — the Minecraft counter-play of backing off.
+   * At zero it plants a blast at its own feet and takes itself with it, so
+   * killing it during the hiss is the only way to stop the explosion for free.
+   */
+  private updateCreeper(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    // The melee height gate: a creeper besieging a deck ramp never blows up.
+    if (dist <= CREEPER.TRIGGER_DIST && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
+      this.fuse = Math.max(0, this.fuse - dt);
+      if (this.fuse <= 0) {
+        world.plantBomb(this.pos, this.pos, false, 'blast');
+        this.kill();
+        return;
+      }
+    } else if (dist > CREEPER.CANCEL_DIST) {
+      this.fuse = Math.min(CREEPER.FUSE, this.fuse + dt);
+    }
+    this.pursue(dt, world, this.stats.speed);
+  }
+
+  /**
+   * The witch: a lurking artillery piece that throws poison instead of
+   * shrapnel, and stitches the herd back together on a second clock. It never
+   * hunts — keep it at `KEEP_DIST` like a lurking sapper and lob every
+   * `THROW_T`, potions always aimed at the player so they reach a deck.
+   */
+  private updateWitch(dt: number, world: EnemyWorld): void {
+    const dx = world.playerPos.x - this.pos.x;
+    const dz = world.playerPos.z - this.pos.z;
+    const dist = Math.hypot(dx, dz);
+    const inv = 1 / (dist || 1);
+
+    this.plantT -= dt;
+    if (this.plantT <= 0) {
+      this.plantT = WITCH.THROW_T;
+      world.plantBomb(this.pos, world.playerPos, true, 'potion');
+    }
+    this.healT -= dt;
+    if (this.healT <= 0) {
+      this.healT = WITCH.HEAL_T;
+      this.healAlly(world);
+    }
+
+    // Back away when the player is too close, otherwise wander.
+    let mx: number;
+    let mz: number;
+    if (dist < WITCH.KEEP_DIST) {
+      mx = -dx * inv;
+      mz = -dz * inv;
+    } else {
+      mx = Math.sin(this.wanderA);
+      mz = Math.cos(this.wanderA);
+    }
+    this.steer(dt, mx, mz, this.stats.speed * SAPPER.LURK_GAIN, world);
+    this.wanderA += Math.sin(this.phase * 0.7) * SAPPER.WANDER_TURN * dt;
+
+    if (dist <= this.reachPad && Math.abs(world.playerY - this.pos.y) <= ENEMY.ATTACK_RISE) {
+      this.attack(dt, world);
+    }
+  }
+
+  /** Heal the most wounded living ally in range. No overheal, no resurrection. */
+  private healAlly(world: EnemyWorld): void {
+    let best: Enemy | undefined;
+    let bestFrac = 1;
+    for (const other of world.foes) {
+      if (other === this || other.state !== 'alive') continue;
+      const dx = other.pos.x - this.pos.x;
+      const dz = other.pos.z - this.pos.z;
+      if (dx * dx + dz * dz > WITCH.HEAL_RADIUS * WITCH.HEAL_RADIUS) continue;
+      const frac = other.stats.hp / other.stats.maxHp;
+      if (frac < bestFrac) {
+        bestFrac = frac;
+        best = other;
+      }
+    }
+    if (!best) return;
+    best.stats.hp = Math.min(best.stats.maxHp, best.stats.hp + WITCH.HEAL);
+    best.flash(WITCH.HEAL_COLOR, ENEMY.HIT_FLASH);
   }
 
   /**
@@ -448,7 +658,7 @@ export class Enemy {
               z: world.playerPos.z + Math.sin(a) * BOSS.ROCKET_SPREAD,
             },
             true,
-            true,
+            'rocket',
           );
         }
       }
@@ -588,22 +798,24 @@ export class Enemy {
 
   /** How long this mob's tell runs before the blow lands. */
   private windupLength(): number {
+    if (this.kind === 'colossus') return COLOSSUS.WINDUP;
     return this.kind === 'tank' || this.kind === 'warden' ? TANK.WINDUP : ENEMY.WINDUP;
   }
 
-  /** The blow lands. Grunts swipe; the tank and the warden slam the ground. */
+  /** The blow lands. Grunts swipe; the tank, the warden and the colossus slam. */
   private swing(world: EnemyWorld): void {
     this.flash(ENEMY.ATTACK_FLASH_COLOR, ENEMY.ATTACK_FLASH);
     const dx = world.playerPos.x - this.pos.x;
     const dz = world.playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
-    if (this.kind === 'tank' || this.kind === 'warden') {
-      // The warden's slam reach scales with its bulk.
-      const reach = this.kind === 'warden' ? TANK.SLAM_R * this.scale : TANK.SLAM_R;
+    if (this.kind === 'tank' || this.kind === 'warden' || this.kind === 'colossus') {
+      // The warden's slam reach scales with its bulk; the colossus's quake is
+      // the district guardian's answer to a held pad.
+      const reach = this.kind === 'warden' ? TANK.SLAM_R * this.scale : this.kind === 'colossus' ? COLOSSUS.SLAM_R : TANK.SLAM_R;
       if (dist > reach) return;
-      world.damagePlayer(this.stats.dmg * TANK.SLAM_MULT);
+      world.damagePlayer(this.stats.dmg * (this.kind === 'colossus' ? COLOSSUS.SLAM_MULT : TANK.SLAM_MULT));
       const inv = 1 / (dist || 1);
-      world.knockPlayer(dx * inv, dz * inv, TANK.KNOCK);
+      world.knockPlayer(dx * inv, dz * inv, this.kind === 'colossus' ? COLOSSUS.KNOCK : TANK.KNOCK);
       return;
     }
     if (dist > this.reachPad) return;
@@ -628,7 +840,12 @@ export class Enemy {
    */
   private plateCut(amount: number, hit: HitInfo | undefined): number {
     if (!hit || hit.melee || hit.headshot) return amount;
-    const cut = this.kind === 'tank' ? TANK.ARMOUR_CUT : this.kind === 'grunt' ? ENEMY.SHIELD_CUT : 0;
+    const cut =
+      this.kind === 'tank' || this.kind === 'colossus'
+        ? TANK.ARMOUR_CUT
+        : this.kind === 'grunt'
+          ? ENEMY.SHIELD_CUT
+          : 0;
     if (cut <= 0) return amount;
     // The shooter is in the direction the hit came from; the plate covers only
     // what the mob is looking at.

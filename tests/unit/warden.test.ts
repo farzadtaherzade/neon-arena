@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
+import type { BombVariant } from '../../src/game/bomb';
 import { BOSS, TANK } from '../../src/game/config';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
 
 /** A world mock that records what the mob asks of it. */
 function makeWorld(px = 0, pz = 0, playerY = 0) {
   const events = {
-    bombs: [] as { x: number; z: number; thrown: boolean; heavy: boolean }[],
+    bombs: [] as { x: number; z: number; thrown: boolean; variant: BombVariant | undefined }[],
     damage: [] as number[],
     knocks: 0,
   };
@@ -14,6 +15,7 @@ function makeWorld(px = 0, pz = 0, playerY = 0) {
     playerPos: { x: px, z: pz },
     playerY,
     neighbours: [],
+    foes: [],
     hostileCount: 1,
     collide: () => {},
     support: (_x, _z, _r, ceiling) => Math.min(0, ceiling),
@@ -22,8 +24,8 @@ function makeWorld(px = 0, pz = 0, playerY = 0) {
     knockPlayer: () => {
       events.knocks++;
     },
-    plantBomb: (_from, to, thrown, heavy) =>
-      events.bombs.push({ x: to.x, z: to.z, thrown, heavy: heavy ?? false }),
+    plantBomb: (_from, to, thrown, variant) =>
+      events.bombs.push({ x: to.x, z: to.z, thrown, variant }),
   };
   return { world, events };
 }
@@ -55,7 +57,7 @@ describe('the warden', () => {
     expect(events.bombs).toHaveLength(BOSS.VOLLEY_ROCKETS);
     for (const bomb of events.bombs) {
       expect(bomb.thrown).toBe(true);
-      expect(bomb.heavy).toBe(true);
+      expect(bomb.variant).toBe('rocket');
       expect(Math.hypot(bomb.x, bomb.z)).toBeGreaterThan(BOSS.ROCKET_SPREAD - 0.5);
     }
     // Reload, tell again, second volley.

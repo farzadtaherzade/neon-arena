@@ -932,6 +932,32 @@ input.toggle {
   text-shadow: 0 0 18px rgba(255, 45, 40, 0.9);
 }
 
+/* Poison: the witch's potion in the blood — a violet pulse, no vignette. */
+#poisonWarn {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+#poisonWarn.on {
+  opacity: 1;
+  animation: bombPulse 0.5s ease-in-out infinite;
+}
+#poisonWarnText {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36%;
+  text-align: center;
+  font-family: Consolas, Menlo, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #c084fc;
+  text-shadow: 0 0 18px rgba(155, 89, 208, 0.9);
+}
+
 /* Deck capture: on screen only while the player is holding a live pad. */
 #capture {
   position: absolute;

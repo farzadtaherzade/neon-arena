@@ -4,7 +4,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Rng } from '../core/rng';
-import { BLOOM, CAMERA, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO, WORLD } from '../game/config';
+import { BLOOM, CAMERA, CRAWL, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO } from '../game/config';
+import { type ChunkTables, chunkRegion } from '../game/world/chunks';
 import type { CollisionWorld } from '../game/world/collision';
 import {
   OBSTACLES,
@@ -19,7 +20,7 @@ import { CapturePad } from './CapturePad';
 import { ClockTower } from './ClockTower';
 import { GEO, MAT } from './Materials';
 import { mobWarmup } from './models/MobModel';
-import { coverAccents, makeCover, makeDeck, makeRamp, makeReactor, makeWall } from './models/StructureKit';
+import { coverAccents, makeCover, makeDeck, makeRamp, makeReactor } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
 
 /** Where the corner accent lights sit, and where the clock tower stands. */
@@ -59,6 +60,23 @@ export class Arena {
 
   /** Every static mesh lives here, so a theme swap can drop and rebuild it. */
   private readonly worldGroup = new THREE.Group();
+
+  /** One loaded streaming chunk: its tables, meshes, solids and region id. */
+  private chunks = new Map<
+    string,
+    {
+      tables: ChunkTables;
+      region: number;
+      group: THREE.Group;
+      solids: THREE.Object3D[];
+      pad?: CapturePad;
+    }
+  >();
+  /** Shared per-theme floor assets every chunk's floor plane points at. */
+  private chunkFloorGeo: THREE.PlaneGeometry | null = null;
+  private chunkFloorMat: THREE.MeshStandardMaterial | null = null;
+  /** The starfield object — re-centred on the player by `followPlayer`. */
+  private starsObj: THREE.Points | null = null;
 
   /** The active theme; the builders read their colours from it. */
   private theme: ThemeDef = THEMES[DEFAULT_THEME];
@@ -159,9 +177,13 @@ export class Arena {
     return { yawObj: this.yawObj, pitchObj: this.pitchObj };
   }
 
-  /** Collider counts, for the headless suite's boot-registration assertion. */
+  /**
+   * Collider counts for the headless suite's boot-registration assertion:
+   * region 0 only — the authored arena, which every boot must register
+   * regardless of how much of the infinite world has streamed in.
+   */
   collisionCount(): { obstacles: number; ramps: number } {
-    return { obstacles: this.collision.obstacles.length, ramps: this.collision.ramps.length };
+    return this.collision.countRegion(0);
   }
 
   /**
@@ -340,6 +362,9 @@ export class Arena {
     this.sun.shadow.camera.far = 150;
     this.sun.shadow.bias = -0.0006;
     this.scene.add(this.sun);
+    // The shadow ortho follows the player via `followPlayer`, which moves the
+    // light's target — the target must be in the scene for that to take.
+    this.scene.add(this.sun.target);
 
     // Cool fill from the opposite side so enemies facing away from the key
     // light still show their body colours rather than going black.
@@ -365,6 +390,15 @@ export class Arena {
       mat.dispose();
     }
     this.ownedMats.length = 0;
+    this.chunkFloorGeo = null;
+    this.chunkFloorMat = null;
+    this.starsObj = null;
+    // Chunk meshes are gone with the worldGroup; the tables survive so the
+    // rebuild can recreate them without re-registering collision.
+    for (const chunk of this.chunks.values()) {
+      chunk.group = new THREE.Group();
+      chunk.solids = [];
+    }
   }
 
   /** Rebuild the static meshes for the active theme; collision stays as it was. */
@@ -377,14 +411,19 @@ export class Arena {
     // The boot build registers every collider exactly once; theme rebuilds
     // reuse those colliders (a theme is render-only) and must not stack them.
     this.registerCollision = !this.collisionRegistered;
-    this.floor();
-    this.walls();
+    this.ensureFloorAssets();
     this.cover();
     this.reactor();
     this.platforms();
     this.ramps();
     this.clockTower();
     this.stars();
+    // Streaming chunks rebuild from their stored tables — same meshes, same
+    // colliders, new palette.
+    for (const chunk of this.chunks.values()) {
+      this.buildChunkInto(chunk.tables, chunk.region, chunk.group, chunk.solids, false);
+      this.worldGroup.add(chunk.group);
+    }
     this.registerCollision = true;
     // A build either just registered (boot) or reused existing colliders
     // (theme swap); either way the registry is populated from here on.
@@ -394,40 +433,182 @@ export class Arena {
     for (const pad of this.pads) this.solids.push(pad.mast);
   }
 
-  private floor(): void {
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(WORLD.ARENA, WORLD.ARENA),
-      new THREE.MeshStandardMaterial({
-        map: makeFloorTexture(this.rng, this.theme),
-        roughness: 0.85,
-        metalness: 0.2,
-      }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    this.ownedMats.push(floor.material as THREE.Material);
-    this.worldGroup.add(floor);
-    this.solids.push(floor);
+  /** One shared floor geometry + texture for every chunk's plane. */
+  private ensureFloorAssets(): void {
+    if (this.chunkFloorGeo && this.chunkFloorMat) return;
+    this.chunkFloorGeo = new THREE.PlaneGeometry(CRAWL.CHUNK, CRAWL.CHUNK);
+    this.chunkFloorMat = new THREE.MeshStandardMaterial({
+      map: makeFloorTexture(this.rng, this.theme),
+      roughness: 0.85,
+      metalness: 0.2,
+    });
+    this.ownedMats.push(this.chunkFloorMat);
   }
 
-  private walls(): void {
-    const { ARENA, HALF, WALL_H } = WORLD;
-    const length = ARENA + 2;
-    const mkWall = (x: number, z: number, ry: number) => {
-      const asset = makeWall(length, WALL_H, this.theme);
-      asset.group.position.set(x, 0, z);
-      asset.group.rotation.y = ry;
-      this.worldGroup.add(asset.group);
-      // The wall is long on local X; rotating by ±90° swaps the footprint.
-      const halfX = ry === 0 ? length / 2 : 0.5;
-      const halfZ = ry === 0 ? 0.5 : length / 2;
-      this.blockAt(asset.solid, x, z, halfX, halfZ, WALL_H);
-    };
+  /**
+   * Build one streaming chunk's meshes into `group`. `register` is true on the
+   * chunk's first load (colliders join its region) and false on a theme
+   * rebuild (the colliders never moved). Every solid lands both in the global
+   * pick list and in `solids`, so the caller can retract exactly this chunk's.
+   */
+  private buildChunkInto(
+    tables: ChunkTables,
+    region: number,
+    group: THREE.Group,
+    solids: THREE.Object3D[],
+    register: boolean,
+  ): void {
+    const wasRegistering = this.registerCollision;
+    this.registerCollision = register;
+    const half = CRAWL.CHUNK / 2;
+    const cx = tables.cx * CRAWL.CHUNK;
+    const cz = tables.cz * CRAWL.CHUNK;
 
-    mkWall(0, -HALF - 0.5, 0);
-    mkWall(0, HALF + 0.5, 0);
-    mkWall(-HALF - 0.5, 0, Math.PI / 2);
-    mkWall(HALF + 0.5, 0, Math.PI / 2);
+    const geo = this.chunkFloorGeo;
+    const mat = this.chunkFloorMat;
+    if (!geo || !mat) return; // ensureFloorAssets runs before every build path
+    const floor = new THREE.Mesh(geo, mat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(cx + half, 0, cz + half);
+    floor.receiveShadow = true;
+    group.add(floor);
+    this.solids.push(floor);
+    solids.push(floor);
+
+    const accents = coverAccents(this.theme);
+    for (const [i, [x, z, w, h, d]] of tables.cover.entries()) {
+      const asset = makeCover(w, h, d, this.theme, accents[(i + 1) % accents.length] ?? this.theme.cyan);
+      asset.group.position.set(x, 0, z);
+      group.add(asset.group);
+      this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
+      solids.push(asset.solid);
+    }
+
+    const district = tables.district;
+    if (district) {
+      const deck = makeDeck(7, PLATFORM_H, 7, this.theme);
+      deck.group.position.set(district.deck.x, 0, district.deck.z);
+      group.add(deck.group);
+      this.blockAt(deck.solid, district.deck.x, district.deck.z, 3.5, 3.5, PLATFORM_H, region);
+      solids.push(deck.solid);
+
+      const ramp = makeRamp(4.4, 6, PLATFORM_H, this.theme);
+      ramp.group.position.set(district.ramp.x, 0, district.ramp.z);
+      ramp.group.rotation.y = rampRotation(district.ramp.upX, district.ramp.upZ);
+      group.add(ramp.group);
+      this.solids.push(ramp.solid);
+      solids.push(ramp.solid);
+      if (register) {
+        const spanX = district.ramp.upX !== 0 ? 3 : 2.2;
+        const spanZ = district.ramp.upZ !== 0 ? 3 : 2.2;
+        this.collision.addRamp(
+          {
+            minX: district.ramp.x - spanX,
+            maxX: district.ramp.x + spanX,
+            minZ: district.ramp.z - spanZ,
+            maxZ: district.ramp.z + spanZ,
+            lowY: 0,
+            highY: PLATFORM_H,
+            upX: district.ramp.upX,
+            upZ: district.ramp.upZ,
+          },
+          region,
+        );
+      }
+
+      for (const [x, z, w, h, d] of district.compound) {
+        const asset = makeCover(w, h, d, this.theme, this.theme.cyan);
+        asset.group.position.set(x, 0, z);
+        group.add(asset.group);
+        this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
+        solids.push(asset.solid);
+      }
+    }
+    this.registerCollision = wasRegistering;
+  }
+
+  /**
+   * Stream a chunk in: build its meshes and register its colliders under its
+   * region. A district chunk also gets its capture pad (first load only — the
+   * pad view lives in the scene, outside the theme rebuild). Returns the
+   * solids the caller should add to the pick list, plus the district pad.
+   */
+  loadChunk(tables: ChunkTables): { solids: THREE.Object3D[]; pad?: CapturePad } {
+    const key = `${tables.cx},${tables.cz}`;
+    if (this.chunks.has(key)) return { solids: [] };
+    this.ensureFloorAssets();
+    const group = new THREE.Group();
+    const solids: THREE.Object3D[] = [];
+    const region = chunkRegion(tables.cx, tables.cz);
+    this.buildChunkInto(tables, region, group, solids, true);
+    this.worldGroup.add(group);
+
+    let pad: CapturePad | undefined;
+    if (tables.district) {
+      const d = tables.district;
+      pad = new CapturePad({ id: key, x: d.deck.x, z: d.deck.z, y: PLATFORM_H });
+      pad.addTo(this.scene);
+      this.blockAt(pad.mast, d.deck.x, d.deck.z, 0.25, 0.25, PLATFORM_H + 5.2, region);
+      solids.push(pad.mast);
+    }
+    this.chunks.set(key, { tables, region, group, solids, pad });
+    return { solids, pad };
+  }
+
+  /**
+   * Stream a chunk out: dispose its meshes, retract its solids and drop its
+   * colliders. Returns the solids the caller must drop from the pick list,
+   * plus the district pad if there was one.
+   */
+  unloadChunk(cx: number, cz: number): { solids: THREE.Object3D[]; pad?: CapturePad } {
+    const key = `${cx},${cz}`;
+    const chunk = this.chunks.get(key);
+    if (!chunk) return { solids: [] };
+    this.worldGroup.remove(chunk.group);
+    chunk.group.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      // The floor shares its geometry with every chunk — only the per-chunk
+      // cover assets own theirs.
+      if (mesh.geometry !== this.chunkFloorGeo) mesh.geometry?.dispose();
+    });
+    for (const solid of chunk.solids) {
+      const i = this.solids.indexOf(solid);
+      if (i >= 0) this.solids.splice(i, 1);
+    }
+    chunk.pad?.dispose(this.scene);
+    this.collision.removeRegion(chunk.region);
+    this.chunks.delete(key);
+    return { solids: chunk.solids, pad: chunk.pad };
+  }
+
+  /** How many chunks are currently streamed in. */
+  get loadedChunkCount(): number {
+    return this.chunks.size;
+  }
+
+  /**
+   * Keep the sky, the sun and the corner lamps on the player: the starfield is
+   * a shell around the camera, the shadow ortho tracks the arena that is
+   * actually lit, and the lamps sit on the current chunk's corners exactly
+   * where the authored ones sat at ±40.
+   */
+  followPlayer(px: number, pz: number): void {
+    this.starsObj?.position.set(px, 0, pz);
+    this.sun.position.set(px + 36, 58, pz + 22);
+    this.sun.target.position.set(px, 0, pz);
+    this.sun.target.updateMatrixWorld();
+    const cx = Math.floor(px / CRAWL.CHUNK) * CRAWL.CHUNK;
+    const cz = Math.floor(pz / CRAWL.CHUNK) * CRAWL.CHUNK;
+    const corners: readonly (readonly [number, number])[] = [
+      [cx - 40, cz - 40],
+      [cx - 40, cz + 40],
+      [cx + 40, cz - 40],
+      [cx + 40, cz + 40],
+    ];
+    for (let i = 0; i < this.cornerLamps.length; i++) {
+      const corner = corners[i];
+      if (corner) this.cornerLamps[i]?.position.set(corner[0], 7, corner[1]);
+    }
   }
 
   private cover(): void {
@@ -491,8 +672,8 @@ export class Arena {
   }
 
   private capturePads(): void {
-    for (const [x, z] of PLATFORMS) {
-      const pad = new CapturePad({ x, z, y: PLATFORM_H });
+    for (const [i, [x, z]] of PLATFORMS.entries()) {
+      const pad = new CapturePad({ id: `a${i}`, x, z, y: PLATFORM_H });
       pad.addTo(this.scene);
       this.blockObject(pad.mast);
       this.pads.push(pad);
@@ -545,13 +726,15 @@ export class Arena {
       fog: false,
     });
     this.ownedMats.push(mat);
-    this.worldGroup.add(new THREE.Points(geo, mat));
+    this.starsObj = new THREE.Points(geo, mat);
+    this.worldGroup.add(this.starsObj);
   }
 
   /**
    * Register a world-space AABB from the authored layout. Passing the dimensions
    * explicitly keeps a decorative lip or trim from widening a corridor. A theme
-   * rebuild skips the registration — the collider already exists.
+   * rebuild skips the registration — the collider already exists. Streamed
+   * chunks pass their region so their colliders unload with them.
    */
   private blockAt(
     mesh: THREE.Object3D,
@@ -560,10 +743,15 @@ export class Arena {
     halfX: number,
     halfZ: number,
     top: number,
+    region = 0,
   ): void {
     this.solids.push(mesh);
     if (!this.registerCollision) return;
-    this.collision.addObstacle({ minX: x - halfX, maxX: x + halfX, minZ: z - halfZ, maxZ: z + halfZ }, top);
+    this.collision.addObstacle(
+      { minX: x - halfX, maxX: x + halfX, minZ: z - halfZ, maxZ: z + halfZ },
+      top,
+      region,
+    );
   }
 
   /**

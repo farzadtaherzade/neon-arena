@@ -1,5 +1,3 @@
-import { WORLD } from '../config';
-
 /** Axis-aligned box on the XZ plane. */
 export interface Aabb {
   minX: number;
@@ -69,19 +67,25 @@ export interface StepContext {
 }
 
 /**
- * Static arena collision.
+ * Static world collision.
  *
  * Pure arithmetic on plain numbers — no three, no DOM — so `resolveCircle` is
  * unit-testable in Node. The renderer registers boxes here from its own meshes
- * via `addObstacle`, and slopes via `addRamp`.
+ * via `addObstacle`, and slopes via `addRamp`. Colliders are tagged with a
+ * **region** (region 0 is the authored arena, streamed chunks get their own
+ * ids), so `removeRegion` retracts everything a chunk contributed when it
+ * unloads. Queries stay linear scans: live counts are in the low hundreds.
+ *
+ * shortcut: no spatial index — fine to a few hundred colliders; swap the
+ * scans for a grid if chunk view radius ever grows past that.
  */
 export class CollisionWorld {
   readonly obstacles: Collider[] = [];
   readonly ramps: Ramp[] = [];
+  private obstacleRegion: number[] = [];
+  private rampRegion: number[] = [];
 
-  constructor(private readonly half: number = WORLD.HALF) {}
-
-  addObstacle(box: Aabb, top: number = Number.POSITIVE_INFINITY): void {
+  addObstacle(box: Aabb, top: number = Number.POSITIVE_INFINITY, region = 0): void {
     this.obstacles.push({
       minX: box.minX,
       maxX: box.maxX,
@@ -89,9 +93,10 @@ export class CollisionWorld {
       maxZ: box.maxZ,
       top,
     });
+    this.obstacleRegion.push(region);
   }
 
-  addRamp(ramp: Ramp): void {
+  addRamp(ramp: Ramp, region = 0): void {
     this.ramps.push({
       minX: ramp.minX,
       maxX: ramp.maxX,
@@ -102,12 +107,46 @@ export class CollisionWorld {
       upX: ramp.upX,
       upZ: ramp.upZ,
     });
+    this.rampRegion.push(region);
+  }
+
+  /** Drop every collider registered under `region` — the chunk unload.
+   *  Order does not matter to the scans, so removals swap-and-pop in place. */
+  removeRegion(region: number): void {
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      if (this.obstacleRegion[i] !== region) continue;
+      const last = this.obstacles.pop();
+      const lastRegion = this.obstacleRegion.pop();
+      if (last && lastRegion !== undefined && i < this.obstacles.length) {
+        this.obstacles[i] = last;
+        this.obstacleRegion[i] = lastRegion;
+      }
+    }
+    for (let i = this.ramps.length - 1; i >= 0; i--) {
+      if (this.rampRegion[i] !== region) continue;
+      const last = this.ramps.pop();
+      const lastRegion = this.rampRegion.pop();
+      if (last && lastRegion !== undefined && i < this.ramps.length) {
+        this.ramps[i] = last;
+        this.rampRegion[i] = lastRegion;
+      }
+    }
+  }
+
+  /** How many colliders a region currently holds — the authored-chunk pin. */
+  countRegion(region: number): { obstacles: number; ramps: number } {
+    let obstacles = 0;
+    for (const r of this.obstacleRegion) if (r === region) obstacles++;
+    let ramps = 0;
+    for (const r of this.rampRegion) if (r === region) ramps++;
+    return { obstacles, ramps };
   }
 
   /**
-   * Push `p` out of the arena walls and any obstacle it overlaps, mutating it
-   * in place. Circles that end up inside a box are ejected along the shallowest
-   * axis rather than getting stuck.
+   * Push `p` out of any obstacle it overlaps, mutating it in place. Circles
+   * that end up inside a box are ejected along the shallowest axis rather than
+   * getting stuck. The old arena-wall clamp is gone: the world is infinite and
+   * `Game` clamps the player to the loaded square instead.
    *
    * With a `StepContext`, a collider whose top sits at or below `feetY + step`
    * is stepped over instead of blocked (its `top` is low enough to walk onto).
@@ -115,9 +154,6 @@ export class CollisionWorld {
    */
   resolveCircle(p: Vec2, r: number, ctx?: StepContext): void {
     const reach = ctx ? ctx.feetY + ctx.step : 0;
-    const b = this.half - WORLD.WALL_INSET - r;
-    p.x = Math.max(-b, Math.min(b, p.x));
-    p.z = Math.max(-b, Math.min(b, p.z));
 
     for (const o of this.obstacles) {
       if (o.top <= reach) continue;

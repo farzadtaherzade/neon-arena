@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { BOSS, ENEMY, SAPPER, WAVES } from '../../src/game/config';
-import { composition, dmgBonus, isBossWave, speedScale, WaveDirector } from '../../src/game/waves';
+import { BLINKER, BOSS, CRAWL, CREEPER, ENEMY, SAPPER, WAVES, WITCH } from '../../src/game/config';
+import { composition, crawlDist, distScale, dmgBonus, isBossWave, speedScale, WaveDirector } from '../../src/game/waves';
 
 const count = (list: string[], kind: string) => list.filter((k) => k === kind).length;
 
@@ -28,7 +28,9 @@ describe('composition', () => {
 
   it('lists only real enemy kinds', () => {
     const kinds = new Set(composition(9));
-    for (const k of kinds) expect(['grunt', 'runner', 'tank', 'sapper', 'warden']).toContain(k);
+    for (const k of kinds) {
+      expect(['grunt', 'runner', 'tank', 'sapper', 'warden', 'creeper', 'witch', 'blinker']).toContain(k);
+    }
   });
 
   it('adds sappers from wave 5, one more every five waves after', () => {
@@ -37,6 +39,27 @@ describe('composition', () => {
     expect(count(composition(9), 'sapper')).toBe(1);
     expect(count(composition(11), 'sapper')).toBe(2);
     expect(count(composition(16), 'sapper')).toBe(3);
+  });
+
+  it('adds creepers from wave 3, one more every four waves after', () => {
+    expect(count(composition(CREEPER.START_WAVE - 1), 'creeper')).toBe(0);
+    expect(count(composition(CREEPER.START_WAVE), 'creeper')).toBe(1);
+    expect(count(composition(CREEPER.START_WAVE + CREEPER.EVERY_WAVES - 1), 'creeper')).toBe(1);
+    expect(count(composition(CREEPER.START_WAVE + CREEPER.EVERY_WAVES), 'creeper')).toBe(2);
+  });
+
+  it('adds witches from wave 6, capped at MAX_WITCHES', () => {
+    expect(count(composition(WITCH.START_WAVE - 1), 'witch')).toBe(0);
+    expect(count(composition(WITCH.START_WAVE), 'witch')).toBe(1);
+    expect(count(composition(WITCH.START_WAVE + WITCH.EVERY_WAVES), 'witch')).toBe(2);
+    // 39 is not a boss wave — 40 is, and the boss thinning drops escorts.
+    expect(count(composition(39), 'witch')).toBe(WITCH.MAX_WITCHES);
+  });
+
+  it('adds blinkers from wave 7, one more every four waves after', () => {
+    expect(count(composition(BLINKER.START_WAVE - 1), 'blinker')).toBe(0);
+    expect(count(composition(BLINKER.START_WAVE), 'blinker')).toBe(1);
+    expect(count(composition(BLINKER.START_WAVE + BLINKER.EVERY_WAVES), 'blinker')).toBe(2);
   });
 
   it('sends the warden exactly on every BOSS.EVERY-th wave, at the head of a thin escort', () => {
@@ -63,6 +86,33 @@ describe('wave scaling', () => {
     expect(dmgBonus(2)).toBe(0);
     expect(dmgBonus(3)).toBe(WAVES.DMG_PER_2_WAVES);
     expect(dmgBonus(9)).toBe(4 * WAVES.DMG_PER_2_WAVES);
+  });
+
+  it('scales the crawl difficulty with distance from spawn, capped', () => {
+    expect(distScale(0)).toBe(1);
+    expect(distScale(4)).toBeGreaterThan(distScale(2));
+    expect(distScale(1000)).toBe(WAVES.DIST_SCALE_MAX);
+    expect(crawlDist(CRAWL.CHUNK * 2, 0)).toBe(2);
+  });
+
+  it('leans the spawn ring into the crawl heading', () => {
+    const d = new WaveDirector();
+    // Walk the player north for a while: the heading settles on +z.
+    const dt = 1 / 60;
+    for (let i = 0; i < 240; i++) {
+      const z = i * dt * 6;
+      d.update(dt, { x: 0, z }, 99);
+    }
+    // Most spawns now land ahead (positive z), none too close.
+    let ahead = 0;
+    const total = 200;
+    for (let i = 0; i < total; i++) {
+      const s = d.pickSpawn({ x: 0, z: 0 });
+      if (s.z > 0) ahead++;
+      expect(Math.hypot(s.x, s.z)).toBeGreaterThanOrEqual(ENEMY.SPAWN_MIN_DIST);
+    }
+    expect(ahead / total).toBeGreaterThan(0.55);
+    expect(ahead / total).toBeLessThan(0.95);
   });
 });
 

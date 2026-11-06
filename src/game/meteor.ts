@@ -1,5 +1,5 @@
 import type { Rng } from '../core/rng';
-import { METEOR, WORLD } from './config';
+import { METEOR } from './config';
 import type { Vec2 } from './world/collision';
 
 /**
@@ -171,13 +171,11 @@ export class MeteorShower {
 
   /** Aim at a ring around the player, skipping spots that are inside geometry. */
   private spawn(player: Vec2, rng: Rng, ground: GroundFn, blocked: BlockedFn): void {
-    const limit = WORLD.HALF - WORLD.WALL_INSET - METEOR.CLEAR_R;
     for (let i = 0; i < METEOR.TARGET_ATTEMPTS; i++) {
       const a = rng.range(0, Math.PI * 2);
       const d = rng.range(METEOR.TARGET_MIN, METEOR.TARGET_MAX);
       const x = player.x + Math.cos(a) * d;
       const z = player.z + Math.sin(a) * d;
-      if (Math.abs(x) > limit || Math.abs(z) > limit) continue;
       if (blocked(x, z)) continue;
       this.stones.push(new Meteor(x, z, ground(x, z), METEOR.FALL_T * rng.range(0.85, 1.15)));
       return;

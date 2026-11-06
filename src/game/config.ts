@@ -642,7 +642,7 @@ export const SKINS = [
 
 /** What a kill is worth. A knife kill pays the same as a gun kill. */
 export const CREDITS = {
-  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25, warden: 400 },
+  KILL: { grunt: 10, runner: 15, tank: 40, sapper: 25, warden: 400, creeper: 20, witch: 30, blinker: 25, colossus: 250 },
   HEADSHOT: 5,
   WAVE: 50,
   CAPTURE: 40,
@@ -672,6 +672,26 @@ export const ENEMY_TYPES = {
    * enters the composition.
    */
   warden: { hp: 900, speed: 3.0, scale: 2.1, dmg: 26, score: 3000, body: 0xff2a4e },
+  /**
+   * The creeper: walks straight at you and starts a fuse inside trigger range.
+   * Back off and the fuse recovers; at zero it detonates through the bomb
+   * pipeline and takes itself with it — killing it first is the counter-play.
+   */
+  creeper: { hp: 45, speed: 3.8, scale: 0.9, dmg: 8, score: 200, body: 0x4fae4f },
+  /** The witch: keeps its distance, lobs poison potions, and heals the herd. */
+  witch: { hp: 70, speed: 3.6, scale: 0.9, dmg: 10, score: 250, body: 0x9b59d0 },
+  /**
+   * The blinker: a slow stalker that teleports into melee range on a timer.
+   * It lands at the player's feet height, so a deck is no shelter from it —
+   * the price of that is low HP and a glowing tell before every blink.
+   */
+  blinker: { hp: 80, speed: 3.0, scale: 1.05, dmg: 18, score: 250, body: 0x1c2030 },
+  /**
+   * The COLOSSUS: the deck-district guardian. It never walks a wave — the
+   * capture layer summons it when you start taking a wild district, and the
+   * hold cannot bank while it lives. Slow, front-armoured, and it charges.
+   */
+  colossus: { hp: 420, speed: 2.6, scale: 1.8, dmg: 24, score: 1500, body: 0x8a2f1d },
 } as const;
 
 /**
@@ -696,6 +716,103 @@ export const BOSS = {
   ROCKET_FUSE: 2.2,
   ROCKET_RADIUS: 3.5,
   ROCKET_PLAYER_DMG: 28,
+} as const;
+
+/**
+ * Creeper behaviour: it has no attack but its own detonation. The fuse only
+ * counts down within `TRIGGER_DIST` and on the player's level — a creeper
+ * besieging a deck ramp never blows up. Backing off past `CANCEL_DIST` drains
+ * the fuse back up, so kiting it works but takes room.
+ */
+export const CREEPER = {
+  START_WAVE: 3,
+  /** One more creeper joins the wave every this many waves past `START_WAVE`. */
+  EVERY_WAVES: 4,
+  TRIGGER_DIST: 3.5,
+  /** Farther than this the fuse recovers instead of counting down. */
+  CANCEL_DIST: 6,
+  /** Seconds the hiss runs at trigger range — kill it in this window. */
+  FUSE: 1.5,
+  /** Seconds of glow ramp before detonation — the tell. */
+  TELL: 0.9,
+  /** The bomb it plants at its own feet: a short flash, then a big blast. */
+  BLAST_FUSE: 0.4,
+  BLAST_RADIUS: 5.5,
+  BLAST_DMG: 40,
+} as const;
+
+/**
+ * Witch behaviour: a lurking artillery piece that throws poison instead of
+ * shrapnel, and stitches the herd back together. A potion poisons the player
+ * (`POISON_DPS` for `POISON_T`, refreshed not stacked) and never hurts mobs.
+ */
+export const WITCH = {
+  START_WAVE: 6,
+  EVERY_WAVES: 5,
+  /** Hard cap per wave — two healers already warp a fight. */
+  MAX_WITCHES: 2,
+  KEEP_DIST: 14,
+  /** Seconds between potions. */
+  THROW_T: 4.5,
+  /** The potion is a small, quick bomb: shootable mid-air like any other. */
+  POTION_FUSE: 1.6,
+  POTION_RADIUS: 2.6,
+  POISON_T: 4,
+  POISON_DPS: 6,
+  /** Seconds between heals of the most wounded ally in range. */
+  HEAL_T: 6,
+  HEAL_RADIUS: 10,
+  HEAL: 25,
+  /** The flash a healed mob wears for a beat. */
+  HEAL_COLOR: 0x51ff7e,
+  /** Seconds of glow before a throw — the tell. */
+  TELL: 0.8,
+} as const;
+
+/**
+ * Blinker behaviour: it walks, but it would rather not. Every `BLINK_T`
+ * seconds, from at least `BLINK_MIN` away, it teleports to a ring
+ * `LAND_MIN..LAND_MAX` around the player at the player's feet height.
+ */
+export const BLINKER = {
+  START_WAVE: 7,
+  EVERY_WAVES: 4,
+  /** Seconds between blinks. */
+  BLINK_T: 5,
+  /** It never bothers blinking from closer than this. */
+  BLINK_MIN: 8,
+  LAND_MIN: 3.5,
+  LAND_MAX: 5.5,
+  /** Seconds of glow before a blink — the tell. */
+  TELL: 0.5,
+} as const;
+
+/**
+ * The COLOSSUS: the district guardian. A siege frame of the tank's school —
+ * front armour, a ground shockwave that reaches over a deck edge (the one
+ * mob whose slam ignores the height gate), and a telegraphed bull rush for
+ * the gap-closing. Killing it is what lets a wild district's capture bank.
+ */
+export const COLOSSUS = {
+  /** Its slam is a quake: the radius, the hit multiplier and the shove. */
+  SLAM_R: 4.2,
+  SLAM_MULT: 1.8,
+  KNOCK: 16,
+  /** Seconds of windup before the slam lands. */
+  WINDUP: 0.7,
+  /** The charge: a runner pounce with boss numbers. */
+  CHARGE_MIN: 7,
+  CHARGE_MAX: 22,
+  CHARGE_T: 0.8,
+  CHARGE_GAIN: 2.6,
+  RECOVER_T: 1.1,
+  RECOVER_GAIN: 0.4,
+  /** Seconds of glowing seams before the rush — the tell. */
+  CHARGE_TELL: 0.6,
+  /** Seconds between charges. */
+  CHARGE_COOLDOWN: 4.5,
+  /** A live colossus within this of its pad pauses the capture hold at full. */
+  GATE_RADIUS: 40,
 } as const;
 
 export const ENEMY = {
@@ -723,7 +840,7 @@ export const ENEMY = {
    * than a player's mouse: that is what makes flanking possible, and the
    * front plate only covers what the mob can see.
    */
-  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2, warden: 1.6 },
+  TURN_RATE: { grunt: 2.6, runner: 5.2, tank: 1.3, sapper: 3.2, warden: 1.6, creeper: 3.0, witch: 3.2, blinker: 4.0, colossus: 1.8 },
   HIT_FLASH: 0.08,
   HIT_FLASH_COLOR: 0xffffff,
   ATTACK_FLASH_COLOR: 0xff2222,
@@ -752,10 +869,34 @@ export const ENEMY = {
   SPAWN_RING: 30,
   SPAWN_RING_JITTER: 6,
   SPAWN_MIN_DIST: 20,
-  /** Last resort if every ring attempt lands in geometry — the south plaza. */
+  /** Last resort if every ring attempt lands in geometry — near the player. */
   SPAWN_FALLBACK: [0, 22],
   TEST_SPAWN_RING: 9,
   TEST_SPAWN_JITTER: 4,
+} as const;
+
+/**
+ * The infinite crawl. The world streams in `CHUNK`-sized squares (the authored
+ * arena is the chunk at the origin) around the player, re-centred on chunk
+ * crossing. The loaded square is `(2·VIEW_RADIUS+1)²` chunks; a new ring
+ * materialises at `VIEW_RADIUS·CHUNK` out, which sits deep enough in the fog
+ * that the pop is invisible, and unloads a full ring farther.
+ */
+export const CRAWL = {
+  /** Chunk side length — the authored arena is one chunk. */
+  CHUNK: 84,
+  /** Loaded square half-width in chunks. */
+  VIEW_RADIUS: 2,
+  /** Loaded chunks farther than this many rings from the player's chunk unload. */
+  UNLOAD_RADIUS: 3,
+  /** Within this distance of the loaded boundary, chunk builds go synchronous. */
+  EMERGENCY_AHEAD: 30,
+  /** The player is clamped to the loaded square inset by this much. */
+  CLAMP_INSET: 2,
+  /** Roughly one wilds chunk in this many is a deck district. */
+  DISTRICT_ONE_IN: 5,
+  /** District compounds: how many units of clearance the deck ring keeps. */
+  DECK_CLEAR: 3,
 } as const;
 
 /**
@@ -782,7 +923,7 @@ export const AMMO = {
    * Rounds dropped by a mob of each kind when it dies. They feed whichever gun
    * is in hand — the wave resupply tops the others up.
    */
-  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30 },
+  DROP: { grunt: 4, runner: 6, tank: 12, sapper: 6, warden: 30, creeper: 6, witch: 6, blinker: 8, colossus: 25 },
 } as const;
 
 /**
@@ -862,8 +1003,20 @@ export const WAVES = {
   INTERMISSION: 3,
   WAVE_HEAL: 25,
 
-  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0 },
+  HP_PER_WAVE: { grunt: 10, runner: 5, tank: 25, sapper: 12, warden: 0, creeper: 8, witch: 8, blinker: 10, colossus: 0 },
   DMG_PER_2_WAVES: 2,
+
+  /**
+   * The directional crawl. Spawns bias toward where the player is pushing —
+   * `SPAWN_BIAS` of the ring angles land within `SPAWN_BIAS_ARC` of the crawl
+   * heading, the rest stay uniform so you are never fully safe behind you.
+   * `DIST_GAIN` is the per-chunk HP/damage multiplier away from the spawn
+   * plaza, capped at `DIST_SCALE_MAX`.
+   */
+  SPAWN_BIAS: 0.7,
+  SPAWN_BIAS_ARC: 1.05,
+  DIST_GAIN: 0.15,
+  DIST_SCALE_MAX: 3,
 } as const;
 
 /**
@@ -953,7 +1106,7 @@ export const XP = {
   /** Distance at which the orb is collected. */
   COLLECT: 0.8,
   /** Points per orb, by enemy kind. */
-  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8, warden: 120 },
+  VALUE: { grunt: 5, runner: 6, tank: 15, sapper: 8, warden: 120, creeper: 8, witch: 10, blinker: 10, colossus: 80 },
   /** How fast the orb slides toward the player while magnetised. */
   PULL_SPEED: 7,
   /** Visual-only: how high the orb floats and how fast it bobs. */
@@ -1110,7 +1263,7 @@ export const SCREEN = {
 
 export type GameState = (typeof STATE)[keyof typeof STATE];
 export type ScreenName = (typeof SCREEN)[keyof typeof SCREEN];
-export const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden'] as const;
+export const ENEMY_KINDS = ['grunt', 'runner', 'tank', 'sapper', 'warden', 'creeper', 'witch', 'blinker', 'colossus'] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 /**
@@ -1142,5 +1295,21 @@ export const ENEMY_LOOKS: Record<EnemyKind, { readonly body: number; readonly ac
   warden: [
     { body: 0xff2a4e, accent: 0xffd166 },
     { body: 0xc21f3a, accent: 0xffe08a },
+  ],
+  creeper: [
+    { body: 0x4fae4f, accent: 0x0d1f0d },
+    { body: 0x67c467, accent: 0x123014 },
+  ],
+  witch: [
+    { body: 0x9b59d0, accent: 0x2a1240 },
+    { body: 0x7b3fa8, accent: 0x1a0c2a },
+  ],
+  blinker: [
+    { body: 0x1c2030, accent: 0xb46bff },
+    { body: 0x141824, accent: 0x8b5cf6 },
+  ],
+  colossus: [
+    { body: 0x8a2f1d, accent: 0xffa23a },
+    { body: 0x5e2013, accent: 0xff6a3a },
   ],
 };

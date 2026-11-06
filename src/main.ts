@@ -168,8 +168,8 @@ function exposeTestApi(game: Game) {
       cooldown: game.capture.cooldown.map((c) => round(c, 1)),
     }),
 
-    /** Watchtower alarms, one boolean per deck. */
-    alarm: () => game.alarm.hot.slice(),
+    /** Watchtower alarms, by tower id. */
+    alarm: () => Object.fromEntries(game.alarm.hot),
 
     /** Remaining fuses of every live sapper bomb. */
     bombs: () => game.bombFuses,
@@ -206,6 +206,13 @@ function exposeTestApi(game: Game) {
     colliders: () => ({
       obstacles: game.arena.collisionCount().obstacles,
       ramps: game.arena.collisionCount().ramps,
+    }),
+
+    /** Streaming state: loaded chunk count and total colliders across regions. */
+    chunks: () => ({
+      loaded: game.arena.loadedChunkCount,
+      pending: game.chunkQueue.length,
+      colliders: game.totalColliders,
     }),
 
     /** Perk stacks by id. */

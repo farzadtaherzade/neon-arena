@@ -16,9 +16,10 @@ export class BombView {
   private mat: THREE.MeshStandardMaterial;
 
   constructor(private readonly bomb: Bomb) {
+    // The witch's potion wears violet so it reads apart from a sapper's bomb.
     this.mat = new THREE.MeshStandardMaterial({
       color: 0x1a1f2a,
-      emissive: 0xff2a1a,
+      emissive: bomb.variant === 'potion' ? 0xb46bff : 0xff2a1a,
       emissiveIntensity: 0.5,
       roughness: 0.5,
       metalness: 0.3,
