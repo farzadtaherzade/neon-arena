@@ -5,6 +5,30 @@ All notable changes to NEON ARENA. The format follows
 match `package.json` (which is also what the build injects and the menu
 displays).
 
+## [2.2.0] — 2026-11-06
+
+### Added
+- **Shop round**: skins for the SMG, SCATTERGUN and DMR (MIDNIGHT/SCRAP/VOID
+  palettes); the equipped skin's glow tints tracers and muzzle flash; the
+  SKINS tab split into RIFLES / BLADES / GUNS / ARMORY groups.
+- **Perk depth**: every perk carries a tag (mobility/firepower/utility) shown
+  on its card; offers lean toward the player's dominant tag; one REROLL token
+  per run regenerates the offer.
+- **Difficulty selector**: EASY/NORMAL/HARD on the menu, persisted; scales
+  enemy HP/damage/speed and credit payouts; best records are per difficulty
+  (storage migrates to v3).
+- **Career stats + records**: the profile accumulates kills per kind, shots,
+  hits, runs, best wave and time played (storage migrates to v4); the record
+  store keeps a top-5 runs list per difficulty; the menu's RECORDS button
+  opens a career screen; the game-over line shows the run's rank.
+- **Lightpanda probe**: `tests/lightpanda-check.mjs` smoke-checks the game
+  through the Lightpanda browser over raw CDP (DOM health; WebGL unbootable
+  there by design of the report).
+
+### Fixed
+- `Records.ts` was left out of the storage-envelope round; it is now enveloped
+  and migrated like the other persisted keys.
+
 ## [2.1.0] — 2026-10-30
 
 ### Changed

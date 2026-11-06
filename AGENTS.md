@@ -253,7 +253,11 @@ it off, like shadows and pixel ratio.
 ### Perks: the level-up offer
 
 `game/perks.ts` is pure: it banks stacks (cap `PERKS.STACK_MAX`), makes the
-three-card offer (distinct, cap-aware) and exposes the multipliers. Every
+three-card offer (distinct, cap-aware) and exposes the multipliers. Each perk
+carries a tag (mobility/firepower/utility) shown on its card; when the player
+has a dominant tag the offer's **first slot draws from that tag's pool** (ties
+stay unleaned). One **REROLL token per run** regenerates the standing offer
+(`Game.rerollOffer`, reset in `reset()`, `__NEON.reroll()`). Every
 level crossed pays the usual heal and then **pauses the run behind
 `#perkScreen`** — the map-open pattern: state PAUSED, pointer released,
 resume + relock on pick. One offer stands at a time; a level crossed while an
@@ -261,6 +265,26 @@ offer is open waits for the next. `Game.applyPerks()` pushes the multipliers
 out (player speed/stamina, every weapon's reload/damage/bloom, `maxHp` — the
 HUD bar is a fraction of the run's max, not of 100) and is the only place
 that does.
+
+### Difficulty
+
+`DIFFICULTIES` (config) holds easy/normal/hard multipliers (normal is the
+identity; every other value is lower/higher — `config.test.ts` pins the
+order). The pick lives on the menu, persists in `Profile.data.difficulty`,
+and applies **once per spawn** (`Enemy.applyDifficulty`) plus on every credit
+payout. XP and score never scale, so leveling pace and leaderboard shape do
+not swing with the knob. Best records are **per difficulty** (see Records).
+
+### Records and career stats
+
+`neon.record` (v4) holds a **top-5 runs list per difficulty**
+(`updateRecord(run, difficulty)` returns the 1-based rank and `isNewBest` —
+a tie with #1 is not a new best). `neon.profile` (v4) carries a `stats` block
+(kills per kind, shots, hits, runs, best wave, seconds played) fed from
+`Game.killEnemy`/`resolveShot`/`start`/`gameOver`. The menu's RECORDS button
+opens `ui/Career.ts`, which renders what it is handed — no state of its own.
+Migration chain so far: v1 bare → v2 envelope → v3 difficulty → v4 stats/top-5;
+each step runs through `versionedStore`'s optional `migrate` hook.
 
 ### The warden: the boss wave
 
@@ -284,8 +308,11 @@ one `Weapon` per def and a viewmodel per gun; `game.weapon` is a getter for
 the gun in hand, which is why every existing reader keeps working. Swapping
 is 1/2/3/4, the mouse wheel, or the touch SWAP button; the wave resupply tops
 up **every owned gun** (`def.waveAmmo`) while kill drops feed whichever gun is
-in hand. The scattergun resolves one ray per pellet. New guns wear the
-standard palette — per-gun skins are a later pass.
+in hand. The scattergun resolves one ray per pellet. Every gun has shop skins
+(`SkinWeapon` covers all five; guns use `part: 'standard'` — no swappable
+part, palette only via the `ViewModel` base's `applySkin`). The equipped
+skin's `glow` also tints the shared tracer pool and muzzle flash — a swap
+re-tints, so shots look like the gun that fired them.
 
 ### Renderer
 
@@ -341,6 +368,19 @@ does the same for the touch layer on an emulated phone. Both run with the
 system Chrome channel and SwiftShader (Playwright's own Chromium download is
 blocked on the dev machine — see `playwright.config.ts`).
 
+**Lightpanda (optional)** — `tests/lightpanda-check.mjs` is a raw-CDP smoke
+probe for the Lightpanda browser, run outside Playwright (Lightpanda speaks
+CDP, not Playwright's protocol):
+
+```bash
+lightpanda serve --host 127.0.0.1 --port 9222
+npm run dev
+node tests/lightpanda-check.mjs   # asserts DOM health; reports WebGL status
+```
+
+Lightpanda renders the DOM but cannot create a WebGL context, so the game
+never boots there — the check treats that as a known condition, not a failure.
+
 The game has a headless entry point for automation:
 
 - `?test` (any value) boots straight into a playing state, skipping pointer lock
@@ -358,7 +398,9 @@ The game has a headless entry point for automation:
   `setAmmo(mag, reserve)`, `knife()`, `swingKnife()`, `perkOffer()`,
   `pickPerk(i)`, `perks()`, `clearOrbs()`, `boss()`, `weapons()`,
   `swapWeapon(id)`, `unlockWeapon(id)`, `profile()`,
-  `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`.
+  `credits()`, `grantCredits(n)`, `buySkin(id)`, `equipSkin(id)`,
+  `reroll()`, `difficulty()`, `setDifficulty(id)`, `version()`,
+  `colliders()`, `perkOffer()`, `pickPerk(i)`, `perks()`, `boss()`.
   `ammo()` reads the gun in hand, so it stays per-active-weapon.
 
 `__NEON` is deliberately untyped (`Record<string, (...args: any[]) => unknown>`),
@@ -558,7 +600,11 @@ when package.json and the changelog disagree.
   `ui/versionedStore.ts`; both sanitisers strip unknown fields, so a version
   field inside the bundle would not survive a round trip. Bare payloads read
   as v1; a payload newer than this build is sanitized best-effort and never
-  written back.
+  written back. A read never writes back either — upgrades stamp on the next
+  save, so test the migration through the data, not the stored blob's version.
+- **Records are per difficulty and a top-5 list.** `updateRecord(run, d)`
+  returns `{ rank, isNewBest }`; a tie with #1 is `isNewBest: false`. The menu
+  BEST line and the game-over RANK both read the current difficulty.
 - **The stylesheet `:root` tokens must track `DEFAULT_THEME`.** Boot with the
   stored theme equal to the default never runs the apply path, so the CSS
   defaults, the default crosshair colour and `ui/theme.ts`'s canvas accent all
