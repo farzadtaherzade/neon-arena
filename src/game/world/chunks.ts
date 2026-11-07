@@ -403,6 +403,7 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
           break;
         }
       }
+      if (clear) clear = stampFits([[x, z, w, h, d]], tables, ox, oz, half);
       if (clear) {
         tables.cover.push([x, z, w, h, d]);
         break;
