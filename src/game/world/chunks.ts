@@ -450,6 +450,22 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
       const along = slot % 2 === 0;
       compound.push([dx + Math.cos(a) * r, dz + Math.sin(a) * r, along ? w : dd, h, along ? dd : w]);
     }
+    // Up to two ring slabs become pillar stamps — variety, same slot.
+    let swapped = 0;
+    for (let i = compound.length - 1; i >= 0 && swapped < 2; i--) {
+      const slab = compound[i];
+      if (!slab || rng.next() >= 0.45) continue;
+      const [sx, sz] = slab;
+      compound.splice(i, 1);
+      tables.stamps = tables.stamps ?? [];
+      tables.stamps.push({
+        kind: 'pillar',
+        at: { x: sx, z: sz },
+        variant: 0,
+        boxes: stampBoxes('pillar', { x: sx, z: sz }, 0),
+      });
+      swapped++;
+    }
     tables.district = {
       deck: { x: dx, z: dz },
       ramp: { x: rampX, z: rampZ, upX: ux, upZ },

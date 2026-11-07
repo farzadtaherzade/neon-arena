@@ -212,6 +212,26 @@ describe('deck districts', () => {
     expect(PLATFORM_H).toBe(2.4);
   });
 
+  it('swaps at most two compound slabs for pillars', () => {
+    let withStamps = 0;
+    for (let cx = -8; cx <= 8; cx++) {
+      for (let cz = -8; cz <= 8; cz++) {
+        const t = buildChunk(cx, cz, SEED);
+        if (!t.district) continue;
+        const n = t.stamps?.length ?? 0;
+        if (n > 0) withStamps++;
+        expect(n).toBeLessThanOrEqual(2);
+        for (const st of t.stamps ?? []) {
+          expect(st.kind).toBe('pillar');
+          expect(st.boxes).toHaveLength(1);
+        }
+        // A swap never grows the ring: slabs + pillars stay within 6 slots.
+        expect(t.district.compound.length + n).toBeLessThanOrEqual(6);
+      }
+    }
+    expect(withStamps).toBeGreaterThan(0); // the swap fires somewhere in 17×17
+  });
+
   it('keeps the compound clear of the deck and of the border lanes', () => {
     for (let cx = -8; cx <= 8; cx++) {
       for (let cz = -8; cz <= 8; cz++) {
