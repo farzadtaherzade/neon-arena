@@ -382,9 +382,14 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
   }
 
   // A wilds chunk: scatter cover in the authored kit's size range, keeping the
-  // outer 3 units clear and a walking gap between neighbours.
+  // outer 3 units clear and a walking gap between neighbours. Roughly one slot
+  // in STAMPS.WILDS_ONE_IN is a structure stamp instead of a plain block.
   const count = rng.int(10, 16);
   for (let i = 0; i < count; i++) {
+    if (rng.next() < 1 / STAMPS.WILDS_ONE_IN) {
+      if (rollWildStamp(rng, tables, ox, oz, half)) continue;
+      // No room found — fall through and place a plain block instead.
+    }
     for (let attempt = 0; attempt < 24; attempt++) {
       const w = rng.range(2, 12);
       const d = rng.range(2, 10);
@@ -393,7 +398,7 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
       const z = oz + rng.range(-half + CRAWL.DECK_CLEAR + d / 2, half - CRAWL.DECK_CLEAR - d / 2);
       let clear = true;
       for (const [bx, bz, bw, , bd] of tables.cover) {
-        if (Math.abs(x - bx) < (w + bw) / 2 + 2.5 && Math.abs(z - bz) < (d + bd) / 2 + 2.5) {
+        if (overlaps(x, z, w, d, bx, bz, bw, bd, 2.5)) {
           clear = false;
           break;
         }
@@ -405,6 +410,84 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
     }
   }
   return tables;
+}
+
+/** Wilds stamp kinds and their weights, in draw order. */
+/** Wilds stamp kinds and their weights, in draw order. */
+export const WILDS_STAMP_KINDS: readonly (readonly [StampKind, number])[] = [
+  ['pillar', 0.25],
+  ['arch', 0.2],
+  ['barriers', 0.2],
+  ['lwall', 0.12],
+  ['ruin', 0.1],
+  ['tower', 0.07],
+  ['bridge', 0.06],
+];
+
+/** The kinds a wilds chunk may roll, for tests and the map. */
+export const WILDS_STAMP_KIND_NAMES = WILDS_STAMP_KINDS.map(([k]) => k);
+
+/** How many orientation variants a kind rolls through. */
+function stampVariants(kind: StampKind): number {
+  return kind === 'barriers' ? 4 : kind === 'pillar' || kind === 'tower' ? 1 : 2;
+}
+
+/**
+ * Place one wilds stamp: roll a kind, then hunt for a centre whose boxes clear
+ * the border lanes and every placed box (cover and stamps alike) by the 2.5
+ * walking gap. Returns false when no room was found in 24 attempts.
+ */
+function rollWildStamp(rng: Rng, tables: ChunkTables, ox: number, oz: number, half: number): boolean {
+  let roll = rng.next();
+  let kind: StampKind = WILDS_STAMP_KINDS[WILDS_STAMP_KINDS.length - 1]?.[0] ?? 'pillar';
+  for (const [k, weight] of WILDS_STAMP_KINDS) {
+    if (roll < weight) {
+      kind = k;
+      break;
+    }
+    roll -= weight;
+  }
+  const variant = rng.int(0, stampVariants(kind) - 1);
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const ax = ox + rng.range(-half + 8, half - 8);
+    const az = oz + rng.range(-half + 8, half - 8);
+    const world = stampBoxes(kind, { x: ax, z: az }, variant);
+    if (stampFits(world, tables, ox, oz, half)) {
+      tables.stamps = tables.stamps ?? [];
+      tables.stamps.push({ kind, at: { x: ax, z: az }, variant, boxes: world });
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Do these stamp boxes clear the border lanes and every placed box? */
+function stampFits(
+  world: StampTables['boxes'],
+  tables: ChunkTables,
+  ox: number,
+  oz: number,
+  half: number,
+): boolean {
+  for (const [x, z, w, , d] of world) {
+    if (
+      x - w / 2 < ox - half + CRAWL.DECK_CLEAR ||
+      x + w / 2 > ox + half - CRAWL.DECK_CLEAR ||
+      z - d / 2 < oz - half + CRAWL.DECK_CLEAR ||
+      z + d / 2 > oz + half - CRAWL.DECK_CLEAR
+    ) {
+      return false;
+    }
+    for (const [bx, bz, bw, , bd] of tables.cover) {
+      if (overlaps(x, z, w, d, bx, bz, bw, bd, 2.5)) return false;
+    }
+    for (const s of tables.stamps ?? []) {
+      for (const [bx, bz, bw, , bd] of s.boxes) {
+        if (overlaps(x, z, w, d, bx, bz, bw, bd, 2.5)) return false;
+      }
+    }
+  }
+  return true;
 }
 
 /** The authored ramp's numbers, for tests that re-assert the district contract. */

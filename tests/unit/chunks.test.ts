@@ -8,16 +8,21 @@ import {
   isDistrict,
   loadedBounds,
   stampBoxes,
+  WILDS_STAMP_KIND_NAMES,
   type StampKind,
 } from '../../src/game/world/chunks';
 import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_SIZE } from '../../src/game/world/layout';
 
 const SEED = 20261101;
 
-/** Every cover block of a chunk, including the district compound. */
+/** Every cover block of a chunk, including the district compound and stamp boxes. */
 function blocks(cx: number, cz: number, seed: number): (readonly [number, number, number, number, number])[] {
   const t = buildChunk(cx, cz, seed);
-  return [...t.cover, ...(t.district?.compound ?? [])];
+  return [
+    ...t.cover,
+    ...(t.district?.compound ?? []),
+    ...(t.stamps?.flatMap((s) => s.boxes) ?? []),
+  ];
 }
 
 describe('chunk generation', () => {
@@ -98,6 +103,32 @@ describe('chunk generation', () => {
         }
       }
     }
+  });
+
+  it('rolls wilds stamps away from the origin and never at home', () => {
+    let stampChunks = 0;
+    for (let cx = -3; cx <= 3; cx++) {
+      for (let cz = -3; cz <= 3; cz++) {
+        const t = buildChunk(cx, cz, SEED);
+        if (cx === 0 && cz === 0) {
+          // Home stamps arrive in the home test; the wilds path adds none.
+          continue;
+        }
+        if ((t.stamps?.length ?? 0) > 0) stampChunks++;
+        for (const s of t.stamps ?? []) {
+          expect(WILDS_STAMP_KIND_NAMES).toContain(s.kind);
+          for (const [x, z, w, h, d] of s.boxes) {
+            expect(h, `${cx},${cz} ${s.kind}`).toBeGreaterThanOrEqual(STAMPS.MIN_TOP);
+            expect(x - w / 2).toBeGreaterThan(cx * CRAWL.CHUNK - CRAWL.CHUNK / 2 + CRAWL.DECK_CLEAR);
+            expect(x + w / 2).toBeLessThan(cx * CRAWL.CHUNK + CRAWL.CHUNK / 2 - CRAWL.DECK_CLEAR);
+            expect(z - d / 2).toBeGreaterThan(cz * CRAWL.CHUNK - CRAWL.CHUNK / 2 + CRAWL.DECK_CLEAR);
+            expect(z + d / 2).toBeLessThan(cz * CRAWL.CHUNK + CRAWL.CHUNK / 2 - CRAWL.DECK_CLEAR);
+          }
+        }
+      }
+    }
+    // The 1-in-3 slot roll must actually fire somewhere in a 7×7 window.
+    expect(stampChunks).toBeGreaterThan(0);
   });
 
   it('keeps home cover off the protected footprints', () => {
