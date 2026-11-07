@@ -8,6 +8,14 @@ displays).
 ## [2.2.0] — 2026-11-07
 
 ### Added
+- **Structure stamps + a truthful map.** Seven multi-part structure kinds
+  (pillar, arch you can walk through, L-wall, bridge you can walk under,
+  tower, barrier rows, ruin) roll into the home maze, wilds chunks and
+  district rings alongside plain cover — multi-part AABBs, pass-under gaps
+  clearing the jump-clipped eye at 3.2, nothing new standable or
+  shoot-over-able. The tactical map draws each kind with its own glyph,
+  capture pads show their cooldown draining as an arc, alarm masts pulse red
+  when hot, and the Colossus reads as its own marker.
 - **The home arena is rolled every run.** Chunk (0,0) joins the seeded
   generation: the four gatehouse decks slide along their mid-edges (one ramp
   each, always climbing from the arena side), the magenta reactor wanders the
