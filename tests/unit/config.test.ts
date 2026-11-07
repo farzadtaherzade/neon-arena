@@ -31,6 +31,7 @@ import {
   SAPPER,
   SCREEN,
   SKINS,
+  STAMPS,
   START_HP,
   STATE,
   TANK,
@@ -186,6 +187,20 @@ describe('config', () => {
     expect(HOME.REACTOR_RANGE + REACTOR_SIZE.w / 2).toBeLessThan(DECK_EDGE - DECK.w / 2);
     expect(HOME.COVER_MIN).toBeGreaterThan(0);
     expect(HOME.COVER_MIN).toBeLessThanOrEqual(HOME.COVER_MAX);
+  });
+
+  it('keeps the stamp knobs coherent', () => {
+    // Pass-under clearance must clear the eye at the jump apex (~3.09), or a
+    // jump under a bridge clips the camera through the slab.
+    const apex = (WORLD.JUMP_V * WORLD.JUMP_V) / (2 * WORLD.GRAVITY);
+    expect(STAMPS.HEADROOM).toBeGreaterThan(WORLD.PLAYER_H + apex);
+    // Nothing a stamp registers may be standable or shoot-over-able.
+    expect(STAMPS.MIN_TOP).toBeGreaterThanOrEqual(2.2);
+    expect(STAMPS.MIN_TOP).toBeGreaterThan(apex);
+    // The arch gap has to fit a body with room to spare.
+    expect(STAMPS.ARCH_GAP).toBeGreaterThan(WORLD.PLAYER_R * 2);
+    expect(STAMPS.HOME_STAMPS_MIN).toBeLessThanOrEqual(STAMPS.HOME_STAMPS_MAX);
+    expect(STAMPS.WILDS_ONE_IN).toBeGreaterThanOrEqual(1);
   });
 
   it('keeps the wave curve bounded', () => {

@@ -920,6 +920,29 @@ export const CRAWL = {
 } as const;
 
 /**
+ * Structure stamps: the multi-part silhouettes (pillars, arches, bridges…) the
+ * generators roll alongside plain cover. Layout lives in
+ * `world/chunks.ts#stampBoxes`; these are the knobs the layout and the rolls
+ * read. Nothing a stamp registers may be standable or shoot-over-able — decks
+ * stay the only high ground — and every pass-under gap must clear the *eye* at
+ * the jump apex (1.7 + 1.39 ≈ 3.09), or a jump clips the camera through the
+ * mesh: there is no ceiling collision.
+ */
+export const STAMPS = {
+  /** Roughly one wilds cover slot in this many becomes a stamp. */
+  WILDS_ONE_IN: 3,
+  /** Stamps rolled per home quadrant, on top of its plain cover. */
+  HOME_STAMPS_MIN: 1,
+  HOME_STAMPS_MAX: 2,
+  /** Underside of bridge slabs and arch lintels — pass-under clearance. */
+  HEADROOM: 3.2,
+  /** Walk-through gap of an arch, between its legs. */
+  ARCH_GAP: 3.4,
+  /** Floor for any stamp collider top: no low, shoot-over-able cover. */
+  MIN_TOP: 2.2,
+} as const;
+
+/**
  * The home arena's per-run rolls. Chunk (0,0) is generated from the run seed
  * like any wild chunk: the decks slide along their mid-edges, the landmarks
  * wander, and the maze cover is rolled one quadrant at a time and mirrored
