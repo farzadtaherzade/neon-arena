@@ -67,6 +67,24 @@ describe('chunk generation', () => {
     // The tower stands in one of the four corners.
     expect(Math.abs(home.tower.x)).toBeGreaterThanOrEqual(31);
     expect(Math.abs(home.tower.z)).toBeGreaterThanOrEqual(31);
+    // Home stamps come only from the home pool, mirrored four ways.
+    expect(t.stamps?.length).toBeGreaterThan(0);
+    const cornerOf = (st: { at: { x: number; z: number } }): string =>
+      `${Math.sign(st.at.x)}:${Math.sign(st.at.z)}`;
+    for (const st of t.stamps ?? []) {
+      expect(HOME_STAMP_POOL as readonly string[]).toContain(st.kind);
+      expect(Math.abs(st.at.x)).toBeGreaterThan(0);
+      expect(Math.abs(st.at.z)).toBeGreaterThan(0);
+    }
+    // Every stamp kind appears in all four mirrored corners.
+    for (const kind of new Set((t.stamps ?? []).map((st) => st.kind))) {
+      const spots = new Set(
+        (t.stamps ?? [])
+          .filter((st) => st.kind === kind)
+          .map(cornerOf),
+      );
+      expect(spots.size, kind).toBe(4);
+    }
   });
 
   it('keeps the outer lanes of every chunk clear of cover', () => {
@@ -146,7 +164,7 @@ describe('chunk generation', () => {
       [home.tower.x, home.tower.z, TOWER_SIZE.w, TOWER_SIZE.d] as const,
       [WORLD.SPAWN_X, WORLD.SPAWN_Z, 10, 10] as const,
     ];
-    for (const [x, z, w, , d] of t.cover) {
+    for (const [x, z, w, , d] of [...t.cover, ...(t.stamps?.flatMap((st) => st.boxes) ?? [])]) {
       for (const [px, pz, pw, pd] of kept) {
         const apart = Math.abs(x - px) >= (w + pw) / 2 || Math.abs(z - pz) >= (d + pd) / 2;
         expect(apart, `block ${x},${z} vs ${px},${pz}`).toBe(true);
@@ -219,7 +237,7 @@ describe('stamps', () => {
   it('lays out every kind with colliders nothing can stand on or shoot over', () => {
     for (const kind of KINDS) {
       for (let v = 0; v < 4; v++) {
-        for (const [x, z, w, h, d] of stampBoxes(kind, { x: 5, z: -7 }, v)) {
+        for (const [, , w, h, d] of stampBoxes(kind, { x: 5, z: -7 }, v)) {
           expect(h, `${kind} v${v}`).toBeGreaterThanOrEqual(STAMPS.MIN_TOP);
           expect(w).toBeGreaterThan(0);
           expect(d).toBeGreaterThan(0);

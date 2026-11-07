@@ -46,9 +46,10 @@ export interface HomeTables {
   tower: { x: number; z: number };
 }
 
-/** What the renderer builds the home arena from: cover plus placement. */
+/** What the renderer builds the home arena from: cover, stamps and placement. */
 export interface HomeWorld {
   cover: ChunkTables['cover'];
+  stamps: StampTables[];
   tables: HomeTables;
 }
 
@@ -79,7 +80,7 @@ export interface StampTables {
 }
 
 /** Kinds the home maze may roll — arch and bridge stay wilds discoveries. */
-export const HOME_STAMP_POOL = ['pillar', 'barrier', 'ruin', 'lwall'] as const;
+export const HOME_STAMP_POOL = ['pillar', 'barriers', 'ruin', 'lwall'] as const;
 
 /**
  * The single source for a stamp's colliders: `at` plus an orientation roll in,
@@ -227,7 +228,7 @@ function overlaps(
  * mirror would touch a protected footprint, so the maze stays symmetric while
  * every anchor stays clear.
  */
-function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; tables: HomeTables } {
+function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; stamps: StampTables[]; tables: HomeTables } {
   // N, S, E, W: uphill points at the deck, so the ramp centre is the deck
   // centre pulled one ramp length toward the arena.
   const decks: HomeDeck[] = [];
@@ -282,10 +283,76 @@ function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; tables: HomeTabl
 
   // One quadrant, wilds-style sizing, mirrored four ways. Blocks stay off the
   // mirror axes by half their width plus 1.25, so twins across an axis always
-  // keep the same 2.5 walking lane the wilds keep between neighbours.
+  // keep the same 2.5 walking lane the wilds keep between neighbours. Each
+  // quadrant also rolls 1–2 structure stamps from the home pool — same mirror,
+  // same protected drop — and gives up that many plain blocks to keep density
+  // near today's.
   const half = CRAWL.CHUNK / 2;
   const cover: ChunkTables['cover'] = [];
-  const count = rng.int(HOME.COVER_MIN, HOME.COVER_MAX);
+  const stamps: StampTables[] = [];
+  const stampCount = rng.int(STAMPS.HOME_STAMPS_MIN, STAMPS.HOME_STAMPS_MAX);
+  for (let s = 0; s < stampCount; s++) {
+    const roll = rng.next();
+    const kind: StampKind =
+      roll < 0.3 ? 'pillar' : roll < 0.6 ? 'barriers' : roll < 0.8 ? 'ruin' : 'lwall';
+    const variant = rng.int(0, stampVariants(kind) - 1);
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const qx = -rng.range(5, half - CRAWL.DECK_CLEAR - 5);
+      const qz = -rng.range(5, half - CRAWL.DECK_CLEAR - 5);
+      const mirrored: { at: { x: number; z: number }; boxes: StampTables['boxes'] }[] = [];
+      let clear = true;
+      for (const [mx, mz] of [
+        [qx, qz],
+        [-qx, qz],
+        [qx, -qz],
+        [-qx, -qz],
+      ] as const) {
+        const boxes = stampBoxes(kind, { x: mx, z: mz }, variant);
+        for (const [bx, bz, bw, , bd] of boxes) {
+          if (
+            Math.abs(bx) - bw / 2 < 1.25 - 0.001 ||
+            Math.abs(bz) - bd / 2 < 1.25 - 0.001 ||
+            Math.abs(bx) + bw / 2 > half - CRAWL.DECK_CLEAR + 0.001 ||
+            Math.abs(bz) + bd / 2 > half - CRAWL.DECK_CLEAR + 0.001
+          ) {
+            clear = false;
+            break;
+          }
+          for (const [px, pz, pw, pd] of protectedBoxes) {
+            if (overlaps(bx, bz, bw, bd, px, pz, pw, pd, HOME.PROTECTED_PAD)) {
+              clear = false;
+              break;
+            }
+          }
+          if (!clear) break;
+          for (const [cx2, cz2, cw2, , cd2] of cover) {
+            if (overlaps(bx, bz, bw, bd, cx2, cz2, cw2, cd2, 2.5)) {
+              clear = false;
+              break;
+            }
+          }
+          if (!clear) break;
+          for (const st of stamps) {
+            for (const [bx2, bz2, bw2, , bd2] of st.boxes) {
+              if (overlaps(bx, bz, bw, bd, bx2, bz2, bw2, bd2, 2.5)) {
+                clear = false;
+                break;
+              }
+            }
+            if (!clear) break;
+          }
+          if (!clear) break;
+        }
+        if (!clear) break;
+        mirrored.push({ at: { x: mx, z: mz }, boxes });
+      }
+      if (clear) {
+        stamps.push(...mirrored.map((m) => ({ kind, at: m.at, variant, boxes: m.boxes })));
+        break;
+      }
+    }
+  }
+  const count = Math.max(3, rng.int(HOME.COVER_MIN, HOME.COVER_MAX) - stampCount);
   for (let i = 0; i < count; i++) {
     for (let attempt = 0; attempt < 24; attempt++) {
       const w = rng.range(2, 12);
@@ -314,6 +381,16 @@ function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; tables: HomeTabl
             }
           }
           if (!clear) break;
+          for (const st of stamps) {
+            for (const [bx, bz, bw, , bd] of st.boxes) {
+              if (overlaps(mx, mz, w, d, bx, bz, bw, bd, 2.5)) {
+                clear = false;
+                break;
+              }
+            }
+            if (!clear) break;
+          }
+          if (!clear) break;
         }
       }
       if (clear) {
@@ -323,7 +400,7 @@ function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; tables: HomeTabl
     }
   }
 
-  return { cover, tables: { decks, reactor: { x: reactorX, z: reactorZ }, tower: { x: towerX, z: towerZ } } };
+  return { cover, stamps, tables: { decks, reactor: { x: reactorX, z: reactorZ }, tower: { x: towerX, z: towerZ } } };
 }
 
 /**
@@ -340,7 +417,7 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
   // draw order — but never rolls a district: it carries its own four decks.
   if (cx === 0 && cz === 0) {
     const home = buildHomeRng(rng);
-    return { cx, cz, cover: home.cover, home: home.tables };
+    return { cx, cz, cover: home.cover, stamps: home.stamps, home: home.tables };
   }
 
   if (isDistrict(cx, cz, seed)) {
