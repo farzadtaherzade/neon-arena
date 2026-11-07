@@ -1,15 +1,47 @@
-/* The boot defaults MUST match DEFAULT_THEME.cssAccent in config.ts — Game
-   skips the theme application when the stored theme equals the default. */
+/* GLASS TERMINAL — design tokens.
+   The boot defaults MUST match DEFAULT_THEME.cssAccent in config.ts — Game
+   skips the theme application when the stored theme equals the default, so the
+   two theme tokens below are the only colors a theme ever rewrites. Everything
+   else derives from this table: change the look here, not per-rule. */
 :root {
+  /* Theme-driven (Game.applyUiTheme writes these two on <html>). */
   --accent: #ffb347;
   --danger: #ff3b4e;
-  /* Derived from the two base accents, so a theme only has to set those. */
   --accent-soft: color-mix(in srgb, var(--accent) 72%, #fff);
   --accent-bright: color-mix(in srgb, var(--accent) 45%, #fff);
   --accent-deep: color-mix(in srgb, var(--accent) 75%, #06121a);
   --danger-soft: color-mix(in srgb, var(--danger) 60%, #fff);
   --danger-deep: color-mix(in srgb, var(--danger) 70%, #1a0004);
-  --gap: 8px;
+
+  /* Surfaces: layered translucent glass over the near-black page. */
+  --bg: #04060b;
+  --glass: rgba(16, 24, 41, 0.6);
+  --glass-strong: rgba(11, 17, 30, 0.82);
+  --glass-input: rgba(12, 18, 32, 0.85);
+  --line: rgba(151, 181, 227, 0.13);
+  --line-strong: rgba(151, 181, 227, 0.26);
+  --line-accent: color-mix(in srgb, var(--accent) 42%, transparent);
+
+  /* Text ramp. */
+  --ink: #eaf2fc;
+  --ink-2: #9db0c9;
+  --ink-3: #64748d;
+
+  /* Status hues — every off-palette color in the UI routes through one of these. */
+  --ok: #35e08b;
+  --warn: #ffc94d;
+  --gold: #ffc53d;
+  --poison: #c084fc;
+  --info: #7ce4ff;
+  --heat: #ff8a5a;
+
+  /* Shape, depth, type. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --blur: 10px;
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, Menlo, monospace;
 }
 * {
   margin: 0;
@@ -21,18 +53,19 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #05070c;
+  background: var(--bg);
 }
 body {
-  font-family: "Segoe UI", system-ui, sans-serif;
-  color: #dfe9f5;
+  font-family: var(--font-display);
+  color: var(--ink);
   user-select: none;
   -webkit-user-select: none;
 }
 
 /* The CRT layer: fine scanlines and a soft tube vignette over everything,
-   neither of which takes a pointer. The VIDEO panel's CRT UI switch toggles
-   the `no-crt` class on <html>. */
+   neither of which takes a pointer. Kept faint so the glass panels read
+   through. The VIDEO panel's CRT UI switch toggles the `no-crt` class on
+   <html>. */
 body::after {
   content: "";
   position: fixed;
@@ -41,8 +74,8 @@ body::after {
   pointer-events: none;
   background: repeating-linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.13) 0px,
-    rgba(0, 0, 0, 0.13) 1px,
+    rgba(0, 0, 0, 0.1) 0px,
+    rgba(0, 0, 0, 0.1) 1px,
     transparent 1px,
     transparent 3px
   );
@@ -53,7 +86,7 @@ body::before {
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  background: radial-gradient(ellipse 120% 105% at 50% 45%, transparent 62%, rgba(0, 0, 5, 0.42) 100%);
+  background: radial-gradient(ellipse 120% 105% at 50% 45%, transparent 64%, rgba(0, 0, 5, 0.34) 100%);
 }
 html.no-crt body::after,
 html.no-crt body::before {
@@ -76,7 +109,8 @@ canvas {
 }
 
 /* Crosshair: markup comes from src/ui/Settings.ts, every knob is a custom
-   property so the HUD instance and the settings preview share one style. */
+   property so the HUD instance and the settings preview share one style. This
+   block is a live contract — Settings.renderCrosshair writes these vars. */
 .ch {
   position: absolute;
   left: 50%;
@@ -191,7 +225,7 @@ canvas {
   height: 180px;
   margin: -90px 0 0 -90px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border: 1px solid var(--line-accent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
@@ -210,53 +244,62 @@ canvas {
   background: radial-gradient(ellipse at center, transparent 45%, rgba(255, 30, 45, 0.55) 100%);
 }
 
+/* HUD panels: floating glass chips. Fill stays translucent (no backdrop blur
+   here — four blurred chips over the canvas is real phone cost); the glass
+   reads through the gradient, the hairline and the top highlight. */
 .panel {
   position: absolute;
-  font-family: Consolas, Menlo, monospace;
-  background: rgba(8, 7, 5, 0.72);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  padding: 10px 14px;
-  border-radius: 0;
+  font-family: var(--font-mono);
+  background: linear-gradient(170deg, rgba(20, 30, 50, 0.62) 0%, rgba(8, 13, 24, 0.82) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 32px rgba(2, 5, 10, 0.45);
 }
-/* Tactical readout brackets: an L in two opposite corners. */
-.panel::before,
-.panel::after {
+/* One energy line on the top edge — the panel's signature. */
+.panel::before {
   content: "";
   position: absolute;
-  width: 9px;
-  height: 9px;
+  top: -1px;
+  left: 14%;
+  right: 14%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 75%, transparent),
+    transparent
+  );
   pointer-events: none;
 }
-.panel::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--accent);
-  border-left: 2px solid var(--accent);
-}
 .panel::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--accent);
-  border-right: 2px solid var(--accent);
+  content: none;
 }
 #stats {
   left: 24px;
   top: 20px;
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.9;
   letter-spacing: 1px;
 }
 #stats .k {
-  color: #7f8ba0;
+  color: var(--ink-3);
   display: inline-block;
   width: 92px;
+  letter-spacing: 1.5px;
 }
 #stats .v {
-  color: #fff;
+  color: var(--ink);
   font-weight: 700;
 }
 #stats .warn {
   color: var(--danger);
+}
+#stats .gold {
+  color: var(--gold);
 }
 
 #killFeed {
@@ -270,19 +313,21 @@ canvas {
   pointer-events: none;
 }
 .kf-entry {
-  font-family: Consolas, Menlo, monospace;
-  font-size: 12px;
-  letter-spacing: 2px;
-  padding: 4px 8px;
-  background: rgba(6, 10, 20, 0.65);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 5px 10px;
+  background: rgba(9, 14, 26, 0.72);
+  border: 1px solid var(--line);
   border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
   backdrop-filter: blur(4px);
   animation: kfFade 1.8s ease-out forwards;
 }
 .kf-entry.headshot {
-  border-left-color: #ffd27a;
-  color: #ffd27a;
-  text-shadow: 0 0 6px rgba(255, 210, 122, 0.4);
+  border-left-color: var(--gold);
+  color: var(--gold);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--gold) 40%, transparent);
 }
 @keyframes kfFade {
   0% {
@@ -300,8 +345,8 @@ canvas {
 
 .xp-pop {
   position: absolute;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 16px;
+  font-family: var(--font-mono);
+  font-size: 15px;
   font-weight: 700;
   color: var(--accent-soft);
   text-shadow: 0 0 10px color-mix(in srgb, var(--accent-soft) 80%, transparent);
@@ -322,34 +367,53 @@ canvas {
 #healthWrap {
   left: 24px;
   bottom: 26px;
-  width: 250px;
+  width: 252px;
 }
 #healthLabel {
-  font-family: Consolas, Menlo, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 2px;
-  color: #7f8ba0;
-  margin-bottom: 6px;
+  color: var(--ink-3);
+  margin-bottom: 7px;
 }
+#healthLabel span {
+  color: var(--ink);
+  font-weight: 700;
+}
+/* Track + fill are pill-shaped; the fill color is the health band, written by
+   Hud as a data attribute (no inline gradients in TS). */
 #healthBar {
-  height: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(5, 8, 15, 0.9);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 #healthFill {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #1fd67a, #7dffb8);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #14b967, var(--ok));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 45%, transparent);
   transition: width 0.15s;
+}
+#healthFill[data-band="mid"] {
+  background: linear-gradient(90deg, #d69a1f, var(--warn));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--warn) 45%, transparent);
+}
+#healthFill[data-band="low"] {
+  background: linear-gradient(90deg, #c21530, var(--danger-soft));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--danger) 55%, transparent);
 }
 #xpRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 #xpLabel {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 2px;
   color: var(--accent-soft);
@@ -358,9 +422,11 @@ canvas {
 }
 #xpBar {
   flex: 1;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(5, 8, 15, 0.9);
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
 #xpFill {
   height: 100%;
@@ -383,9 +449,10 @@ canvas {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 #staminaLabel {
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 2px;
   color: var(--accent);
@@ -394,13 +461,16 @@ canvas {
 }
 #staminaBar {
   flex: 1;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(5, 8, 15, 0.9);
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
 #staminaFill {
   height: 100%;
   width: 100%;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--accent), var(--accent-soft));
   transition: width 0.15s;
 }
@@ -421,43 +491,46 @@ canvas {
 #ammoWrap {
   right: 24px;
   bottom: 22px;
-  padding: 10px 16px 12px;
+  padding: 12px 18px 14px;
   text-align: right;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 #ammo {
-  font-size: 42px;
+  font-size: 40px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
   line-height: 1;
-  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 #ammo small {
-  font-size: 18px;
-  color: #7f8ba0;
+  font-size: 17px;
+  color: var(--ink-3);
 }
 #reloadBar {
   width: 150px;
   height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  margin: 8px 0 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 9px 0 0 auto;
   opacity: 0;
 }
 #reloadFill {
   height: 100%;
   width: 0;
+  border-radius: 999px;
   background: var(--accent);
 }
 #ammoPips {
   display: flex;
   gap: 3px;
   justify-content: flex-end;
-  margin-top: 6px;
+  margin-top: 7px;
 }
 .pip {
   width: 7px;
   height: 7px;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--accent);
   box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent);
   transition:
@@ -471,13 +544,12 @@ canvas {
 #reloadHint {
   font-size: 11px;
   letter-spacing: 2px;
-  color: #7f8ba0;
-  margin-top: 6px;
+  color: var(--ink-3);
+  margin-top: 7px;
 }
-
 #reloadHint.warn {
-  color: #ffc24a;
-  text-shadow: 0 0 10px rgba(255, 170, 40, 0.55);
+  color: var(--warn);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--warn) 55%, transparent);
 }
 
 #banner {
@@ -490,20 +562,22 @@ canvas {
   transition: opacity 0.4s;
 }
 #banner .big {
-  font-size: 54px;
-  font-weight: 800;
-  letter-spacing: 10px;
+  font-family: var(--font-display);
+  font-size: 50px;
+  font-weight: 700;
+  letter-spacing: 7px;
   color: #fff;
-  text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent);
+  text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 #banner .sub {
-  font-family: Consolas, Menlo, monospace;
-  font-size: 15px;
+  font-family: var(--font-mono);
+  font-size: 14px;
   letter-spacing: 4px;
   color: var(--accent);
   margin-top: 8px;
 }
 
+/* ------------------------------------------------------------- screens */
 .screen {
   position: fixed;
   inset: 0;
@@ -512,8 +586,8 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at center, rgba(11, 18, 31, 0.82) 0%, rgba(4, 6, 12, 0.95) 72%);
-  backdrop-filter: blur(7px);
+  background: radial-gradient(ellipse at center, rgba(12, 19, 33, 0.8) 0%, rgba(4, 6, 11, 0.95) 72%);
+  backdrop-filter: blur(var(--blur)) saturate(1.15);
   opacity: 0;
   pointer-events: none;
   /* `visibility` rides the same transition so the fade still plays, and an
@@ -533,30 +607,33 @@ canvas {
   visibility: visible;
 }
 .screen h1 {
-  font-size: 56px;
-  font-weight: 800;
-  letter-spacing: 10px;
+  font-family: var(--font-display);
+  font-size: 54px;
+  font-weight: 700;
+  letter-spacing: 8px;
   color: #fff;
-  text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 50%, transparent);
-  padding-bottom: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-accent);
 }
 .screen h1 span {
   color: var(--accent);
 }
 .screen h2 {
-  font-family: Consolas, Menlo, monospace;
-  font-size: 15px;
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 400;
-  letter-spacing: 6px;
-  color: #7f8ba0;
-  margin-top: 10px;
+  letter-spacing: 5px;
+  color: var(--ink-3);
+  margin-top: 12px;
 }
 .screen .go {
   margin-top: 46px;
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
   letter-spacing: 5px;
-  color: #fff;
+  color: var(--ink);
   animation: pulse 1.4s ease-in-out infinite;
 }
 .screen .keys {
@@ -565,12 +642,13 @@ canvas {
   display: grid;
   grid-template-columns: repeat(2, minmax(170px, 240px));
   gap: 12px 40px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 13px;
-  color: #9aa7bd;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
   text-align: left;
-  background: rgba(10, 16, 28, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 /* `display: grid` above outranks the UA's `[hidden] { display: none }`. */
 .screen .keys[hidden] {
@@ -582,27 +660,27 @@ canvas {
   gap: 8px;
 }
 .screen .keys .cap {
-  padding: 3px 7px;
-  font-size: 12px;
+  padding: 3px 8px;
+  font-size: 11px;
   font-weight: 700;
-  color: #0e1116;
-  background: var(--accent);
-  border-radius: 4px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  color: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--r-sm);
 }
 .screen .keys .lbl {
   letter-spacing: 2px;
 }
 .screen .tip {
   margin-top: 26px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 2px;
-  color: #5d6a80;
+  color: var(--ink-3);
 }
 .best-record {
   margin-top: 10px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 2px;
   color: color-mix(in srgb, var(--accent) 65%, transparent);
@@ -611,49 +689,57 @@ canvas {
 #gameOverScreen h1 {
   color: var(--danger);
   text-shadow: 0 0 40px rgba(255, 59, 78, 0.5);
+  border-bottom-color: color-mix(in srgb, var(--danger) 42%, transparent);
 }
 .new-best {
   margin-top: 14px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
   letter-spacing: 4px;
-  color: #ffd27a;
-  text-shadow: 0 0 16px rgba(255, 210, 122, 0.6);
+  color: var(--gold);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--gold) 60%, transparent);
   animation: pulse 1.2s ease-in-out infinite;
 }
 #finalStats {
   margin-top: 26px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 17px;
+  font-family: var(--font-mono);
+  font-size: 16px;
   line-height: 2;
   letter-spacing: 2px;
-  color: #dfe9f5;
+  color: var(--ink);
 }
 #finalStats b {
   color: var(--accent);
 }
 
+/* Buttons: glass chips in the display face; the primary keeps a solid accent
+   fill so the CTA stays the brightest thing on the screen. */
 .btn {
   margin-top: 26px;
-  padding: 11px 24px;
-  border-radius: 0;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 12px;
-  letter-spacing: 3px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 12px 26px;
+  border-radius: var(--r-md);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  color: var(--ink);
+  background: linear-gradient(170deg, rgba(24, 34, 56, 0.6), rgba(10, 15, 28, 0.7));
+  border: 1px solid var(--line-strong);
   cursor: pointer;
   transition:
     background 0.15s,
     color 0.15s,
+    border-color 0.15s,
     box-shadow 0.15s,
     transform 0.15s;
 }
 .btn:hover {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--line-accent);
   color: #fff;
-  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, rgba(16, 24, 41, 0.6));
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--accent) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transform: translateY(-1px);
 }
 .btn:focus-visible {
@@ -662,10 +748,10 @@ canvas {
 }
 .btn.primary {
   color: #06121a;
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent));
   border-color: var(--accent);
   font-weight: 700;
-  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .btn.primary:hover {
   color: #06121a;
@@ -678,11 +764,11 @@ canvas {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   margin-top: 30px;
 }
 .menu .btn {
-  min-width: 240px;
+  min-width: 250px;
   margin-top: 0;
 }
 
@@ -690,25 +776,29 @@ canvas {
 #settingsScreen {
   z-index: 20;
   /* A modal: fully own the screen, or the glowing menu bleeds through the
-     vignette's 18% window and reads as broken layering. */
-  background: #05070c;
+     vignette's window and reads as broken layering. Opaque colors only. */
+  background: radial-gradient(ellipse at 50% 28%, #0a101c 0%, var(--bg) 72%);
   backdrop-filter: none;
 }
 .sbox {
-  width: min(560px, 92vw);
+  width: min(600px, 92vw);
   max-height: 88vh;
   overflow-y: auto;
-  padding: 26px 30px 22px;
-  background: rgba(8, 12, 20, 0.95);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  padding: 28px 32px 24px;
+  background: linear-gradient(170deg, rgba(17, 25, 42, 0.92), rgba(7, 11, 20, 0.96));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 30px 80px rgba(0, 0, 0, 0.55);
   text-align: left;
 }
 .sbox h1 {
   font-size: 26px;
-  letter-spacing: 8px;
+  letter-spacing: 6px;
 }
 .sbox h4 {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 3px;
   color: var(--accent);
@@ -717,49 +807,54 @@ canvas {
 }
 .sbox h3 {
   margin: 18px 0 8px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 4px;
-  color: #7f8ba0;
+  color: var(--ink-3);
 }
+/* Tabs are one segmented glass control instead of four loose boxes. */
 #settingsTabs {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   margin-top: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 10px;
+  padding: 4px;
+  background: rgba(6, 10, 18, 0.8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 #settingsTabs .tab {
-  padding: 7px 16px;
-  font-family: Consolas, Menlo, monospace;
+  flex: 1;
+  padding: 7px 12px;
+  font-family: var(--font-display);
   font-size: 11px;
-  letter-spacing: 3px;
-  color: #7f8ba0;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--ink-3);
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition:
     color 0.15s,
-    border-color 0.15s,
     background 0.15s;
 }
 #settingsTabs .tab:hover {
-  color: #fff;
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
 }
 #settingsTabs .tab.on {
   color: #06121a;
   background: var(--accent);
-  border-color: var(--accent);
   font-weight: 700;
 }
 #preview {
   position: relative;
   height: 96px;
   margin-top: 14px;
-  background: radial-gradient(circle at center, #16202e 0%, #0a0f18 70%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: radial-gradient(circle at center, #141d2e 0%, #090e18 70%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
 }
 #presetList {
   display: grid;
@@ -771,16 +866,17 @@ canvas {
   height: 58px;
   padding: 0;
   cursor: pointer;
-  background: #0d131e;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #9aa7bd;
+  background: var(--glass-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-2);
 }
 .preset .pname {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 4px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1px;
 }
@@ -803,17 +899,17 @@ canvas {
 }
 .tk {
   width: 118px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 1px;
-  color: #9aa7bd;
+  color: var(--ink-2);
 }
 .tv {
   width: 42px;
   text-align: right;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #fff;
+  color: var(--ink);
 }
 .range {
   flex: 1;
@@ -828,18 +924,20 @@ input.toggle {
 }
 .trow select {
   margin-left: auto;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #dfe9f5;
-  background: #0d131e;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--ink);
+  background: var(--glass-input);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
   padding: 3px 6px;
 }
 .swatchInput {
   width: 34px;
   height: 20px;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: none;
   cursor: pointer;
 }
@@ -847,6 +945,7 @@ input.toggle {
   width: 16px;
   height: 16px;
   border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
   cursor: pointer;
 }
 .srow {
@@ -860,10 +959,26 @@ input.toggle {
 }
 .shint {
   margin-top: 14px;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 2px;
-  color: #5d6a80;
+  color: var(--ink-3);
+}
+/* The settings sheet and the skin lists scroll; give them a quiet thumb. */
+.sbox::-webkit-scrollbar,
+#skinListRifles::-webkit-scrollbar,
+#skinListBlades::-webkit-scrollbar,
+#skinListGuns::-webkit-scrollbar,
+#armoryList::-webkit-scrollbar {
+  width: 8px;
+}
+.sbox::-webkit-scrollbar-thumb,
+#skinListRifles::-webkit-scrollbar-thumb,
+#skinListBlades::-webkit-scrollbar-thumb,
+#skinListGuns::-webkit-scrollbar-thumb,
+#armoryList::-webkit-scrollbar-thumb {
+  background: rgba(151, 181, 227, 0.2);
+  border-radius: 4px;
 }
 
 /* -------------------------------------------------------------- map screen */
@@ -874,22 +989,83 @@ input.toggle {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 24px 28px;
-  background: rgba(8, 12, 20, 0.95);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+  gap: 12px;
+  padding: 20px 26px 16px;
+  background: linear-gradient(170deg, rgba(17, 25, 42, 0.92), rgba(7, 11, 20, 0.96));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
 }
-.mapbox h1 {
-  font-size: 26px;
-  letter-spacing: 10px;
-  padding-bottom: 8px;
+.map-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+}
+.map-head h1 {
+  font-size: 22px;
+  letter-spacing: 6px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.map-coords {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--ink-2);
 }
 #mapCanvas {
-  width: min(72vh, 720px);
-  height: min(72vh, 720px);
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  background: #070b13;
+  width: min(68vh, 680px);
+  height: min(68vh, 680px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #060a12;
+}
+.map-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.lg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--ink-2);
+}
+.lg-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.lg-you {
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.lg-deck {
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.lg-reactor {
+  border: 1.5px solid #ff3ba8;
+  background: rgba(255, 59, 168, 0.25);
+  border-radius: 50%;
+}
+.lg-tower {
+  border: 1.5px solid #f2b21e;
+  background: rgba(242, 178, 30, 0.22);
+  transform: rotate(45deg) scale(0.85);
+}
+.lg-hostile {
+  background: var(--ink-2);
+  border-radius: 50%;
+}
+.lg-bomb {
+  background: var(--danger);
+  border-radius: 50%;
 }
 
 /* ------------------------------------------------------------- minimap */
@@ -899,11 +1075,15 @@ input.toggle {
   top: 18px;
   width: 168px;
   height: 168px;
+  border-radius: 50%;
+  box-shadow:
+    0 10px 30px rgba(2, 5, 10, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 #minimap {
   width: 168px;
   height: 168px;
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.7));
+  border-radius: 50%;
 }
 
 /* -------------------------------------------------- bomb proximity warning */
@@ -911,7 +1091,7 @@ input.toggle {
   position: absolute;
   inset: 0;
   opacity: 0;
-  box-shadow: inset 0 0 140px rgba(255, 45, 40, 0.6);
+  box-shadow: inset 0 0 140px color-mix(in srgb, var(--danger) 55%, transparent);
   transition: opacity 0.15s;
 }
 #bombWarn.on {
@@ -924,12 +1104,12 @@ input.toggle {
   right: 0;
   top: 30%;
   text-align: center;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 6px;
-  color: #ff6a5a;
-  text-shadow: 0 0 18px rgba(255, 45, 40, 0.9);
+  color: color-mix(in srgb, var(--danger) 75%, #fff);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--danger) 80%, transparent);
 }
 
 /* Poison: the witch's potion in the blood — a violet pulse, no vignette. */
@@ -950,12 +1130,12 @@ input.toggle {
   right: 0;
   top: 36%;
   text-align: center;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 6px;
-  color: #c084fc;
-  text-shadow: 0 0 18px rgba(155, 89, 208, 0.9);
+  color: var(--poison);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--poison) 70%, transparent);
 }
 
 /* Deck capture: on screen only while the player is holding a live pad. */
@@ -974,7 +1154,7 @@ input.toggle {
   opacity: 1;
 }
 #captureText {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 5px;
   color: var(--accent);
@@ -982,13 +1162,16 @@ input.toggle {
   margin-bottom: 6px;
 }
 #captureBar {
-  height: 5px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(5, 8, 15, 0.9);
+  border: 1px solid var(--line-accent);
+  overflow: hidden;
 }
 #captureFill {
   height: 100%;
   width: 0;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--accent-deep), var(--accent));
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 80%, transparent);
 }
@@ -1015,35 +1198,46 @@ input.toggle {
 
 /* ------------------------------------------------------------------- skins */
 
-#stats .gold {
-  color: var(--gold, #ffc53d);
-}
-.skrow {
-  margin: 0 0 12px;
-  font-family: Consolas, Menlo, monospace;
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: #9aa7bd;
-}
-.skrow #creditBalance {
-  color: #ffc53d;
-  font-weight: 700;
-}
-#skinList {
+#skinListRifles,
+#skinListBlades,
+#skinListGuns,
+#armoryList {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
-  max-height: 320px;
+  max-height: 260px;
   overflow-y: auto;
+  padding-right: 4px;
+}
+.skrow {
+  margin: 0 0 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--ink-2);
+}
+.skrow #creditBalance {
+  color: var(--gold);
+  font-weight: 700;
 }
 .skincard {
-  padding: 10px;
-  background: #0d131e;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  padding: 10px 12px;
+  background: var(--glass-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: border-color 0.15s;
+}
+.skincard:hover {
+  border-color: var(--line-strong);
 }
 .skincard.equipped {
   border-color: var(--accent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* Owned but not equipped: a quiet ok-tinted spine, no chip fighting the head. */
+.skincard.owned {
+  border-left: 3px solid color-mix(in srgb, var(--ok) 55%, transparent);
 }
 .skincard.locked {
   opacity: 0.55;
@@ -1055,22 +1249,23 @@ input.toggle {
   gap: 8px;
 }
 .skname {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-display);
   font-size: 12px;
+  font-weight: 600;
   letter-spacing: 1px;
-  color: #fff;
+  color: var(--ink);
 }
 .skweap {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 2px;
-  color: #7f8ba0;
+  color: var(--ink-3);
 }
 .skflav {
   margin: 6px 0 8px;
   font-size: 11px;
   line-height: 1.4;
-  color: #9aa7bd;
+  color: var(--ink-2);
 }
 .skchips {
   display: flex;
@@ -1081,6 +1276,7 @@ input.toggle {
   width: 22px;
   height: 12px;
   border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 .skinfoot {
   display: flex;
@@ -1089,19 +1285,20 @@ input.toggle {
 }
 .skpart {
   flex: 1;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1px;
-  color: #7f8ba0;
+  color: var(--ink-3);
 }
 .skprice {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #ffc53d;
+  color: var(--gold);
 }
 .skinfoot .btn {
-  padding: 4px 10px;
+  padding: 4px 12px;
   font-size: 10px;
+  margin-top: 0;
 }
 
 /* ------------------------------------------------------------------- touch */
@@ -1154,43 +1351,50 @@ input.toggle {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
-  color: var(--accent);
-  background: rgba(12, 20, 36, 0.5);
-  border: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--ink);
+  background: rgba(10, 16, 28, 0.55);
+  border: 1.5px solid var(--line-strong);
+  box-shadow:
+    0 4px 18px rgba(2, 5, 10, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
 }
 .tbtn:active,
 .tbtn.on {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 26%, rgba(10, 16, 28, 0.55));
+  border-color: var(--line-accent);
   color: #fff;
-  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .tbtn.tsmall {
-  border-radius: 10px;
+  border-radius: var(--r-md);
   font-size: 11px;
 }
 
-/* Right thumb cluster: FIRE under the thumb, the rest fanned around it. */
+/* Right thumb cluster: FIRE under the thumb, the rest fanned around it. Each
+   button keeps its semantic hue from the status tokens. */
 #btnFire {
   width: 96px;
   height: 96px;
   right: calc(26px + env(safe-area-inset-right));
   bottom: calc(30px + env(safe-area-inset-bottom));
-  color: #ff8a93;
-  border-color: rgba(255, 92, 110, 0.55);
-  box-shadow: 0 0 16px rgba(255, 92, 110, 0.25);
+  color: color-mix(in srgb, var(--danger) 70%, #fff);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--danger) 25%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 #btnFire:active,
 #btnFire.on {
-  background: rgba(255, 92, 110, 0.35);
-  box-shadow: 0 0 26px rgba(255, 92, 110, 0.5);
+  background: color-mix(in srgb, var(--danger) 35%, rgba(10, 16, 28, 0.55));
+  border-color: color-mix(in srgb, var(--danger) 70%, transparent);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--danger) 50%, transparent);
 }
 #btnAim {
   width: 64px;
@@ -1203,14 +1407,17 @@ input.toggle {
   height: 64px;
   right: calc(136px + env(safe-area-inset-right));
   bottom: calc(38px + env(safe-area-inset-bottom));
-  color: #ffd27a;
-  border-color: rgba(242, 178, 30, 0.5);
-  box-shadow: 0 0 14px rgba(242, 178, 30, 0.2);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  box-shadow:
+    0 0 14px color-mix(in srgb, var(--warn) 20%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 #btnKnife:active,
 #btnKnife.on {
-  background: rgba(242, 178, 30, 0.3);
-  box-shadow: 0 0 24px rgba(242, 178, 30, 0.45);
+  background: color-mix(in srgb, var(--warn) 30%, rgba(10, 16, 28, 0.55));
+  border-color: color-mix(in srgb, var(--warn) 65%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--warn) 45%, transparent);
 }
 #btnJump {
   width: 64px;
@@ -1278,19 +1485,34 @@ input.toggle {
   .panel {
     padding: 8px 12px;
   }
-  #stats .k,
-  #stats .v {
+  #stats {
     font-size: 11px;
+    line-height: 1.7;
   }
   #healthLabel {
-    font-size: 11px;
+    font-size: 10px;
   }
   .screen h1 {
-    font-size: 46px;
-    letter-spacing: 8px;
+    font-size: 44px;
+    letter-spacing: 6px;
   }
   .screen .menu .btn {
     min-width: 200px;
+    padding: 10px 20px;
+  }
+  .mapbox {
+    padding: 12px 16px 10px;
+    gap: 8px;
+  }
+  .map-head h1 {
+    font-size: 16px;
+  }
+  #mapCanvas {
+    width: min(58vh, 560px);
+    height: min(58vh, 560px);
+  }
+  .map-legend {
+    display: none;
   }
 }
 
@@ -1303,12 +1525,14 @@ input.toggle {
   gap: 4px;
 }
 #perkRow .ptag {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1px;
   color: var(--accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  padding: 2px 5px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 6px;
 }
 
 /* The offer is a modal: it owns the cursor, the cards borrow it back. */
@@ -1317,8 +1541,14 @@ input.toggle {
 }
 #perkScreen .perkbox {
   text-align: center;
-  max-width: 860px;
-  padding: 20px;
+  max-width: 900px;
+  padding: 28px 32px 22px;
+  background: linear-gradient(170deg, rgba(17, 25, 42, 0.92), rgba(7, 11, 20, 0.96));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 30px 80px rgba(0, 0, 0, 0.55);
 }
 #perkCards {
   display: flex;
@@ -1333,14 +1563,15 @@ input.toggle {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: 236px;
-  min-height: 208px;
+  width: 240px;
+  min-height: 214px;
   justify-content: center;
   padding: 22px 16px 18px;
   cursor: pointer;
-  background: rgba(6, 10, 20, 0.78);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  color: #dfe9f5;
+  background: linear-gradient(170deg, rgba(20, 30, 50, 0.66), rgba(7, 11, 20, 0.85));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  color: var(--ink);
   transition:
     border-color 0.12s,
     box-shadow 0.12s,
@@ -1349,9 +1580,9 @@ input.toggle {
 }
 .perk-card:hover,
 .perk-card.hl {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 7%, rgba(6, 10, 20, 0.82));
-  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: var(--line-accent);
+  background: color-mix(in srgb, var(--accent) 8%, rgba(13, 20, 35, 0.85));
+  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 40%, transparent);
   transform: translateY(-3px);
 }
 .perk-card:active {
@@ -1360,12 +1591,13 @@ input.toggle {
 }
 .perk-num {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  font-family: Consolas, Menlo, monospace;
+  top: 10px;
+  left: 10px;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--r-sm);
   padding: 1px 7px;
 }
 .perk-icon {
@@ -1389,18 +1621,36 @@ input.toggle {
   filter: drop-shadow(0 0 10px var(--accent));
 }
 .perk-name {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-display);
   font-size: 19px;
-  letter-spacing: 2px;
-  color: var(--accent-soft);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--ink);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
 }
+/* The tag chip reads its hue from the card's data-tag — set in Perks.ts. */
 .perk-tag {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 2px;
   border: 1px solid;
-  padding: 1px 6px;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.perk-card[data-tag="mobility"] .perk-tag {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 50%, transparent);
+  background: color-mix(in srgb, var(--info) 9%, transparent);
+}
+.perk-card[data-tag="firepower"] .perk-tag {
+  color: var(--heat);
+  border-color: color-mix(in srgb, var(--heat) 50%, transparent);
+  background: color-mix(in srgb, var(--heat) 9%, transparent);
+}
+.perk-card[data-tag="utility"] .perk-tag {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
 }
 .perk-reroll-row {
   margin-bottom: 6px;
@@ -1409,10 +1659,10 @@ input.toggle {
   display: none;
 }
 .perk-value {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 1px;
-  color: #dfe9f5;
+  color: var(--ink-2);
 }
 .perk-pips {
   display: flex;
@@ -1442,6 +1692,9 @@ input.toggle {
     gap: 10px;
     margin: 14px 0 10px;
   }
+  #perkScreen .perkbox {
+    padding: 14px 18px 12px;
+  }
 }
 
 /* ------------------------------------------------------------ boss bar */
@@ -1455,31 +1708,34 @@ input.toggle {
   text-align: center;
 }
 #bossLabel {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 4px;
   color: var(--danger);
   text-shadow: 0 0 12px color-mix(in srgb, var(--danger) 60%, transparent);
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
 #bossBar {
   height: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(5, 8, 15, 0.9);
   border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  overflow: hidden;
 }
 #bossFill {
   height: 100%;
   width: 100%;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--danger-deep), var(--danger-soft));
   box-shadow: 0 0 14px color-mix(in srgb, var(--danger) 55%, transparent);
 }
 
 #ammoName {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 3px;
-  color: #7f8ba0;
-  margin-bottom: 2px;
+  color: var(--ink-3);
+  margin-bottom: 3px;
 }
 
 /* The SWAP button: left of the reload button, small — it is used rarely. */
@@ -1488,16 +1744,17 @@ input.toggle {
   height: 56px;
   right: calc(212px + env(safe-area-inset-right));
   bottom: calc(130px + env(safe-area-inset-bottom));
-  color: #7ce4ff;
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 45%, transparent);
 }
 
 /* ------------------------------------------------------------- version */
 
 .vtag {
-  font-family: Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 2px;
-  color: #7f8ba0;
+  color: var(--ink-3);
   margin-top: 10px;
 }
 
@@ -1511,10 +1768,11 @@ input.toggle {
   margin-top: 0;
   min-width: 110px;
   padding: 9px 14px;
-  font-size: 11px;
+  font-size: 12px;
 }
 #difficultyPick .btn.on {
   background: var(--accent);
+  border-color: var(--accent);
   color: #06121a;
   font-weight: 700;
 }
@@ -1526,21 +1784,19 @@ input.toggle {
   max-height: 88vh;
   overflow-y: auto;
   padding: 26px 30px 22px;
-  background: rgba(8, 7, 5, 0.95);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   text-align: left;
 }
 .crow {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-family: Consolas, Menlo, monospace;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(151, 181, 227, 0.07);
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .crow.empty {
-  color: #7f8ba0;
+  color: var(--ink-3);
   justify-content: center;
   border-bottom: none;
   padding: 10px 0;
@@ -1555,7 +1811,7 @@ input.toggle {
   color: var(--accent-soft);
 }
 .cwave {
-  color: #9aa7bd;
+  color: var(--ink-2);
   font-size: 11px;
   letter-spacing: 1px;
 }
@@ -1563,7 +1819,7 @@ input.toggle {
   flex: 1;
   font-size: 10px;
   letter-spacing: 2px;
-  color: #9aa7bd;
+  color: var(--ink-2);
 }
 .cval {
   font-weight: 700;

@@ -277,12 +277,8 @@ export class Hud {
       const pct = Math.min(100, (hp / Math.max(1, model.maxHp)) * 100);
       this.healthFill.style.width = `${pct}%`;
       this.healthText.textContent = String(Math.ceil(hp));
-      this.healthFill.style.background =
-        hp > 50
-          ? 'linear-gradient(90deg,#1fd67a,#7dffb8)'
-          : hp > 25
-            ? 'linear-gradient(90deg,#d6a71f,#ffd27a)'
-            : 'linear-gradient(90deg,#d61f3a,#ff7a7a)';
+      // The band drives the fill's gradient from CSS — no inline colors here.
+      this.healthFill.dataset.band = hp > 50 ? 'hi' : hp > 25 ? 'mid' : 'low';
     }
 
     if (this.last.weaponName !== model.weaponName) {

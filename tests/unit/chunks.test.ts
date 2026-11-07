@@ -7,9 +7,9 @@ import {
   HOME_STAMP_POOL,
   isDistrict,
   loadedBounds,
+  type StampKind,
   stampBoxes,
   WILDS_STAMP_KIND_NAMES,
-  type StampKind,
 } from '../../src/game/world/chunks';
 import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_SIZE } from '../../src/game/world/layout';
 
@@ -18,11 +18,7 @@ const SEED = 20261101;
 /** Every cover block of a chunk, including the district compound and stamp boxes. */
 function blocks(cx: number, cz: number, seed: number): (readonly [number, number, number, number, number])[] {
   const t = buildChunk(cx, cz, seed);
-  return [
-    ...t.cover,
-    ...(t.district?.compound ?? []),
-    ...(t.stamps?.flatMap((s) => s.boxes) ?? []),
-  ];
+  return [...t.cover, ...(t.district?.compound ?? []), ...(t.stamps?.flatMap((s) => s.boxes) ?? [])];
 }
 
 describe('chunk generation', () => {
@@ -78,11 +74,7 @@ describe('chunk generation', () => {
     }
     // Every stamp kind appears in all four mirrored corners.
     for (const kind of new Set((t.stamps ?? []).map((st) => st.kind))) {
-      const spots = new Set(
-        (t.stamps ?? [])
-          .filter((st) => st.kind === kind)
-          .map(cornerOf),
-      );
+      const spots = new Set((t.stamps ?? []).filter((st) => st.kind === kind).map(cornerOf));
       expect(spots.size, kind).toBe(4);
     }
   });
@@ -295,7 +287,8 @@ describe('stamps', () => {
 });
 
 describe('chunk addressing', () => {
-  it('maps world coordinates to chunks', () => {    expect(chunkOf(0, 14)).toEqual({ cx: 0, cz: 0 });
+  it('maps world coordinates to chunks', () => {
+    expect(chunkOf(0, 14)).toEqual({ cx: 0, cz: 0 });
     expect(chunkOf(84, -1)).toEqual({ cx: 1, cz: -1 });
     expect(chunkOf(-84, -84)).toEqual({ cx: -1, cz: -1 });
   });

@@ -5,7 +5,13 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Rng } from '../core/rng';
 import { BLOOM, CAMERA, CRAWL, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO } from '../game/config';
-import { type ChunkTables, chunkRegion, DISTRICT_RAMP, type HomeWorld, type StampTables } from '../game/world/chunks';
+import {
+  type ChunkTables,
+  chunkRegion,
+  DISTRICT_RAMP,
+  type HomeWorld,
+  type StampTables,
+} from '../game/world/chunks';
 import type { CollisionWorld } from '../game/world/collision';
 import {
   DECK,

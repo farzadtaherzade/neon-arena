@@ -1,3 +1,11 @@
+// Bundled webfonts (offline after build — no external requests): Chakra Petch
+// is the display face, JetBrains Mono the data face. See --font-* in styles.css.
+import '@fontsource/chakra-petch/400.css';
+import '@fontsource/chakra-petch/500.css';
+import '@fontsource/chakra-petch/600.css';
+import '@fontsource/chakra-petch/700.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/700.css';
 import './styles.css';
 
 import { Game } from './app/Game';

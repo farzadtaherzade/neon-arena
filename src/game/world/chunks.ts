@@ -88,7 +88,11 @@ export const HOME_STAMP_POOL = ['pillar', 'barriers', 'ruin', 'lwall'] as const;
  * boxes, so mesh and collision cannot drift apart, and every height respects
  * `STAMPS.MIN_TOP` while pass-under parts clear `STAMPS.HEADROOM`.
  */
-export function stampBoxes(kind: StampKind, at: { x: number; z: number }, variant: number): StampTables['boxes'] {
+export function stampBoxes(
+  kind: StampKind,
+  at: { x: number; z: number },
+  variant: number,
+): StampTables['boxes'] {
   const { x, z } = at;
   const t = STAMPS.HEADROOM;
   switch (kind) {
@@ -293,8 +297,7 @@ function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; stamps: StampTab
   const stampCount = rng.int(STAMPS.HOME_STAMPS_MIN, STAMPS.HOME_STAMPS_MAX);
   for (let s = 0; s < stampCount; s++) {
     const roll = rng.next();
-    const kind: StampKind =
-      roll < 0.3 ? 'pillar' : roll < 0.6 ? 'barriers' : roll < 0.8 ? 'ruin' : 'lwall';
+    const kind: StampKind = roll < 0.3 ? 'pillar' : roll < 0.6 ? 'barriers' : roll < 0.8 ? 'ruin' : 'lwall';
     const variant = rng.int(0, stampVariants(kind) - 1);
     for (let attempt = 0; attempt < 24; attempt++) {
       const qx = -rng.range(5, half - CRAWL.DECK_CLEAR - 5);
@@ -400,7 +403,11 @@ function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; stamps: StampTab
     }
   }
 
-  return { cover, stamps, tables: { decks, reactor: { x: reactorX, z: reactorZ }, tower: { x: towerX, z: towerZ } } };
+  return {
+    cover,
+    stamps,
+    tables: { decks, reactor: { x: reactorX, z: reactorZ }, tower: { x: towerX, z: towerZ } },
+  };
 }
 
 /**

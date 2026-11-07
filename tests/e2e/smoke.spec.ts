@@ -197,14 +197,14 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // --- boot -----------------------------------------------------------------
   // The boot build must register the home arena's collision — a theme-swap
   // regression once left it empty and the player walked through every wall.
-  // Region 0 = 24 rolled maze cover blocks + reactor + 4 decks + clock tower
-  // + 4 capture masts, and its 4 ramps — every number derived from the fixed
-  // ?test seed, so the pin is deterministic. Generated chunks stream
-  // separately under their own regions.
+  // Region 0 = 20 rolled maze cover blocks + 12 stamp boxes (three mirrored
+  // barrier rows) + reactor + 4 decks + clock tower + 4 capture masts, and its
+  // 4 ramps — every number derived from the fixed ?test seed, so the pin is
+  // deterministic. Generated chunks stream separately under their own regions.
   const colliders = await page.evaluate(
     () => window.__NEON.colliders() as { obstacles: number; ramps: number },
   );
-  expect(colliders.obstacles).toBe(34);
+  expect(colliders.obstacles).toBe(42);
   expect(colliders.ramps).toBe(4);
   await page.waitForTimeout(2500); // let the first wave spawn
   const boot = await stats(page);
@@ -643,17 +643,21 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   // takes ~35s of wall time, long enough for a late orb pickup to level the
   // run again, so this wait dismisses offers itself instead of trusting the
   // one-shot sweep above.
-  await page.waitForFunction(() => {
-    const g = window.__NEON;
-    const offer = g.perkOffer() as string[] | null;
-    if (offer?.length) {
-      g.pickPerk(0);
-      return false;
-    }
-    return (g.meteor() as MeteorStats).tint === 0;
-  }, undefined, {
-    timeout: 180_000,
-  });
+  await page.waitForFunction(
+    () => {
+      const g = window.__NEON;
+      const offer = g.perkOffer() as string[] | null;
+      if (offer?.length) {
+        g.pickPerk(0);
+        return false;
+      }
+      return (g.meteor() as MeteorStats).tint === 0;
+    },
+    undefined,
+    {
+      timeout: 180_000,
+    },
+  );
   // A dead player stops the simulation, so a shower that never faded means the
   // run ended during the wait rather than a sky bug.
   expect((await stats(page)).state).toBe('playing');

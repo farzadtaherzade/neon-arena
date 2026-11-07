@@ -16,16 +16,11 @@ export interface PerkScreenHooks {
   onReroll(): void;
 }
 
-const TAG_COLORS: Record<PerkTag, string> = {
-  mobility: '#7ce4ff',
-  firepower: '#ff8a5a',
-  utility: '#7dffb8',
-};
-
 /**
  * Inline-SVG icon per perk — inner markup for a 24×24 stroke drawing, in the
  * exact pattern the crosshair shapes use (`Settings.ts` SHAPE_SVG). Stroke and
- * glow come from the CSS accent, so a theme swap recolors them for free.
+ * glow come from the CSS accent, so a theme swap recolors them for free. The
+ * tag chip's hue comes from the card's `data-tag` in styles.css.
  */
 const PERK_ICONS: Record<PerkId, string> = {
   // Double chevron: faster feet.
@@ -117,6 +112,7 @@ export class PerkScreen {
       const card = document.createElement('button');
       card.className = 'perk-card';
       card.type = 'button';
+      card.dataset.tag = perk.tag;
 
       const num = document.createElement('span');
       num.className = 'perk-num';
@@ -136,8 +132,6 @@ export class PerkScreen {
       const tag = document.createElement('span');
       tag.className = 'perk-tag';
       tag.textContent = perk.tag.toUpperCase();
-      tag.style.color = TAG_COLORS[perk.tag];
-      tag.style.borderColor = TAG_COLORS[perk.tag];
 
       const value = document.createElement('span');
       value.className = 'perk-value';
