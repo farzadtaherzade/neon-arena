@@ -11,11 +11,18 @@
  */
 
 import type { Bomb } from '../game/bomb';
-import { CRAWL, ENEMY_TYPES } from '../game/config';
+import { CAPTURE, CRAWL, ENEMY_TYPES } from '../game/config';
 import { project } from '../game/minimap';
 import type { ChunkTables } from '../game/world/chunks';
 import { REACTOR_SIZE, TOWER_SIZE } from '../game/world/layout';
 import { accent } from './theme';
+
+export interface MapLive {
+  /** Capture pads with their cooldowns, home and district alike. */
+  pads: readonly { x: number; z: number; cd: number }[];
+  /** Alarm masts; `hot` means hostiles are inside the alarm radius. */
+  towers: readonly { x: number; z: number; hot: boolean }[];
+}
 
 /** Structural view of the live data, so `Game` passes its own array straight in. */
 export interface MapEnemy {
@@ -70,6 +77,79 @@ export class MapScreen {
     return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
   }
 
+  /** One structure-stamp glyph, keyed by kind. Sizes read off the boxes. */
+  private stampGlyph(
+    kind: string,
+    at: { x: number; z: number },
+    boxes: readonly (readonly [number, number, number, number, number])[],
+  ): void {
+    const ctx = this.ctx;
+    ctx.strokeStyle = 'rgba(190,215,255,0.12)';
+    ctx.fillStyle = '#1d2c47';
+    ctx.lineWidth = 1;
+    const c = this.p(at.x, at.z);
+    switch (kind) {
+      case 'pillar': {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+      case 'arch': {
+        // Two ticks with the walk-through gap between them.
+        for (const [x, z, w, , d] of boxes) {
+          const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+        }
+        break;
+      }
+      case 'lwall':
+      case 'ruin': {
+        for (const [x, z, w, , d] of boxes) {
+          const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+        }
+        break;
+      }
+      case 'bridge': {
+        // Hollow rectangle with leg dots — you can go under it.
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+        for (const [x, z, w, , d] of boxes) {
+          minX = Math.min(minX, x - w / 2);
+          maxX = Math.max(maxX, x + w / 2);
+          minZ = Math.min(minZ, z - d / 2);
+          maxZ = Math.max(maxZ, z + d / 2);
+        }
+        const r = this.rect(minX - 0.7, minZ - 0.7, maxX + 0.7, maxZ + 0.7);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        for (const [x, z] of boxes) {
+          const dot = this.p(x, z);
+          ctx.fillRect(dot.x - 1.5, dot.y - 1.5, 3, 3);
+        }
+        break;
+      }
+      case 'tower': {
+        const [x, z, w, , d] = boxes[0] ?? [at.x, at.z, 3.4, 0, 3.4];
+        const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        break;
+      }
+      case 'barriers': {
+        for (const [x, z, w, , d] of boxes) {
+          const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        }
+        break;
+      }
+    }
+  }
+
   draw(
     px: number,
     pz: number,
@@ -78,6 +158,7 @@ export class MapScreen {
     bombs: readonly Bomb[],
     elapsed: number,
     chunks: readonly ChunkTables[],
+    live: MapLive,
   ): void {
     this.px = px;
     this.pz = pz;
@@ -121,6 +202,13 @@ export class MapScreen {
     }
 
     // Ramps, then the decks they reach — home and district.
+    // Structure stamps: one glyph per kind, drawn from the rolled tables.
+    for (const t of chunks) {
+      for (const stamp of t.stamps ?? []) {
+        this.stampGlyph(stamp.kind, stamp.at, stamp.boxes);
+      }
+    }
+
     const home = chunks.find((t) => t.home)?.home;
     ctx.strokeStyle = accent(0.75);
     ctx.lineWidth = 3;
@@ -178,6 +266,26 @@ export class MapScreen {
       ctx.strokeStyle = '#f2b21e';
       ctx.lineWidth = 2;
       ctx.strokeRect(t0.x, t0.y, t0.w, t0.h);
+    }
+
+    // Capture pads: the cooldown drains as an arc, so a pad reads as
+    // ready long before the player walks to it.
+    for (const pad of live.pads) {
+      const c = this.p(pad.x, pad.z);
+      const spent = pad.cd / CAPTURE.COOLDOWN;
+      ctx.strokeStyle = accent(0.85);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 12, -Math.PI / 2, -Math.PI / 2 + (1 - spent) * Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Alarm masts: a quiet square, a pulsing red one when hostiles mass.
+    for (const tower of live.towers) {
+      const c = this.p(tower.x, tower.z);
+      const heat = 0.55 + 0.4 * Math.sin(elapsed * 9);
+      ctx.fillStyle = tower.hot ? `rgba(255,59,78,${heat.toFixed(3)})` : 'rgba(151,181,227,0.5)';
+      ctx.fillRect(c.x - 4, c.y - 4, 8, 8);
     }
 
     // Live bombs, with their blast radius.

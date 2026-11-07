@@ -1892,14 +1892,35 @@ export class Game {
     }
 
     if (this.state === STATE.PLAYING || this.state === STATE.PAUSED) {
-      this.minimap.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, this.mapTowers);
+      // The live capture deck rides the rim as an objective pip when it is off
+      // the dial (indexed access is `Deck | undefined` when every pad cools).
+      this.minimap.draw(
+        px,
+        pz,
+        player.yaw,
+        this.hostiles,
+        this.bombs,
+        this.elapsed,
+        this.mapTowers,
+        this.capture.decks[this.capture.active],
+      );
     }
     if (this.mapOpen) {
       // The map only draws while the run is paused, so a fresh snapshot array
       // per frame is fine here.
-      this.map.draw(px, pz, player.yaw, this.hostiles, this.bombs, this.elapsed, [
-        ...this.loadedChunks.values(),
-      ]);
+      this.map.draw(
+        px,
+        pz,
+        player.yaw,
+        this.hostiles,
+        this.bombs,
+        this.elapsed,
+        [...this.loadedChunks.values()],
+        {
+          pads: this.capture.decks.map((d, i) => ({ x: d.x, z: d.z, cd: this.capture.cooldown[i] ?? 0 })),
+          towers: this.mapTowers,
+        },
+      );
     }
 
     this.hud.setHitmark(this.feedback.hitT);
