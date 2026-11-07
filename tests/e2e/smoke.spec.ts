@@ -639,9 +639,19 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect((await stats(page)).hp).toBeLessThan(hpBeforeStone);
 
   // The sky goes back to normal when the shower ends. A level-up mid-shower
-  // would pause the run behind a perk offer and freeze the tint — clear it.
-  await dismissPerks(page);
-  await page.waitForFunction(() => (window.__NEON.meteor() as MeteorStats).tint === 0, undefined, {
+  // would pause the run behind a perk offer and freeze the tint — the fade
+  // takes ~35s of wall time, long enough for a late orb pickup to level the
+  // run again, so this wait dismisses offers itself instead of trusting the
+  // one-shot sweep above.
+  await page.waitForFunction(() => {
+    const g = window.__NEON;
+    const offer = g.perkOffer() as string[] | null;
+    if (offer?.length) {
+      g.pickPerk(0);
+      return false;
+    }
+    return (g.meteor() as MeteorStats).tint === 0;
+  }, undefined, {
     timeout: 180_000,
   });
   // A dead player stops the simulation, so a shower that never faded means the
