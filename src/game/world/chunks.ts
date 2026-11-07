@@ -1,5 +1,5 @@
 import { Rng } from '../../core/rng';
-import { CRAWL, HOME, WORLD } from '../config';
+import { CRAWL, HOME, STAMPS, WORLD } from '../config';
 import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_CORNER, TOWER_SIZE } from './layout';
 
 /**
@@ -61,6 +61,105 @@ export interface ChunkTables {
   district?: DistrictTables;
   /** Present only on the home chunk (0,0). */
   home?: HomeTables;
+  /** Multi-part structure silhouettes rolled alongside plain cover. */
+  stamps?: StampTables[];
+}
+
+/** The stamp vocabulary — a kind, its centre, an orientation roll and its AABBs. */
+export type StampKind = 'pillar' | 'arch' | 'lwall' | 'bridge' | 'tower' | 'barriers' | 'ruin';
+
+export interface StampTables {
+  kind: StampKind;
+  /** Stamp centre in world coordinates. */
+  at: { x: number; z: number };
+  /** Rolled orientation: arch/bridge/barrier pick the span axis, lwall/ruin a flip. */
+  variant: number;
+  /** Every collider the stamp registers, in world coordinates: [x, z, w, h, d]. */
+  boxes: (readonly [number, number, number, number, number])[];
+}
+
+/** Kinds the home maze may roll — arch and bridge stay wilds discoveries. */
+export const HOME_STAMP_POOL = ['pillar', 'barrier', 'ruin', 'lwall'] as const;
+
+/**
+ * The single source for a stamp's colliders: `at` plus an orientation roll in,
+ * world-space AABBs out. The renderer derives its proportions from these same
+ * boxes, so mesh and collision cannot drift apart, and every height respects
+ * `STAMPS.MIN_TOP` while pass-under parts clear `STAMPS.HEADROOM`.
+ */
+export function stampBoxes(kind: StampKind, at: { x: number; z: number }, variant: number): StampTables['boxes'] {
+  const { x, z } = at;
+  const t = STAMPS.HEADROOM;
+  switch (kind) {
+    case 'pillar':
+      return [[x, z, 1.7, 4.6, 1.7]];
+    case 'arch': {
+      // Two legs `ARCH_GAP` apart; variant 1 rotates the gap 90°.
+      const off = (STAMPS.ARCH_GAP + 1.1) / 2;
+      return variant === 1
+        ? [
+            [x, z - off, 1.1, 4.2, 1.1],
+            [x, z + off, 1.1, 4.2, 1.1],
+          ]
+        : [
+            [x - off, z, 1.1, 4.2, 1.1],
+            [x + off, z, 1.1, 4.2, 1.1],
+          ];
+    }
+    case 'lwall':
+      return variant === 1
+        ? [
+            [x - 1.65, z, 4.5, 2.6, 1.2],
+            [x + 1.65, z - 1.65, 1.2, 2.6, 4.5],
+          ]
+        : [
+            [x - 1.65, z, 4.5, 2.6, 1.2],
+            [x + 1.65, z + 1.65, 1.2, 2.6, 4.5],
+          ];
+    case 'bridge': {
+      // Four legs exactly `HEADROOM` tall — the slab they carry is mesh-only.
+      return variant === 1
+        ? [
+            [x - 1.3, z - 2.6, 1.2, t, 1.2],
+            [x - 1.3, z + 2.6, 1.2, t, 1.2],
+            [x + 1.3, z - 2.6, 1.2, t, 1.2],
+            [x + 1.3, z + 2.6, 1.2, t, 1.2],
+          ]
+        : [
+            [x - 2.6, z - 1.3, 1.2, t, 1.2],
+            [x - 2.6, z + 1.3, 1.2, t, 1.2],
+            [x + 2.6, z - 1.3, 1.2, t, 1.2],
+            [x + 2.6, z + 1.3, 1.2, t, 1.2],
+          ];
+    }
+    case 'tower':
+      return [[x, z, 3.4, 5.5, 3.4]];
+    case 'barriers': {
+      // 2 or 3 zigzag segments; variants 0/1 span x with 2/3, 2/3 span z.
+      const n = variant >= 2 ? 3 : 2;
+      const out: (readonly [number, number, number, number, number])[] = [];
+      for (let i = 0; i < n; i++) {
+        const along = (i - (n - 1) / 2) * 3.5;
+        const lateral = i % 2 ? 0.9 : -0.9;
+        out.push(
+          variant % 2 === 1
+            ? [x + lateral, z + along, 0.9, 2.4, 2.6]
+            : [x + along, z + lateral, 2.6, 2.4, 0.9],
+        );
+      }
+      return out;
+    }
+    case 'ruin':
+      return variant === 1
+        ? [
+            [x + 1.5, z, 5, 2.6, 2.2],
+            [x - 2.2, z - 1.2, 2.2, 3.4, 2.2],
+          ]
+        : [
+            [x - 1.5, z, 5, 2.6, 2.2],
+            [x + 2.2, z + 1.2, 2.2, 3.4, 2.2],
+          ];
+  }
 }
 
 const DECK_HALF = 3.5;

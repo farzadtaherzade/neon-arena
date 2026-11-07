@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { CRAWL, HOME, WORLD } from '../../src/game/config';
-import { buildChunk, chunkOf, chunkRegion, isDistrict, loadedBounds } from '../../src/game/world/chunks';
+import { CRAWL, HOME, STAMPS, WORLD } from '../../src/game/config';
+import {
+  buildChunk,
+  chunkOf,
+  chunkRegion,
+  HOME_STAMP_POOL,
+  isDistrict,
+  loadedBounds,
+  stampBoxes,
+  type StampKind,
+} from '../../src/game/world/chunks';
 import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_SIZE } from '../../src/game/world/layout';
 
 const SEED = 20261101;
@@ -173,9 +182,51 @@ describe('deck districts', () => {
   });
 });
 
+describe('stamps', () => {
+  const KINDS: StampKind[] = ['pillar', 'arch', 'lwall', 'bridge', 'tower', 'barriers', 'ruin'];
+
+  it('lays out every kind with colliders nothing can stand on or shoot over', () => {
+    for (const kind of KINDS) {
+      for (let v = 0; v < 4; v++) {
+        for (const [x, z, w, h, d] of stampBoxes(kind, { x: 5, z: -7 }, v)) {
+          expect(h, `${kind} v${v}`).toBeGreaterThanOrEqual(STAMPS.MIN_TOP);
+          expect(w).toBeGreaterThan(0);
+          expect(d).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('gives arches their gap and bridges their clearance', () => {
+    const arch = stampBoxes('arch', { x: 0, z: 0 }, 0);
+    expect(arch).toHaveLength(2);
+    const spread = Math.abs((arch[1]?.[0] ?? 0) - (arch[0]?.[0] ?? 0));
+    expect(spread).toBeCloseTo(STAMPS.ARCH_GAP + 1.1, 10);
+    for (const [, , , h] of arch) expect(h).toBeGreaterThan(STAMPS.HEADROOM);
+
+    const bridge = stampBoxes('bridge', { x: 0, z: 0 }, 0);
+    expect(bridge).toHaveLength(4);
+    for (const [, , , h] of bridge) expect(h).toBeCloseTo(STAMPS.HEADROOM, 10);
+  });
+
+  it('is deterministic for every kind and variant', () => {
+    for (const kind of KINDS) {
+      for (let v = 0; v < 4; v++) {
+        const at = { x: 3.5, z: -2.5 };
+        expect(stampBoxes(kind, at, v)).toEqual(stampBoxes(kind, at, v));
+      }
+    }
+  });
+
+  it('keeps arch and bridge out of the home pool', () => {
+    expect(HOME_STAMP_POOL).not.toContain('arch');
+    expect(HOME_STAMP_POOL).not.toContain('bridge');
+    expect(HOME_STAMP_POOL).not.toContain('tower');
+  });
+});
+
 describe('chunk addressing', () => {
-  it('maps world coordinates to chunks', () => {
-    expect(chunkOf(0, 14)).toEqual({ cx: 0, cz: 0 });
+  it('maps world coordinates to chunks', () => {    expect(chunkOf(0, 14)).toEqual({ cx: 0, cz: 0 });
     expect(chunkOf(84, -1)).toEqual({ cx: 1, cz: -1 });
     expect(chunkOf(-84, -84)).toEqual({ cx: -1, cz: -1 });
   });
