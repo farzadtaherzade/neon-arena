@@ -703,9 +703,13 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     undefined,
     { timeout: 90_000 },
   );
-  // She flees ~2.5 units between a stone's drop and its landing, so a single
-  // aimed stone always misses — same problem as the warden, same fix: a ring of
-  // stones re-centred on her every poll, tight enough that the blasts clip her.
+  // She flees up to ~5 units between a stone's drop and its landing (FALL_T at
+  // witch speed), so a single aimed stone always misses — same problem as the
+  // warden, same fix: a ring of stones re-centred on her every poll. The ring
+  // alone only catches a witch the crowd has pinned, though — in the open she
+  // kites out of blast radius — so the poll also leads her flight: it measures
+  // her own walk direction between polls and drops stones down that line,
+  // covering the ground she will have covered by impact time.
   await page.waitForFunction(
     () => {
       const g = window.__NEON;
@@ -718,9 +722,21 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
       }
       const witch = (g.enemyPos() as EnemyPos[]).find((e) => e.kind === 'witch' && e.state === 'alive');
       if (!witch) return true;
+      const w = window as unknown as { __witchTrail?: { x: number; z: number } };
+      const dx = w.__witchTrail ? witch.x - w.__witchTrail.x : 0;
+      const dz = w.__witchTrail ? witch.z - w.__witchTrail.z : 0;
+      w.__witchTrail = { x: witch.x, z: witch.z };
+      const walk = Math.hypot(dx, dz);
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2;
         g.dropStone(witch.x + Math.cos(a) * 1.2, witch.z + Math.sin(a) * 1.2);
+      }
+      if (walk > 0.05) {
+        // Lead the flee line: a stone lands METEOR.FALL_T after it drops, and
+        // she walks ENEMY_TYPES.witch.speed at most, so spread past that.
+        for (const lead of [2, 3.5, 5, 6.5]) {
+          g.dropStone(witch.x + (dx / walk) * lead, witch.z + (dz / walk) * lead);
+        }
       }
       return false;
     },
@@ -732,6 +748,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
     const offer = g.perkOffer() as string[] | null;
     if (offer?.length) g.pickPerk(0);
     g.clearOrbs();
+    delete (window as unknown as { __witchTrail?: unknown }).__witchTrail;
   });
 
   // --- the sapper joins from wave 5 ------------------------------------------
