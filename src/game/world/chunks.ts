@@ -1,15 +1,16 @@
 import { Rng } from '../../core/rng';
-import { CRAWL } from '../config';
-import { PLATFORM_H } from './layout';
+import { CRAWL, HOME, WORLD } from '../config';
+import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_CORNER, TOWER_SIZE } from './layout';
 
 /**
  * Procedural chunk tables for the infinite crawl.
  *
  * A chunk is a pure function of `(cx, cz, seed)`: the same three numbers always
  * rebuild the same tables, so streaming can discard a chunk behind the player
- * without saving anything — walking back regenerates it exactly. The authored
- * arena is chunk (0,0) and contributes nothing here; its tables live in
- * `layout.ts` and are registered once at boot as region 0.
+ * without saving anything — walking back regenerates it exactly. Chunk (0,0) is
+ * the **home arena**: generated here like any other chunk, with the maze cover
+ * mirrored from one quadrant, the decks sliding on their mid-edges and the
+ * landmarks wandering; `render/Arena.ts` builds it once at boot as region 0.
  *
  * The generation language is the authored maze's: scattered cover blocks in the
  * StructureKit's size range with generous lanes. The outer 3 units of every
@@ -18,7 +19,7 @@ import { PLATFORM_H } from './layout';
  * Roughly one wilds chunk in `CRAWL.DISTRICT_ONE_IN` is a **deck district**: a
  * capture deck with its ramp, a compound ring of tall slabs with two gaps as
  * gates, and (in the capture layer) a pad and alarm mast. Deck numbers match
- * the authored deck and ramp exactly, so every invariant that holds at spawn
+ * the home deck and ramp exactly, so every invariant that holds at spawn
  * holds out in the wilds.
  */
 
@@ -31,6 +32,26 @@ export interface DistrictTables {
   compound: (readonly [number, number, number, number, number])[];
 }
 
+/** One gatehouse deck and the single ramp that reaches it. */
+export interface HomeDeck {
+  deck: { x: number; z: number };
+  ramp: { x: number; z: number; upX: number; upZ: number };
+}
+
+/** The home arena's rolled placement: four decks, the reactor, the tower. */
+export interface HomeTables {
+  /** One deck per mid-edge, in N/S/E/W order — pad ids `a0..a3` follow it. */
+  decks: HomeDeck[];
+  reactor: { x: number; z: number };
+  tower: { x: number; z: number };
+}
+
+/** What the renderer builds the home arena from: cover plus placement. */
+export interface HomeWorld {
+  cover: ChunkTables['cover'];
+  tables: HomeTables;
+}
+
 export interface ChunkTables {
   cx: number;
   cz: number;
@@ -38,6 +59,8 @@ export interface ChunkTables {
   cover: (readonly [number, number, number, number, number])[];
   /** Present only on deck-district chunks. */
   district?: DistrictTables;
+  /** Present only on the home chunk (0,0). */
+  home?: HomeTables;
 }
 
 const DECK_HALF = 3.5;
@@ -72,6 +95,139 @@ export function isDistrict(cx: number, cz: number, seed: number): boolean {
 }
 
 /**
+ * Roll the home arena directly — what the renderer builds from, with the
+ * placement non-optional. Same roll `buildChunk(0, 0, seed)` makes.
+ */
+export function buildHome(seed: number): HomeWorld {
+  return buildHomeRng(new Rng((coordHash(0, 0) ^ seed) >>> 0));
+}
+
+/** Padded 2D box overlap — the shape every clearance check here speaks. */
+function overlaps(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  px: number,
+  pz: number,
+  pw: number,
+  pd: number,
+  pad: number,
+): boolean {
+  return Math.abs(x - px) < (w + pw) / 2 + pad && Math.abs(z - pz) < (d + pd) / 2 + pad;
+}
+
+/**
+ * Roll the home arena: four decks sliding on their mid-edges, the reactor and
+ * clock tower wandering, and one quadrant of cover mirrored four ways.
+ *
+ * The draw order is load-bearing — decks, reactor, tower, then cover — because
+ * it defines every seed's layout and the E2E's boot pin. The deck's radial
+ * position is fixed, so the walkable lane between deck and world edge survives
+ * every roll, and a cover candidate is dropped whole (all four mirrors) if any
+ * mirror would touch a protected footprint, so the maze stays symmetric while
+ * every anchor stays clear.
+ */
+function buildHomeRng(rng: Rng): { cover: ChunkTables['cover']; tables: HomeTables } {
+  // N, S, E, W: uphill points at the deck, so the ramp centre is the deck
+  // centre pulled one ramp length toward the arena.
+  const decks: HomeDeck[] = [];
+  for (const [ux, uz] of [
+    [0, -1],
+    [0, 1],
+    [1, 0],
+    [-1, 0],
+  ] as const) {
+    const slide = rng.range(-HOME.DECK_SLIDE, HOME.DECK_SLIDE);
+    const dx = ux !== 0 ? DECK_EDGE * ux : slide;
+    const dz = uz !== 0 ? DECK_EDGE * uz : slide;
+    const off = DECK_HALF + RAMP_L / 2;
+    decks.push({ deck: { x: dx, z: dz }, ramp: { x: dx - ux * off, z: dz - uz * off, upX: ux, upZ: uz } });
+  }
+
+  // The reactor wanders near the centre but never onto the spawn plaza.
+  let reactorX = 0;
+  let reactorZ = 0;
+  do {
+    reactorX = rng.range(-HOME.REACTOR_RANGE, HOME.REACTOR_RANGE);
+    reactorZ = rng.range(-HOME.REACTOR_RANGE, HOME.REACTOR_RANGE);
+  } while (
+    overlaps(
+      reactorX,
+      reactorZ,
+      REACTOR_SIZE.w,
+      REACTOR_SIZE.d,
+      WORLD.SPAWN_X,
+      WORLD.SPAWN_Z,
+      10,
+      10,
+      HOME.PROTECTED_PAD,
+    )
+  );
+
+  // The tower picks a corner and keeps the classic offset inside it.
+  const corner = rng.int(0, 3);
+  const towerX = (corner % 2 === 0 ? -1 : 1) * TOWER_CORNER;
+  const towerZ = (corner < 2 ? -1 : 1) * TOWER_CORNER;
+
+  const protectedBoxes: (readonly [number, number, number, number])[] = [
+    ...decks.map((d) => [d.deck.x, d.deck.z, DECK.w, DECK.d] as const),
+    ...decks.map(
+      (d) =>
+        [d.ramp.x, d.ramp.z, d.ramp.upX !== 0 ? RAMP_L : RAMP_W, d.ramp.upZ !== 0 ? RAMP_L : RAMP_W] as const,
+    ),
+    [reactorX, reactorZ, REACTOR_SIZE.w, REACTOR_SIZE.d] as const,
+    [towerX, towerZ, TOWER_SIZE.w, TOWER_SIZE.d] as const,
+    [WORLD.SPAWN_X, WORLD.SPAWN_Z, 10, 10] as const,
+  ];
+
+  // One quadrant, wilds-style sizing, mirrored four ways. Blocks stay off the
+  // mirror axes by half their width plus 1.25, so twins across an axis always
+  // keep the same 2.5 walking lane the wilds keep between neighbours.
+  const half = CRAWL.CHUNK / 2;
+  const cover: ChunkTables['cover'] = [];
+  const count = rng.int(HOME.COVER_MIN, HOME.COVER_MAX);
+  for (let i = 0; i < count; i++) {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const w = rng.range(2, 12);
+      const d = rng.range(2, 10);
+      const h = rng.range(2.2, 4);
+      const x = -rng.range(w / 2 + 1.25, half - CRAWL.DECK_CLEAR - w / 2);
+      const z = -rng.range(d / 2 + 1.25, half - CRAWL.DECK_CLEAR - d / 2);
+      let clear = true;
+      for (const [bx, bz, bw, , bd] of cover) {
+        if (overlaps(x, z, w, d, bx, bz, bw, bd, 2.5)) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) {
+        for (const [mx, mz] of [
+          [x, z],
+          [-x, z],
+          [x, -z],
+          [-x, -z],
+        ] as const) {
+          for (const [px, pz, pw, pd] of protectedBoxes) {
+            if (overlaps(mx, mz, w, d, px, pz, pw, pd, HOME.PROTECTED_PAD)) {
+              clear = false;
+              break;
+            }
+          }
+          if (!clear) break;
+        }
+      }
+      if (clear) {
+        cover.push([x, z, w, h, d], [-x, z, w, h, d], [x, -z, w, h, d], [-x, -z, w, h, d]);
+        break;
+      }
+    }
+  }
+
+  return { cover, tables: { decks, reactor: { x: reactorX, z: reactorZ }, tower: { x: towerX, z: towerZ } } };
+}
+
+/**
  * Build the tables for one chunk. Same inputs, same outputs — forever.
  */
 export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
@@ -81,7 +237,12 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
   const oz = cz * CRAWL.CHUNK;
   const tables: ChunkTables = { cx, cz, cover: [] };
 
-  if (cx === 0 && cz === 0) return tables; // the authored arena stands alone
+  // The home arena is generated like any other chunk — same rng stream, fixed
+  // draw order — but never rolls a district: it carries its own four decks.
+  if (cx === 0 && cz === 0) {
+    const home = buildHomeRng(rng);
+    return { cx, cz, cover: home.cover, home: home.tables };
+  }
 
   if (isDistrict(cx, cz, seed)) {
     // The deck and its compound stay clear of the border lanes and of each

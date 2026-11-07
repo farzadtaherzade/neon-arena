@@ -1,14 +1,15 @@
 import type { Rng } from '../../core/rng';
 
 /**
- * Arena layout as data, not meshes.
+ * Arena geometry constants — the sizes and heights that never change.
  *
- * `render/Arena.ts` turns these tables into geometry and registers the
- * resulting boxes with the collision world; the tables themselves are plain
- * numbers so they can be asserted on in a unit test.
- *
- * The 84×84 floor is a dense maze: cover is mirrored four ways from one
- * quadrant so every lane has a counterpart on the far side of the arena.
+ * *Where* everything sits is generated per run: `world/chunks.ts` rolls the
+ * home arena (chunk (0,0)) from the run seed — decks sliding along their
+ * mid-edges, landmarks wandering, maze cover mirrored from one quadrant — and
+ * `render/Arena.ts` turns those tables into geometry and colliders. Only the
+ * dimensions live here, so every invariant that talks about size has one
+ * source; the per-seed invariants are asserted on generated tables in the
+ * unit suite.
  */
 
 /**
@@ -18,72 +19,22 @@ import type { Rng } from '../../core/rng';
  */
 export const PLATFORM_H = 2.4;
 
-/**
- * Four gatehouse decks on the mid-edges, as `[x, z, width, height, depth]`.
- * Deliberately *not* in the corners: the corners are maze, the decks are
- * perimeter strongpoints visible from the centre.
- */
-export const PLATFORMS: readonly (readonly [number, number, number, number, number])[] = [
-  [0, -35, 7, PLATFORM_H, 7], // N
-  [0, 35, 7, PLATFORM_H, 7], // S
-  [35, 0, 7, PLATFORM_H, 7], // E
-  [-35, 0, 7, PLATFORM_H, 7], // W
-];
+/** A gatehouse deck: `w × h × d`, its centre on a mid-edge at `DECK_EDGE`. */
+export const DECK = { w: 7, h: PLATFORM_H, d: 7 } as const;
+
+/** A deck's centre sits this far out along its mid-edge; the ramp reaches in. */
+export const DECK_EDGE = 35;
+
+/** The magenta reactor: a solid landmark box, never walkable. */
+export const REACTOR_SIZE = { w: 9, h: 5.5, d: 9 } as const;
 
 /**
- * Ramps from the floor up to a deck, as `[x, z, width, length, upX, upZ]`.
- *
- * `upX`/`upZ` is the unit vector pointing *uphill*, so the high edge is the
- * edge it points at. Each ramp is placed so that edge lands exactly on its
- * deck's inner face: the surface meets the deck top with no lip and no gap.
+ * The clock tower: a tall landmark whose face shows the wave and the
+ * countdown, so it has to be visible from the far side of the arena. It picks
+ * one of the four corners per run, standing `TOWER_CORNER` out along both axes.
  */
-export const RAMPS: readonly (readonly [number, number, number, number, number, number])[] = [
-  [0, -28.5, 4.4, 6, 0, -1], // N: climbs north onto the deck's south face
-  [0, 28.5, 4.4, 6, 0, 1], // S
-  [28.5, 0, 4.4, 6, 1, 0], // E: climbs east onto the west face
-  [-28.5, 0, 4.4, 6, -1, 0], // W
-];
-
-/** The magenta reactor at the centre of the arena. Solid, not walkable. */
-export const REACTOR = { x: 0, z: 0, w: 9, h: 5.5, d: 9 } as const;
-
-/**
- * The clock tower: a tall landmark in the north-west corner, clear of the maze.
- * Its face shows the wave and the countdown, so it has to be visible from the
- * far side of the arena.
- */
-export const CLOCK_TOWER = { x: -36, z: -36, w: 10, d: 10, h: 24 } as const;
-
-/**
- * One quadrant of the maze, as `[x, z, width, height, depth]` with x and z
- * negative. `OBSTACLES` mirrors each entry four ways, which is what guarantees
- * the map is fair: every lane has a twin across the centre.
- *
- * Kept clear by hand: the four ramps, the four decks, the reactor footprint and
- * the 10×10 spawn plaza at `WORLD.SPAWN_*`.
- */
-const MAZE_QUADRANT: readonly (readonly [number, number, number, number, number])[] = [
-  [-26, -18, 12, 3.2, 2], // long spine wall, east-west
-  [-15, -22, 2, 3.2, 10], // long spine wall, north-south
-  [-8, -13, 5, 2.6, 5], // mid crate cluster
-  [-30, -8, 3, 4, 8], // tall slab screening the west deck
-  [-20, -34, 6, 2.4, 4], // bunker beside the north deck
-  [-38, -22, 4, 3, 4], // corner rubble
-  [-10, -30, 3, 2.4, 3], // choke crate on the north approach
-  [-24, -6, 2, 2.4, 4], // low fin near the reactor
-];
-
-/** The quadrant plus its three mirrors: 32 blocks of maze. */
-export const OBSTACLES: readonly (readonly [number, number, number, number, number])[] =
-  MAZE_QUADRANT.flatMap(
-    ([x, z, w, h, d]) =>
-      [
-        [x, z, w, h, d],
-        [-x, z, w, h, d],
-        [x, -z, w, h, d],
-        [-x, -z, w, h, d],
-      ] as const,
-  );
+export const TOWER_SIZE = { w: 10, d: 10, h: 24 } as const;
+export const TOWER_CORNER = 36;
 
 /**
  * The Y rotation that points a ramp's uphill face (its local +x axis) along

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CRAWL } from '../../src/game/config';
+import { CRAWL, HOME, WORLD } from '../../src/game/config';
 import { buildChunk, chunkOf, chunkRegion, isDistrict, loadedBounds } from '../../src/game/world/chunks';
-import { PLATFORM_H } from '../../src/game/world/layout';
+import { DECK, DECK_EDGE, PLATFORM_H, REACTOR_SIZE, TOWER_SIZE } from '../../src/game/world/layout';
 
 const SEED = 20261101;
 
@@ -14,6 +14,7 @@ function blocks(cx: number, cz: number, seed: number): (readonly [number, number
 describe('chunk generation', () => {
   it('is deterministic: same coords and seed, same tables', () => {
     for (const [cx, cz] of [
+      [0, 0],
       [1, 0],
       [-3, 2],
       [7, -7],
@@ -25,12 +26,33 @@ describe('chunk generation', () => {
     // A different seed generates different ground.
     const other = buildChunk(1, 0, SEED + 1);
     expect(buildChunk(1, 0, SEED)).not.toEqual(other);
+    expect(buildChunk(0, 0, SEED)).not.toEqual(buildChunk(0, 0, SEED + 1));
   });
 
-  it('contributes nothing at the origin — the authored arena stands alone', () => {
+  it('rolls the home arena at the origin — cover, four decks, no district', () => {
     const t = buildChunk(0, 0, SEED);
-    expect(t.cover).toHaveLength(0);
+    expect(t.cover.length).toBeGreaterThan(0);
     expect(t.district).toBeUndefined();
+    const home = t.home;
+    if (!home) throw new Error('home tables missing');
+    expect(home.decks).toHaveLength(4);
+    for (const { deck, ramp } of home.decks) {
+      // One deck per mid-edge, radial position fixed, slide within the knob.
+      const radial = Math.max(Math.abs(deck.x), Math.abs(deck.z));
+      expect(radial).toBe(DECK_EDGE);
+      expect(Math.min(Math.abs(deck.x), Math.abs(deck.z))).toBeLessThanOrEqual(HOME.DECK_SLIDE);
+      // The ramp climbs outward from the arena side onto the deck face.
+      expect(ramp.upX * deck.x + ramp.upZ * deck.z).toBeGreaterThan(0);
+    }
+    // The reactor stayed near the centre and clear of the spawn plaza.
+    expect(Math.abs(home.reactor.x)).toBeLessThanOrEqual(HOME.REACTOR_RANGE);
+    expect(Math.abs(home.reactor.z)).toBeLessThanOrEqual(HOME.REACTOR_RANGE);
+    const plazaX = Math.abs(home.reactor.x - WORLD.SPAWN_X);
+    const plazaZ = Math.abs(home.reactor.z - WORLD.SPAWN_Z);
+    expect(plazaX < 10 && plazaZ < 10).toBe(false);
+    // The tower stands in one of the four corners.
+    expect(Math.abs(home.tower.x)).toBeGreaterThanOrEqual(31);
+    expect(Math.abs(home.tower.z)).toBeGreaterThanOrEqual(31);
   });
 
   it('keeps the outer lanes of every chunk clear of cover', () => {
@@ -65,6 +87,29 @@ describe('chunk generation', () => {
             expect(apart, `${cx},${cz} blocks ${i}/${j}`).toBe(true);
           }
         }
+      }
+    }
+  });
+
+  it('keeps home cover off the protected footprints', () => {
+    const t = buildChunk(0, 0, SEED);
+    const home = t.home;
+    if (!home) throw new Error('home tables missing');
+    const kept: (readonly [number, number, number, number])[] = [
+      ...home.decks.map(({ deck }) => [deck.x, deck.z, DECK.w, DECK.d] as const),
+      ...home.decks.map(({ ramp }) => {
+        const spanX = ramp.upX !== 0 ? 6 : 4.4;
+        const spanZ = ramp.upZ !== 0 ? 6 : 4.4;
+        return [ramp.x, ramp.z, spanX, spanZ] as const;
+      }),
+      [home.reactor.x, home.reactor.z, REACTOR_SIZE.w, REACTOR_SIZE.d] as const,
+      [home.tower.x, home.tower.z, TOWER_SIZE.w, TOWER_SIZE.d] as const,
+      [WORLD.SPAWN_X, WORLD.SPAWN_Z, 10, 10] as const,
+    ];
+    for (const [x, z, w, , d] of t.cover) {
+      for (const [px, pz, pw, pd] of kept) {
+        const apart = Math.abs(x - px) >= (w + pw) / 2 || Math.abs(z - pz) >= (d + pd) / 2;
+        expect(apart, `block ${x},${z} vs ${px},${pz}`).toBe(true);
       }
     }
   });

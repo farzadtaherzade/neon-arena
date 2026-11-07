@@ -1,9 +1,9 @@
 /**
  * The full-screen tactical map.
  *
- * North-up and **centred on the player**: the streamed chunks around them, the
- * authored arena's maze, deck districts with their ramps, the reactor, the
- * clock tower, live bombs, the hostiles and the player. The run is paused
+ * North-up and **centred on the player**: the streamed chunks around them,
+ * the home arena's rolled maze, deck districts with their ramps, the reactor,
+ * the clock tower, live bombs, the hostiles and the player. The run is paused
  * while it is open, so it can afford to be redrawn from scratch every frame.
  *
  * The projection is the minimap's, with the yaw pinned to zero — the world is
@@ -14,7 +14,7 @@ import type { Bomb } from '../game/bomb';
 import { CRAWL, ENEMY_TYPES } from '../game/config';
 import { project } from '../game/minimap';
 import type { ChunkTables } from '../game/world/chunks';
-import { CLOCK_TOWER, OBSTACLES, PLATFORMS, RAMPS, REACTOR } from '../game/world/layout';
+import { REACTOR_SIZE, TOWER_SIZE } from '../game/world/layout';
 import { accent } from './theme';
 
 /** Structural view of the live data, so `Game` passes its own array straight in. */
@@ -110,7 +110,8 @@ export class MapScreen {
       ctx.strokeRect(f.x, f.y, f.w, f.h);
     }
 
-    // Cover, generated and authored alike.
+    // Cover, generated and home alike — the home chunk's rolled maze is one
+    // of the streamed tables.
     ctx.fillStyle = '#22304a';
     for (const t of chunks) {
       for (const [x, z, w, , d] of t.cover) {
@@ -118,64 +119,66 @@ export class MapScreen {
         ctx.fillRect(r.x, r.y, r.w, r.h);
       }
     }
-    for (const [x, z, w, , d] of OBSTACLES) {
-      const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-    }
 
-    // Ramps, then the decks they reach — authored and district.
+    // Ramps, then the decks they reach — home and district.
+    const home = chunks.find((t) => t.home)?.home;
     ctx.strokeStyle = accent(0.75);
     ctx.lineWidth = 3;
-    for (const [x, z, width, length, upX, upZ] of RAMPS) {
-      const halfX = upX !== 0 ? length / 2 : width / 2;
-      const halfZ = upZ !== 0 ? length / 2 : width / 2;
-      const r = this.rect(x - halfX, z - halfZ, x + halfX, z + halfZ);
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-    }
     for (const t of chunks) {
       const d = t.district;
       if (!d) continue;
       const r = this.rect(d.ramp.x - 2.2, d.ramp.z - 3, d.ramp.x + 2.2, d.ramp.z + 3);
       ctx.strokeRect(r.x, r.y, r.w, r.h);
     }
+    if (home) {
+      for (const { ramp } of home.decks) {
+        const halfX = ramp.upX !== 0 ? 3 : 2.2;
+        const halfZ = ramp.upZ !== 0 ? 3 : 2.2;
+        const r = this.rect(ramp.x - halfX, ramp.z - halfZ, ramp.x + halfX, ramp.z + halfZ);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+      }
+    }
     ctx.strokeStyle = accent(1);
     ctx.lineWidth = 3;
-    for (const [x, z, w, , d] of PLATFORMS) {
-      const r = this.rect(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-    }
     for (const t of chunks) {
       const d = t.district;
       if (!d) continue;
       const r = this.rect(d.deck.x - 3.5, d.deck.z - 3.5, d.deck.x + 3.5, d.deck.z + 3.5);
       ctx.strokeRect(r.x, r.y, r.w, r.h);
     }
+    if (home) {
+      for (const { deck } of home.decks) {
+        const r = this.rect(deck.x - 3.5, deck.z - 3.5, deck.x + 3.5, deck.z + 3.5);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+      }
+    }
 
-    // The reactor.
-    const r0 = this.rect(
-      REACTOR.x - REACTOR.w / 2,
-      REACTOR.z - REACTOR.d / 2,
-      REACTOR.x + REACTOR.w / 2,
-      REACTOR.z + REACTOR.d / 2,
-    );
-    ctx.fillStyle = 'rgba(255,59,168,0.35)';
-    ctx.fillRect(r0.x, r0.y, r0.w, r0.h);
-    ctx.strokeStyle = '#ff3ba8';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(r0.x, r0.y, r0.w, r0.h);
+    // The reactor and the clock tower, wherever this run rolled them.
+    if (home) {
+      const r0 = this.rect(
+        home.reactor.x - REACTOR_SIZE.w / 2,
+        home.reactor.z - REACTOR_SIZE.d / 2,
+        home.reactor.x + REACTOR_SIZE.w / 2,
+        home.reactor.z + REACTOR_SIZE.d / 2,
+      );
+      ctx.fillStyle = 'rgba(255,59,168,0.35)';
+      ctx.fillRect(r0.x, r0.y, r0.w, r0.h);
+      ctx.strokeStyle = '#ff3ba8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r0.x, r0.y, r0.w, r0.h);
 
-    // The clock tower.
-    const t0 = this.rect(
-      CLOCK_TOWER.x - CLOCK_TOWER.w / 2,
-      CLOCK_TOWER.z - CLOCK_TOWER.d / 2,
-      CLOCK_TOWER.x + CLOCK_TOWER.w / 2,
-      CLOCK_TOWER.z + CLOCK_TOWER.d / 2,
-    );
-    ctx.fillStyle = 'rgba(242,178,30,0.3)';
-    ctx.fillRect(t0.x, t0.y, t0.w, t0.h);
-    ctx.strokeStyle = '#f2b21e';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(t0.x, t0.y, t0.w, t0.h);
+      const t0 = this.rect(
+        home.tower.x - TOWER_SIZE.w / 2,
+        home.tower.z - TOWER_SIZE.d / 2,
+        home.tower.x + TOWER_SIZE.w / 2,
+        home.tower.z + TOWER_SIZE.d / 2,
+      );
+      ctx.fillStyle = 'rgba(242,178,30,0.3)';
+      ctx.fillRect(t0.x, t0.y, t0.w, t0.h);
+      ctx.strokeStyle = '#f2b21e';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(t0.x, t0.y, t0.w, t0.h);
+    }
 
     // Live bombs, with their blast radius.
     for (const bomb of bombs) {

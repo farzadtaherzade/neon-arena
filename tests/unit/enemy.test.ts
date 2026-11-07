@@ -14,8 +14,12 @@ import {
 } from '../../src/game/config';
 import { SpatialHash } from '../../src/game/enemies';
 import { Enemy, type EnemyWorld } from '../../src/game/enemy';
+import { buildHome, DISTRICT_RAMP } from '../../src/game/world/chunks';
 import { CollisionWorld, type Vec2 } from '../../src/game/world/collision';
-import { PLATFORM_H, PLATFORMS, RAMPS } from '../../src/game/world/layout';
+import { DECK, PLATFORM_H } from '../../src/game/world/layout';
+
+/** The rolled home arena the siege tests build against, at a fixed seed. */
+const HOME = buildHome(20261101);
 
 interface TestWorld extends EnemyWorld {
   hurt: number;
@@ -49,24 +53,32 @@ function makeWorld(playerPos = { x: 0, z: 0 }, neighbours: readonly Enemy[] = []
   return w;
 }
 
-/** A world backed by the real arena layout, so ramps and platforms collide. */
+/** A world backed by the rolled home arena, so ramps and decks collide. */
 function arenaWorld(playerPos = { x: 0, z: 0 }): TestWorld {
   const c = new CollisionWorld();
-  for (const [x, z, w, h, d] of PLATFORMS) {
-    c.addObstacle({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 }, h);
+  for (const { deck } of HOME.tables.decks) {
+    c.addObstacle(
+      {
+        minX: deck.x - DECK.w / 2,
+        maxX: deck.x + DECK.w / 2,
+        minZ: deck.z - DECK.d / 2,
+        maxZ: deck.z + DECK.d / 2,
+      },
+      DECK.h,
+    );
   }
-  for (const [x, z, w, len, upX, upZ] of RAMPS) {
-    const spanX = upX !== 0 ? len : w;
-    const spanZ = upZ !== 0 ? len : w;
+  for (const { ramp } of HOME.tables.decks) {
+    const spanX = ramp.upX !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
+    const spanZ = ramp.upZ !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
     c.addRamp({
-      minX: x - spanX / 2,
-      maxX: x + spanX / 2,
-      minZ: z - spanZ / 2,
-      maxZ: z + spanZ / 2,
+      minX: ramp.x - spanX / 2,
+      maxX: ramp.x + spanX / 2,
+      minZ: ramp.z - spanZ / 2,
+      maxZ: ramp.z + spanZ / 2,
       lowY: 0,
       highY: PLATFORM_H,
-      upX,
-      upZ,
+      upX: ramp.upX,
+      upZ: ramp.upZ,
     });
   }
 
@@ -142,10 +154,14 @@ describe('Enemy', () => {
   });
 
   it('besieges the ramp mouth instead of climbing to a player on the deck', () => {
-    // Player on the north deck, grunt on the floor south of it.
-    const world = arenaWorld({ x: 0, z: -35 });
+    // Player on the north deck, grunt on the floor south of it. The deck and
+    // its ramp come from the rolled home tables (decks[0] is always N).
+    const north = HOME.tables.decks[0];
+    if (!north) throw new Error('north deck missing');
+    const { deck, ramp } = north;
+    const world = arenaWorld({ x: deck.x, z: deck.z });
     world.playerY = PLATFORM_H;
-    const e = spawn('grunt', 0, -14);
+    const e = spawn('grunt', deck.x, deck.z + 21);
 
     let peak = 0;
     for (let i = 0; i < 60 * 14; i++) {
@@ -158,20 +174,23 @@ describe('Enemy', () => {
     expect(e.pos.y).toBeLessThan(0.2);
     expect(world.hurt).toBe(0);
     // ...and it parks at the bottom of the slope, not against the deck wall.
-    const mouthZ = -24.6; // the toe pushed ENEMY.RAMP_OFFSET downhill
-    expect(Math.hypot(e.pos.x, e.pos.z - mouthZ)).toBeLessThan(4);
+    const mouthZ = ramp.z - ramp.upZ * ENEMY.RAMP_OFFSET; // the toe pushed downhill
+    expect(Math.hypot(e.pos.x - deck.x, e.pos.z - mouthZ)).toBeLessThan(4);
   });
 
   it('falls back to the floor when it walks off a platform', () => {
-    // Chase east, off the deck's bare east face (the ramp is on the south side).
-    const world = arenaWorld({ x: 60, z: -35 });
-    const e = spawn('grunt', 0, -35);
+    // Chase east off the deck's bare east face (the ramp is on the south side).
+    const north = HOME.tables.decks[0];
+    if (!north) throw new Error('north deck missing');
+    const { deck } = north;
+    const world = arenaWorld({ x: 60, z: deck.z });
+    const e = spawn('grunt', deck.x, deck.z);
     e.pos.y = PLATFORM_H;
     e.grounded = true;
     world.playerY = 0;
 
     for (let i = 0; i < 60 * 4; i++) e.update(1 / 60, world);
-    expect(e.pos.x).toBeGreaterThan(3.5);
+    expect(e.pos.x).toBeGreaterThan(deck.x + 3.5);
     expect(e.pos.y).toBeLessThan(0.01);
   });
 

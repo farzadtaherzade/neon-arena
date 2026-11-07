@@ -1,42 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/core/rng';
-import { WORLD } from '../../src/game/config';
+import { HOME, WORLD } from '../../src/game/config';
+import { buildHome, DISTRICT_RAMP } from '../../src/game/world/chunks';
 import { type Aabb, CollisionWorld, type Ramp, rampHeight } from '../../src/game/world/collision';
 import {
-  OBSTACLES,
+  DECK,
+  DECK_EDGE,
   PLATFORM_H,
-  PLATFORMS,
-  RAMPS,
+  REACTOR_SIZE,
   rampRotation,
   starfieldPositions,
+  TOWER_SIZE,
 } from '../../src/game/world/layout';
 
 const BOX: Aabb = { minX: -2, maxX: 2, minZ: -2, maxZ: 2 };
 
-/** Same conversion `render/Arena.ts` does when it builds each mesh. */
-const platformBoxes = (): Aabb[] =>
-  PLATFORMS.map(([x, z, w, , d]) => ({
-    minX: x - w / 2,
-    maxX: x + w / 2,
-    minZ: z - d / 2,
-    maxZ: z + d / 2,
-  }));
+/** Several seeds: the layout invariants must hold for every roll, not one. */
+const SEEDS = [20261101, 1, 7, 42, 20261102];
 
-const rampBoxes = (): Ramp[] =>
-  RAMPS.map(([x, z, w, len, upX, upZ]) => {
-    const spanX = upX !== 0 ? len : w;
-    const spanZ = upZ !== 0 ? len : w;
+/** Same conversion `render/Arena.ts` does when it builds each mesh. */
+function deckBoxes(home: ReturnType<typeof buildHome>): Aabb[] {
+  return home.tables.decks.map(({ deck }) => ({
+    minX: deck.x - DECK.w / 2,
+    maxX: deck.x + DECK.w / 2,
+    minZ: deck.z - DECK.d / 2,
+    maxZ: deck.z + DECK.d / 2,
+  }));
+}
+
+function rampBoxes(home: ReturnType<typeof buildHome>): Ramp[] {
+  return home.tables.decks.map(({ ramp }) => {
+    const spanX = ramp.upX !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
+    const spanZ = ramp.upZ !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
     return {
-      minX: x - spanX / 2,
-      maxX: x + spanX / 2,
-      minZ: z - spanZ / 2,
-      maxZ: z + spanZ / 2,
+      minX: ramp.x - spanX / 2,
+      maxX: ramp.x + spanX / 2,
+      minZ: ramp.z - spanZ / 2,
+      maxZ: ramp.z + spanZ / 2,
       lowY: 0,
       highY: PLATFORM_H,
-      upX,
-      upZ,
+      upX: ramp.upX,
+      upZ: ramp.upZ,
     };
   });
+}
 
 describe('CollisionWorld.resolveCircle', () => {
   it('leaves a circle far outside every collider alone — the world has no edge', () => {
@@ -209,76 +216,122 @@ describe('CollisionWorld ramps', () => {
 });
 
 describe('layout', () => {
-  const boxes: Aabb[] = [...OBSTACLES, ...PLATFORMS].map(([x, z, w, , d]) => ({
-    minX: x - w / 2,
-    maxX: x + w / 2,
-    minZ: z - d / 2,
-    maxZ: z + d / 2,
-  }));
+  // The home arena is rolled per run, so every invariant runs across several
+  // seeds — each seed's layout must satisfy all of them.
+  const boxes = (home: ReturnType<typeof buildHome>): Aabb[] => [
+    ...home.cover.map(([x, z, w, , d]) => ({
+      minX: x - w / 2,
+      maxX: x + w / 2,
+      minZ: z - d / 2,
+      maxZ: z + d / 2,
+    })),
+    ...deckBoxes(home),
+  ];
 
   it('keeps every obstacle inside the arena', () => {
-    for (const o of boxes) {
-      expect(o.minX).toBeGreaterThanOrEqual(-WORLD.HALF);
-      expect(o.maxX).toBeLessThanOrEqual(WORLD.HALF);
-      expect(o.minZ).toBeGreaterThanOrEqual(-WORLD.HALF);
-      expect(o.maxZ).toBeLessThanOrEqual(WORLD.HALF);
-      expect(o.maxX).toBeGreaterThan(o.minX);
-      expect(o.maxZ).toBeGreaterThan(o.minZ);
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      for (const o of [...boxes(home), ...rampBoxes(home)]) {
+        expect(o.minX, `seed ${seed}`).toBeGreaterThanOrEqual(-WORLD.HALF);
+        expect(o.maxX, `seed ${seed}`).toBeLessThanOrEqual(WORLD.HALF);
+        expect(o.minZ, `seed ${seed}`).toBeGreaterThanOrEqual(-WORLD.HALF);
+        expect(o.maxZ, `seed ${seed}`).toBeLessThanOrEqual(WORLD.HALF);
+        expect(o.maxX).toBeGreaterThan(o.minX);
+        expect(o.maxZ).toBeGreaterThan(o.minZ);
+      }
     }
   });
 
-  it('keeps every ramp inside the arena', () => {
-    for (const r of rampBoxes()) {
-      expect(r.minX).toBeGreaterThanOrEqual(-WORLD.HALF);
-      expect(r.maxX).toBeLessThanOrEqual(WORLD.HALF);
-      expect(r.minZ).toBeGreaterThanOrEqual(-WORLD.HALF);
-      expect(r.maxZ).toBeLessThanOrEqual(WORLD.HALF);
+  it('keeps one deck on each mid-edge, radially fixed so the outer lane survives', () => {
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      expect(home.tables.decks, `seed ${seed}`).toHaveLength(4);
+      for (const { deck } of home.tables.decks) {
+        const radial = Math.max(Math.abs(deck.x), Math.abs(deck.z));
+        expect(radial, `seed ${seed} deck ${deck.x},${deck.z}`).toBe(DECK_EDGE);
+        const along = radial === Math.abs(deck.x) ? Math.abs(deck.z) : Math.abs(deck.x);
+        expect(along, `seed ${seed} deck ${deck.x},${deck.z}`).toBeLessThanOrEqual(HOME.DECK_SLIDE);
+      }
     }
   });
 
-  it('lands every ramp exactly on the platform face it serves', () => {
-    for (const ramp of rampBoxes()) {
-      const highEdge =
-        ramp.upX > 0 ? ramp.maxX : ramp.upX < 0 ? ramp.minX : ramp.upZ > 0 ? ramp.maxZ : ramp.minZ;
-      const matches = platformBoxes().some((p) => {
-        const withinX = ramp.minX >= p.minX - 1e-9 && ramp.maxX <= p.maxX + 1e-9;
-        const withinZ = ramp.minZ >= p.minZ - 1e-9 && ramp.maxZ <= p.maxZ + 1e-9;
-        if (ramp.upX !== 0) {
-          return withinZ && (Math.abs(highEdge - p.minX) < 1e-9 || Math.abs(highEdge - p.maxX) < 1e-9);
-        }
-        return withinX && (Math.abs(highEdge - p.minZ) < 1e-9 || Math.abs(highEdge - p.maxZ) < 1e-9);
-      });
-      expect(matches, `ramp ${ramp.minX},${ramp.minZ}`).toBe(true);
+  it('lands every ramp exactly on the deck face it serves', () => {
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      for (const { deck, ramp } of home.tables.decks) {
+        const highX = ramp.upX > 0 ? ramp.x + 3 : ramp.upX < 0 ? ramp.x - 3 : ramp.x;
+        const highZ = ramp.upZ > 0 ? ramp.z + 3 : ramp.upZ < 0 ? ramp.z - 3 : ramp.z;
+        // The face the ramp climbs onto is the deck face on its own side.
+        const faceX = deck.x - ramp.upX * (DECK.w / 2);
+        const faceZ = deck.z - ramp.upZ * (DECK.d / 2);
+        expect(highX, `seed ${seed} deck ${deck.x},${deck.z}`).toBeCloseTo(faceX, 9);
+        expect(highZ, `seed ${seed} deck ${deck.x},${deck.z}`).toBeCloseTo(faceZ, 9);
+      }
     }
   });
 
   it('leaves a walkable lane behind every deck', () => {
-    // The decks sit inboard of the wall on the mid-edges, so the corridor behind
-    // them is a real maze route rather than a dead slot: it must fit a body.
+    // The decks sit inboard of the world edge on the mid-edges, so the corridor
+    // behind them is a real maze route rather than a dead slot: it must fit a body.
     const clamp = WORLD.HALF - WORLD.WALL_INSET;
-    for (const p of platformBoxes()) {
-      const outer = Math.max(Math.abs(p.minX), Math.abs(p.maxX), Math.abs(p.minZ), Math.abs(p.maxZ));
-      expect(clamp - outer, `deck at ${p.minX},${p.minZ}`).toBeGreaterThan(WORLD.PLAYER_R * 2);
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      for (const p of deckBoxes(home)) {
+        const outer = Math.max(Math.abs(p.minX), Math.abs(p.maxX), Math.abs(p.minZ), Math.abs(p.maxZ));
+        expect(clamp - outer, `seed ${seed} deck at ${p.minX},${p.minZ}`).toBeGreaterThan(WORLD.PLAYER_R * 2);
+      }
     }
   });
 
   it('leaves the spawn point clear', () => {
-    const w = new CollisionWorld();
-    for (const o of boxes) w.addObstacle(o);
-    for (const r of rampBoxes()) w.addRamp(r);
-    const p = { x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z };
-    w.resolveCircle(p, WORLD.PLAYER_R);
-    expect(p).toEqual({ x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z });
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      const w = new CollisionWorld();
+      for (const o of boxes(home)) w.addObstacle(o);
+      for (const r of rampBoxes(home)) w.addRamp(r);
+      const p = { x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z };
+      w.resolveCircle(p, WORLD.PLAYER_R);
+      expect(p, `seed ${seed}`).toEqual({ x: WORLD.SPAWN_X, z: WORLD.SPAWN_Z });
+    }
   });
 
   it('keeps the spawn plaza free of cover', () => {
-    const w = new CollisionWorld();
-    for (const o of boxes) w.addObstacle(o);
-    for (const r of rampBoxes()) w.addRamp(r);
-    // A 10×10 pocket around the spawn, so a run never starts inside a wall.
-    for (let dx = -5; dx <= 5; dx += 1) {
-      for (let dz = -5; dz <= 5; dz += 1) {
-        expect(w.blockedAt(WORLD.SPAWN_X + dx, WORLD.SPAWN_Z + dz, 0.45)).toBe(false);
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      const w = new CollisionWorld();
+      for (const o of boxes(home)) w.addObstacle(o);
+      for (const r of rampBoxes(home)) w.addRamp(r);
+      // A 10×10 pocket around the spawn, so a run never starts inside a wall.
+      for (let dx = -5; dx <= 5; dx += 1) {
+        for (let dz = -5; dz <= 5; dz += 1) {
+          expect(
+            w.blockedAt(WORLD.SPAWN_X + dx, WORLD.SPAWN_Z + dz, 0.45),
+            `seed ${seed} at ${dx},${dz}`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('keeps cover clear of the decks, ramps and landmarks', () => {
+    for (const seed of SEEDS) {
+      const home = buildHome(seed);
+      const kept: (readonly [number, number, number, number])[] = [
+        ...home.tables.decks.map(({ deck }) => [deck.x, deck.z, DECK.w, DECK.d] as const),
+        ...home.tables.decks.map(({ ramp }) => {
+          const spanX = ramp.upX !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
+          const spanZ = ramp.upZ !== 0 ? DISTRICT_RAMP.length : DISTRICT_RAMP.width;
+          return [ramp.x, ramp.z, spanX, spanZ] as const;
+        }),
+        [home.tables.reactor.x, home.tables.reactor.z, REACTOR_SIZE.w, REACTOR_SIZE.d] as const,
+        [home.tables.tower.x, home.tables.tower.z, TOWER_SIZE.w, TOWER_SIZE.d] as const,
+        [WORLD.SPAWN_X, WORLD.SPAWN_Z, 10, 10] as const,
+      ];
+      for (const [x, z, w, , d] of home.cover) {
+        for (const [px, pz, pw, pd] of kept) {
+          const apart = Math.abs(x - px) >= (w + pw) / 2 || Math.abs(z - pz) >= (d + pd) / 2;
+          expect(apart, `seed ${seed} block ${x},${z} vs ${px},${pz}`).toBe(true);
+        }
       }
     }
   });
@@ -305,19 +358,23 @@ describe('ramp mesh orientation', () => {
   // the group by `rampRotation` to aim it at the ramp's up vector. When the
   // two disagree the wedge points sideways and the ramp reads as broken.
   it('aims the uphill face along the up vector', () => {
-    for (const [, , , , upX, upZ] of RAMPS) {
-      const theta = rampRotation(upX, upZ);
-      // A yaw of theta maps local +x to (cos theta, -sin theta).
-      expect(Math.cos(theta)).toBeCloseTo(upX, 10);
-      expect(-Math.sin(theta)).toBeCloseTo(upZ, 10);
+    for (const seed of SEEDS) {
+      for (const { ramp } of buildHome(seed).tables.decks) {
+        const theta = rampRotation(ramp.upX, ramp.upZ);
+        // A yaw of theta maps local +x to (cos theta, -sin theta).
+        expect(Math.cos(theta)).toBeCloseTo(ramp.upX, 10);
+        expect(-Math.sin(theta)).toBeCloseTo(ramp.upZ, 10);
+      }
     }
   });
 
   it('keeps the ramp width perpendicular to the climb', () => {
-    for (const [, , , , upX, upZ] of RAMPS) {
-      const theta = rampRotation(upX, upZ);
-      // Local +z maps to (sin theta, cos theta).
-      expect(Math.sin(theta) * upX + Math.cos(theta) * upZ).toBeCloseTo(0, 10);
+    for (const seed of SEEDS) {
+      for (const { ramp } of buildHome(seed).tables.decks) {
+        const theta = rampRotation(ramp.upX, ramp.upZ);
+        // Local +z maps to (sin theta, cos theta).
+        expect(Math.sin(theta) * ramp.upX + Math.cos(theta) * ramp.upZ).toBeCloseTo(0, 10);
+      }
     }
   });
 });

@@ -920,6 +920,25 @@ export const CRAWL = {
 } as const;
 
 /**
+ * The home arena's per-run rolls. Chunk (0,0) is generated from the run seed
+ * like any wild chunk: the decks slide along their mid-edges, the landmarks
+ * wander, and the maze cover is rolled one quadrant at a time and mirrored
+ * four ways. Draw order in `buildChunk` is load-bearing — it defines every
+ * seed's layout and the E2E's boot pin.
+ */
+export const HOME = {
+  /** How far a deck may slide from its mid-edge centre, along the edge. */
+  DECK_SLIDE: 20,
+  /** The reactor wanders this far from the arena centre (never onto the plaza). */
+  REACTOR_RANGE: 14,
+  /** Cover blocks rolled per quadrant, before the mirror and protected drops. */
+  COVER_MIN: 6,
+  COVER_MAX: 9,
+  /** Breathing room between generated cover and every protected footprint. */
+  PROTECTED_PAD: 0.5,
+} as const;
+
+/**
  * Tower alarms. Each gatehouse deck carries a beacon; when hostiles mass inside
  * `RADIUS` of one it flips red, a siren pings on the rising edge, and the
  * minimap pulses a ring there. `HOLD` keeps it lit briefly after they leave so

@@ -195,15 +195,16 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(consoleErrors, consoleErrors.slice(0, 3).join('; ')).toEqual([]);
 
   // --- boot -----------------------------------------------------------------
-  // The boot build must register the authored arena's collision — a theme-swap
+  // The boot build must register the home arena's collision — a theme-swap
   // regression once left it empty and the player walked through every wall.
-  // Region 0 = 32 maze cover + reactor + 4 decks + clock tower + 4 capture
-  // masts (the four perimeter walls are gone: the world is infinite), and its
-  // 4 ramps. Generated chunks stream separately under their own regions.
+  // Region 0 = 24 rolled maze cover blocks + reactor + 4 decks + clock tower
+  // + 4 capture masts, and its 4 ramps — every number derived from the fixed
+  // ?test seed, so the pin is deterministic. Generated chunks stream
+  // separately under their own regions.
   const colliders = await page.evaluate(
     () => window.__NEON.colliders() as { obstacles: number; ramps: number },
   );
-  expect(colliders.obstacles).toBe(42);
+  expect(colliders.obstacles).toBe(34);
   expect(colliders.ramps).toBe(4);
   await page.waitForTimeout(2500); // let the first wave spawn
   const boot = await stats(page);

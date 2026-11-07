@@ -21,6 +21,7 @@ import {
   FEEDBACK,
   FIXED_STEP,
   FX,
+  HOME,
   KNIFE,
   MAX_DT,
   METEOR,
@@ -47,7 +48,14 @@ import {
   XP,
   XP_LEVEL,
 } from '../../src/game/config';
-import { PLATFORM_H, PLATFORMS } from '../../src/game/world/layout';
+import {
+  DECK,
+  DECK_EDGE,
+  PLATFORM_H,
+  REACTOR_SIZE,
+  TOWER_CORNER,
+  TOWER_SIZE,
+} from '../../src/game/world/layout';
 
 /**
  * The tuning table has no schema beyond these literals, so this suite is the
@@ -166,8 +174,18 @@ describe('config', () => {
     expect(CAPTURE.HEAL_T).toBeGreaterThan(0);
     expect(CAPTURE.RISE).toBeLessThan(PLATFORM_H);
     // The pad has to fit on the deck with room to walk onto it.
-    const deckWidth = PLATFORMS[0]?.[2] ?? 0;
-    expect(CAPTURE.RADIUS * 2).toBeLessThan(deckWidth);
+    expect(CAPTURE.RADIUS * 2).toBeLessThan(DECK.w);
+  });
+
+  it('keeps the home rolls coherent', () => {
+    // A slid deck stays clear of the tower's corner zone, so decks and tower
+    // can never collide by construction.
+    expect(HOME.DECK_SLIDE).toBeGreaterThan(0);
+    expect(HOME.DECK_SLIDE + DECK.w / 2).toBeLessThan(TOWER_CORNER - TOWER_SIZE.w / 2);
+    // The wandering reactor never reaches a deck or its ramp approach.
+    expect(HOME.REACTOR_RANGE + REACTOR_SIZE.w / 2).toBeLessThan(DECK_EDGE - DECK.w / 2);
+    expect(HOME.COVER_MIN).toBeGreaterThan(0);
+    expect(HOME.COVER_MIN).toBeLessThanOrEqual(HOME.COVER_MAX);
   });
 
   it('keeps the wave curve bounded', () => {

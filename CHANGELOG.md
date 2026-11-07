@@ -5,9 +5,20 @@ All notable changes to NEON ARENA. The format follows
 match `package.json` (which is also what the build injects and the menu
 displays).
 
-## [2.2.0] — 2026-11-06
+## [2.2.0] — 2026-11-07
 
 ### Added
+- **The home arena is rolled every run.** Chunk (0,0) joins the seeded
+  generation: the four gatehouse decks slide along their mid-edges (one ramp
+  each, always climbing from the arena side), the magenta reactor wanders the
+  centre (never onto the spawn plaza), the clock tower picks a corner, and the
+  maze cover is rolled one quadrant at a time and mirrored four ways — the
+  same fairness rule the authored maze used. A new seed rolls on every
+  restart; `?test` keeps its fixed seed, so the E2E pins stay deterministic
+  (region 0 is now 34 obstacles / 4 ramps under it). Every layout invariant
+  (ramp-on-deck-face, deck lanes, spawn plaza, bounds) is now asserted across
+  several seeds instead of one fixed layout, and the tactical map draws the
+  rolled home from the live tables.
 - **Shop round**: skins for the SMG, SCATTERGUN and DMR (MIDNIGHT/SCRAP/VOID
   palettes); the equipped skin's glow tints tracers and muzzle flash; the
   SKINS tab split into RIFLES / BLADES / GUNS / ARMORY groups.

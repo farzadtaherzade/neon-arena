@@ -263,3 +263,25 @@ past wave 20.
 2. Streaming capture + alarms + maps — deck districts live.
 3. Crawl systems (spawn bias, distance difficulty, clamp removal, hash wrap).
 4. The Colossus + guardian trigger + tests.
+
+## Update — 2026-11-07: the home arena joins the roll
+
+This doc's Goal 1 ("the authored arena survives as chunk (0,0)") is amended by
+`2.2.0`: chunk (0,0) is now **generated** from the run seed like any other
+chunk. What survives is every invariant, not the fixed tables:
+
+- The four decks keep their mid-edges and radial position (so the outer lane
+  survives), but slide along the edge per seed; each keeps exactly one ramp
+  climbing from the arena side.
+- The reactor wanders near the centre, never onto the spawn plaza; the clock
+  tower picks one of the four corners.
+- Maze cover is rolled one quadrant at a time and mirrored four ways — the
+  same fairness rule the authored quadrant followed — and any block whose
+  mirrors would touch a protected footprint (decks, ramps, landmarks, spawn
+  plaza) is dropped whole, so anchors stay clear and the maze stays symmetric.
+- The unit invariants this doc pinned are re-asserted per seed across several
+  seeds (`collision.test.ts`); the boot smoke pin is derived from the fixed
+  `?test` seed (34 obstacles / 4 ramps in region 0).
+- Home meshes/colliders stay on the region-0 boot path (`Arena.rebuildHome`
+  re-registers on a new seed); the streamed (0,0) table contributes only its
+  floor plane, and `MapScreen` reads the rolled tables live.

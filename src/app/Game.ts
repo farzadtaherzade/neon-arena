@@ -54,7 +54,14 @@ import { Perks } from '../game/perks';
 import { Player } from '../game/player';
 import { crawlDist, distScale, dmgBonus, WaveDirector } from '../game/waves';
 import { Weapon } from '../game/weapon';
-import { buildChunk, type ChunkTables, chunkOf, loadedBounds } from '../game/world/chunks';
+import {
+  buildChunk,
+  buildHome,
+  type ChunkTables,
+  chunkOf,
+  type HomeWorld,
+  loadedBounds,
+} from '../game/world/chunks';
 import { CollisionWorld } from '../game/world/collision';
 import { XP, Xp, XpMeter } from '../game/xp';
 import { Arena } from '../render/Arena';
@@ -197,6 +204,10 @@ export class Game {
    * property under `useDefineForClassFields`.
    */
   runSeed = 0;
+  /** The home arena's rolled tables for the current seed — renderer-facing. */
+  private homeWorld: HomeWorld;
+  /** The seed the arena's meshes were last built from, so an unchanged seed skips the rebuild. */
+  private appliedHomeSeed = -1;
   /** Chunk coords the loaded square is currently centred on. */
   private crawlCx = 0;
   private crawlCz = 0;
@@ -281,7 +292,7 @@ export class Game {
   private resetChunks(): void {
     for (const key of [...this.loadedChunks.keys()]) {
       const [kx, kz] = key.split(',').map(Number) as [number, number];
-      if (kx === 0 && kz === 0) continue; // authored — nothing generated to drop
+      if (kx === 0 && kz === 0) continue; // home — only its floor plane streams here
       const { solids, pad } = this.arena.unloadChunk(kx, kz);
       for (const solid of solids) this.pick.remove(solid);
       if (pad) {
@@ -418,7 +429,9 @@ export class Game {
   ) {
     this.runSeed = this.test ? 20261101 : Math.floor(Math.random() * 0x7fffffff);
     this.touchEnabled = touchOverride || (!test && isTouchDevice());
-    this.arena = new Arena(this.collision, this.rng);
+    this.homeWorld = buildHome(this.runSeed);
+    this.appliedHomeSeed = this.runSeed;
+    this.arena = new Arena(this.collision, this.rng, this.homeWorld);
     this.capture = new CapturePoints(this.arena.pads.map((pad) => pad.deck));
     this.alarm = new TowerAlarm();
     for (const pad of this.arena.pads) {
@@ -630,12 +643,45 @@ export class Game {
     });
     document.getElementById('gameOverScreen')!.addEventListener('click', () => this.start(false));
 
-    // The authored chunk's floor must exist before the first frame paints —
-    // everything else streams in on the step budget.
-    const home = buildChunk(0, 0, this.runSeed);
-    this.loadedChunks.set('0,0', home);
-    const homeBuilt = this.arena.loadChunk(home);
+    // The home chunk's floor must exist before the first frame paints —
+    // everything else streams in on the step budget. The chunk table mirrors
+    // what the arena already built from; only the floor plane streams here.
+    const homeTable: ChunkTables = {
+      cx: 0,
+      cz: 0,
+      cover: this.homeWorld.cover,
+      home: this.homeWorld.tables,
+    };
+    this.loadedChunks.set('0,0', homeTable);
+    const homeBuilt = this.arena.loadChunk(homeTable);
     for (const solid of homeBuilt.solids) this.pick.add(solid);
+  }
+
+  /**
+   * Swap the world to the current seed's home arena: rebuild the meshes and
+   * region-0 colliders, then re-wire the systems that read the deck positions
+   * (capture pads, map towers) and re-point the pick list, exactly as a theme
+   * swap does. An unchanged seed — a headless restart — skips the rebuild.
+   */
+  private applyHome(): void {
+    if (this.appliedHomeSeed === this.runSeed) return;
+    const home = buildHome(this.runSeed);
+    this.homeWorld = home;
+    this.appliedHomeSeed = this.runSeed;
+    this.loadedChunks.set('0,0', { cx: 0, cz: 0, cover: home.cover, home: home.tables });
+    for (const pad of this.arena.pads) {
+      this.capture.removeDeck(pad.deck.id);
+      const ti = this.mapTowers.findIndex((t) => t.id === pad.deck.id);
+      if (ti >= 0) this.mapTowers.splice(ti, 1);
+    }
+    const oldSolids = [...this.arena.solids];
+    this.arena.rebuildHome(home);
+    for (const s of oldSolids) this.pick.remove(s);
+    this.pick.add(...this.arena.solids);
+    for (const pad of this.arena.pads) {
+      this.capture.addDeck(pad.deck);
+      this.mapTowers.push({ id: pad.deck.id, x: pad.deck.x, z: pad.deck.z, hot: false });
+    }
   }
 
   /** Back to the main menu, from the pause or the game-over screen. */
@@ -760,10 +806,11 @@ export class Game {
     this.fx.clear();
     for (const w of Object.values(this.weapons)) w.reset();
     this.player.reset();
-    // A fresh run rolls a fresh world: drop every generated chunk and
-    // re-stream around the spawn plaza under the new seed.
+    // A fresh run rolls a fresh world: drop every generated chunk, re-stream
+    // around the spawn plaza, and swap in the new seed's home arena.
     if (!this.test) this.runSeed = Math.floor(Math.random() * 0x7fffffff);
     this.resetChunks();
+    this.applyHome();
     this.clearHostiles();
     this.clearBombs();
     this.clearXps();

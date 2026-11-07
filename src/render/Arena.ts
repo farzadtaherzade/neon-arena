@@ -5,16 +5,15 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Rng } from '../core/rng';
 import { BLOOM, CAMERA, CRAWL, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO } from '../game/config';
-import { type ChunkTables, chunkRegion } from '../game/world/chunks';
+import { type ChunkTables, chunkRegion, DISTRICT_RAMP, type HomeWorld } from '../game/world/chunks';
 import type { CollisionWorld } from '../game/world/collision';
 import {
-  OBSTACLES,
+  DECK,
   PLATFORM_H,
-  PLATFORMS,
-  RAMPS,
-  REACTOR,
+  REACTOR_SIZE,
   rampRotation,
   starfieldPositions,
+  TOWER_SIZE,
 } from '../game/world/layout';
 import { CapturePad } from './CapturePad';
 import { ClockTower } from './ClockTower';
@@ -23,7 +22,7 @@ import { mobWarmup } from './models/MobModel';
 import { coverAccents, makeCover, makeDeck, makeRamp, makeReactor } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
 
-/** Where the corner accent lights sit, and where the clock tower stands. */
+/** Where the corner accent lights sit. */
 const CORNER_LIGHTS: readonly (readonly [number, number])[] = [
   [-40, -40],
   [-40, 40],
@@ -31,28 +30,26 @@ const CORNER_LIGHTS: readonly (readonly [number, number])[] = [
   [40, 40],
 ];
 
-/** The clock tower stands in the north-west corner, clear of the maze. */
-const CLOCK_TOWER: readonly [number, number] = [-36, -36];
-
 /**
  * Renderer, scene, lights and every static mesh.
  *
- * Owns the one place where `layout.ts` data becomes geometry. The structure kit
- * bakes the active theme's palette into a lit shell and a neon trim pass, then
- * Arena registers authored AABBs from the source tables — never from the
- * decorative overhang. Meshes a bullet can stop on go into `solids` for
- * `render/Pick.ts`.
+ * Owns the one place where the home arena's rolled tables (`world/chunks.ts`)
+ * become geometry. The structure kit bakes the active theme's palette into a
+ * lit shell and a neon trim pass, then Arena registers the home AABBs from
+ * those tables — never from the decorative overhang. Meshes a bullet can stop
+ * on go into `solids` for `render/Pick.ts`.
  *
  * A theme swap rebuilds the static world: the old group's geometries are
- * disposed, the meshes are rebuilt from the same layout tables with the new
- * palette, and collision is *not* re-registered — the theme never moves a wall.
+ * disposed, the meshes are rebuilt from the same home tables with the new
+ * palette, and collision is *not* re-registered — the theme never moves a
+ * wall. A new run swaps the tables themselves via `rebuildHome`.
  */
 export class Arena {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly solids: THREE.Object3D[] = [];
-  /** One capture pad per corner platform, in `PLATFORMS` order. */
+  /** One capture pad per home deck, in the rolled deck order. */
   readonly pads: CapturePad[] = [];
 
   private yawObj = new THREE.Group();
@@ -80,6 +77,9 @@ export class Arena {
 
   /** The active theme; the builders read their colours from it. */
   private theme: ThemeDef = THEMES[DEFAULT_THEME];
+
+  /** The home arena's rolled layout — cover plus deck/landmark placement. */
+  private home: HomeWorld;
 
   /**
    * False while a build is in flight when the colliders already exist: the
@@ -129,8 +129,10 @@ export class Arena {
   constructor(
     private readonly collision: CollisionWorld,
     rng: Rng,
+    home: HomeWorld,
   ) {
     this.rng = rng;
+    this.home = home;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -298,6 +300,21 @@ export class Arena {
 
     MAT.applyTheme(theme);
     this.rebuildWorld();
+  }
+
+  /**
+   * Swap in a freshly rolled home arena and rebuild it — the reset path for a
+   * new run. Unlike a theme swap this *re-registers* region 0: the layout
+   * really moved. The caller re-points its pick list at `solids` afterwards.
+   */
+  rebuildHome(home: HomeWorld): void {
+    for (const pad of this.pads) pad.dispose(this.scene);
+    this.pads.length = 0;
+    this.home = home;
+    this.collision.removeRegion(0);
+    this.collisionRegistered = false;
+    this.rebuildWorld();
+    this.capturePads();
   }
 
   /**
@@ -476,12 +493,16 @@ export class Arena {
     solids.push(floor);
 
     const accents = coverAccents(this.theme);
-    for (const [i, [x, z, w, h, d]] of tables.cover.entries()) {
-      const asset = makeCover(w, h, d, this.theme, accents[(i + 1) % accents.length] ?? this.theme.cyan);
-      asset.group.position.set(x, 0, z);
-      group.add(asset.group);
-      this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
-      solids.push(asset.solid);
+    // The home chunk's cover and decks are the authored region-0 path — they
+    // stream only their floor plane, or the colliders would stack.
+    if (tables.home === undefined) {
+      for (const [i, [x, z, w, h, d]] of tables.cover.entries()) {
+        const asset = makeCover(w, h, d, this.theme, accents[(i + 1) % accents.length] ?? this.theme.cyan);
+        asset.group.position.set(x, 0, z);
+        group.add(asset.group);
+        this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
+        solids.push(asset.solid);
+      }
     }
 
     const district = tables.district;
@@ -613,7 +634,7 @@ export class Arena {
 
   private cover(): void {
     const accents = coverAccents(this.theme);
-    for (const [i, [x, z, w, h, d]] of OBSTACLES.entries()) {
+    for (const [i, [x, z, w, h, d]] of this.home.cover.entries()) {
       const asset = makeCover(w, h, d, this.theme, accents[i % accents.length] ?? this.theme.cyan);
       asset.group.position.set(x, 0, z);
       this.worldGroup.add(asset.group);
@@ -624,9 +645,11 @@ export class Arena {
   /**
    * The central reactor: the landmark every lane is navigated by, and the
    * reason the middle of the map is not a shooting gallery. Solid, not walkable.
+   * Its position rolls with the run seed; the box never changes size.
    */
   private reactor(): void {
-    const { x, z, w, h, d } = REACTOR;
+    const { x, z } = this.home.tables.reactor;
+    const { w, h, d } = REACTOR_SIZE;
     const asset = makeReactor(w, h, d, this.theme);
     asset.group.position.set(x, 0, z);
     this.worldGroup.add(asset.group);
@@ -637,11 +660,11 @@ export class Arena {
   }
 
   private platforms(): void {
-    for (const [x, z, w, h, d] of PLATFORMS) {
-      const asset = makeDeck(w, h, d, this.theme);
-      asset.group.position.set(x, 0, z);
+    for (const { deck } of this.home.tables.decks) {
+      const asset = makeDeck(DECK.w, DECK.h, DECK.d, this.theme);
+      asset.group.position.set(deck.x, 0, deck.z);
       this.worldGroup.add(asset.group);
-      this.blockAt(asset.solid, x, z, w / 2, d / 2, h);
+      this.blockAt(asset.solid, deck.x, deck.z, DECK.w / 2, DECK.d / 2, DECK.h);
     }
   }
 
@@ -652,10 +675,11 @@ export class Arena {
    */
   /** The clock tower: a landmark you can read the wave from across the map. */
   private clockTower(): void {
-    const tower = new ClockTower(CLOCK_TOWER[0], CLOCK_TOWER[1], this.theme);
+    const { x, z } = this.home.tables.tower;
+    const tower = new ClockTower(x, z, this.theme);
     this.worldGroup.add(tower.group);
     this.clock = tower;
-    this.blockAt(tower.solid, CLOCK_TOWER[0], CLOCK_TOWER[1], 5, 5, 24);
+    this.blockAt(tower.solid, x, z, TOWER_SIZE.w / 2, TOWER_SIZE.d / 2, TOWER_SIZE.h);
   }
 
   /**
@@ -672,8 +696,8 @@ export class Arena {
   }
 
   private capturePads(): void {
-    for (const [i, [x, z]] of PLATFORMS.entries()) {
-      const pad = new CapturePad({ id: `a${i}`, x, z, y: PLATFORM_H });
+    for (const [i, { deck }] of this.home.tables.decks.entries()) {
+      const pad = new CapturePad({ id: `a${i}`, x: deck.x, z: deck.z, y: PLATFORM_H });
       pad.addTo(this.scene);
       this.blockObject(pad.mast);
       this.pads.push(pad);
@@ -687,7 +711,10 @@ export class Arena {
    * they cannot drift apart.
    */
   private ramps(): void {
-    for (const [x, z, width, length, upX, upZ] of RAMPS) {
+    for (const { ramp } of this.home.tables.decks) {
+      const { x, z, upX, upZ } = ramp;
+      const width = DISTRICT_RAMP.width;
+      const length = DISTRICT_RAMP.length;
       const asset = makeRamp(width, length, PLATFORM_H, this.theme);
       asset.group.position.set(x, 0, z);
       // The wedge is built climbing along local +x, so the mesh is turned to
