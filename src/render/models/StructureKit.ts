@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KitPalette } from '../../game/config';
+import { STAMPS } from '../../game/config';
+import type { StampTables } from '../../game/world/chunks';
 import { MAT } from '../Materials';
 
 /**
@@ -456,5 +458,156 @@ export function makeClockTower(p: KitPalette): StructureAsset {
   box(body, p.dark, 2, 1.2, 2, 0, 23.8, 0);
   box(glow, p.magenta, 0.5, 0.5, 0.5, 0, 24.6, 0);
 
+  return assemble(body, glow);
+}
+
+// ---------------------------------------------------------------------------
+// Structure stamps: multi-part silhouettes whose proportions are derived from
+// the same world-space boxes the collision world registers. `stampBoxes` (in
+// world/chunks.ts) is the single source; nothing here may drift from it.
+
+/** Local-space copy of the stamp's boxes, relative to the stamp centre. */
+function localBoxes(stamp: StampTables): [number, number, number, number, number][] {
+  return stamp.boxes.map(([x, z, w, h, d]) => [x - stamp.at.x, z - stamp.at.z, w, h, d]);
+}
+
+/** The bounding rect of the local boxes, for slabs that span a whole stamp. */
+function span(boxes: [number, number, number, number, number][]): {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+} {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [x, z, w, , d] of boxes) {
+    minX = Math.min(minX, x - w / 2);
+    maxX = Math.max(maxX, x + w / 2);
+    minZ = Math.min(minZ, z - d / 2);
+    maxZ = Math.max(maxZ, z + d / 2);
+  }
+  return { minX, maxX, minZ, maxZ };
+}
+
+/**
+ * One structure stamp: a pillar, an arch you can walk through, a bridge you
+ * can walk under, and friends. The kit's merge discipline is unchanged — one
+ * lit shell + one glow trim per stamp — but the shapes come from the rolled
+ * tables, so the world stops being a farm of identical slabs.
+ */
+export function makeStamp(stamp: StampTables, p: KitPalette, accent: number): StructureAsset {
+  const body: ColoredPart[] = [];
+  const glow: ColoredPart[] = [];
+  const boxes = localBoxes(stamp);
+  const first = boxes[0] ?? [0, 0, 1, 2.2, 1];
+
+  const decorateLikeCover = (bx: number, bz: number, w: number, h: number, d: number): void => {
+    box(body, p.body, w, h, d, bx, h / 2, bz);
+    box(body, p.dark, w - 0.45, 0.1, d - 0.45, bx, h + 0.02, bz);
+    box(body, p.dark, w - 0.2, 0.16, d + 0.02, bx, 0.08, bz);
+    box(body, p.panel, w * 0.72, h * 0.28, d + 0.03, bx, h * 0.56, bz);
+    box(glow, p.hazard, w, 0.05, 0.08, bx, h + 0.03, bz - d / 2);
+    box(glow, p.hazard, w, 0.05, 0.08, bx, h + 0.03, bz + d / 2);
+    box(glow, accent, 0.14, h * 0.6, 0.03, bx + w / 2 - 0.4, h * 0.44, bz + d / 2 + 0.04);
+  };
+
+  switch (stamp.kind) {
+    case 'pillar': {
+      const [bx, bz, w, h, d] = first;
+      box(body, p.body, w, h, d, bx, h / 2, bz);
+      box(body, p.dark, w - 0.5, 0.14, d - 0.5, bx, h + 0.05, bz);
+      // Painted bands and a lit cap, so a pillar reads from across the arena.
+      for (let i = 0; i < 3; i++) {
+        const y = h * (0.2 + i * 0.26);
+        box(body, p.panel, w + 0.04, h * 0.1, d + 0.04, bx, y, bz);
+      }
+      box(glow, accent, w * 0.4, 0.06, 0.04, bx, h * 0.82, bz + d / 2 + 0.03);
+      box(glow, accent, 0.04, 0.06, d * 0.4, bx + w / 2 + 0.03, h * 0.82, bz);
+      box(glow, p.hazard, w + 0.06, 0.08, d + 0.06, bx, 0.14, bz);
+      break;
+    }
+    case 'arch': {
+      // Legs carry the lintel; its underside sits exactly at HEADROOM, so the
+      // walk-through gap is as tall as the rolled tables promise.
+      for (const [bx, bz, w, h, d] of boxes) {
+        box(body, p.body, w, h, d, bx, h / 2, bz);
+        box(body, p.light, w + 0.1, 0.2, d + 0.1, bx, 0.1, bz);
+        box(glow, accent, 0.08, h * 0.7, 0.04, bx + w / 2 + 0.03, h * 0.4, bz);
+      }
+      const spanX = span(boxes);
+      const lintelW = spanX.maxX - spanX.minX;
+      const lintelY = STAMPS.HEADROOM;
+      box(body, p.body, lintelW, 1, 1.3, 0, lintelY + 0.5, 0);
+      box(body, p.dark, lintelW - 0.5, 0.16, 1.36, 0, lintelY + 1.04, 0);
+      for (let i = -1; i <= 1; i++) {
+        box(glow, p.hazard, 0.34, 0.06, 1.32, i * 0.8, lintelY + 0.42, 0);
+      }
+      box(glow, p.cyan, lintelW + 0.1, 0.07, 0.14, 0, lintelY + 1.08, 0);
+      break;
+    }
+    case 'lwall':
+      for (const [bx, bz, w, h, d] of boxes) decorateLikeCover(bx, bz, w, h, d);
+      break;
+    case 'bridge': {
+      // Legs are the colliders; the slab rides on them as mesh-only cover —
+      // bullets stop on it, feet pass under.
+      for (const [bx, bz, w, h, d] of boxes) {
+        box(body, p.body, w, h, d, bx, h / 2, bz);
+        box(glow, p.hazard, w + 0.04, 0.08, d + 0.04, bx, h - 0.12, bz);
+      }
+      const s = span(boxes);
+      const sw = s.maxX - s.minX + 1.4;
+      const sd = s.maxZ - s.minZ + 1.4;
+      const slabY = STAMPS.HEADROOM;
+      box(body, p.body, sw, 0.7, sd, 0, slabY + 0.35, 0);
+      box(body, p.dark, sw - 0.6, 0.1, sd - 0.6, 0, slabY + 0.72, 0);
+      box(body, p.panel, sw * 0.8, 0.22, sd + 0.04, 0, slabY + 0.42, 0);
+      box(glow, p.cyan, sw + 0.06, 0.07, 0.12, 0, slabY + 0.74, -sd / 2);
+      box(glow, p.cyan, sw + 0.06, 0.07, 0.12, 0, slabY + 0.74, sd / 2);
+      box(glow, p.cyan, 0.12, 0.07, sd + 0.06, -sw / 2, slabY + 0.74, 0);
+      box(glow, p.cyan, 0.12, 0.07, sd + 0.06, sw / 2, slabY + 0.74, 0);
+      break;
+    }
+    case 'tower': {
+      const [bx, bz, w, h, d] = first;
+      box(body, p.body, w, h, d, bx, h / 2, bz);
+      // Tapering sections above the collider — silhouette, not collision.
+      box(body, p.body, w * 0.72, 1.6, d * 0.72, bx, h + 0.8, bz);
+      box(body, p.light, w * 0.78, 0.22, d * 0.78, bx, h + 1.66, bz);
+      box(body, p.dark, w * 0.5, 1.1, d * 0.5, bx, h + 2.35, bz);
+      box(glow, p.magenta, 0.3, 0.3, 0.3, bx, h + 3, bz);
+      for (const s of [-1, 1] as const) {
+        box(glow, p.cyan, 0.5, 1.1, 0.05, bx - w * 0.2, h * 0.55, s * (d / 2 + 0.03));
+        box(glow, p.cyan, 0.5, 1.1, 0.05, bx + w * 0.2, h * 0.55, s * (d / 2 + 0.03));
+        box(glow, accent, w + 0.04, 0.06, 0.1, bx, h + 0.04, s * (d / 2));
+      }
+      break;
+    }
+    case 'barriers':
+      for (const [bx, bz, w, h, d] of boxes) {
+        box(body, p.body, w, h, d, bx, h / 2, bz);
+        box(body, p.dark, w - 0.3, 0.12, d - 0.3, bx, h + 0.03, bz);
+        box(glow, p.hazard, w * 0.7, 0.07, d + 0.05, bx, h * 0.72, bz);
+        box(glow, accent, w + 0.04, 0.05, 0.06, bx, h * 0.3, bz + d / 2 + 0.03);
+      }
+      break;
+    case 'ruin': {
+      for (const [bx, bz, w, h, d] of boxes) {
+        box(body, p.body, w, h, d, bx, h / 2, bz);
+        box(body, p.dark, w - 0.4, 0.1, d - 0.4, bx, h + 0.02, bz);
+        box(glow, accent, 0.12, h * 0.5, 0.03, bx + w / 2 - 0.3, h * 0.4, bz + d / 2 + 0.04);
+      }
+      // Tilted trim slab and a rubble skirt — mesh only, never registered.
+      box(body, p.dark, 2.4, 0.35, 1.6, first[0] + 0.4, 0.35, first[1] - first[4] / 2 - 0.5, 0, 0, 0.22);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        box(body, p.panelDark, 0.5, 0.3, 0.5, Math.cos(a) * 2.4, 0.15, Math.sin(a) * 1.8, 0, a, 0);
+      }
+      break;
+    }
+  }
+  void first;
   return assemble(body, glow);
 }
