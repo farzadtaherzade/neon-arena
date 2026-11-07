@@ -5,7 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Rng } from '../core/rng';
 import { BLOOM, CAMERA, CRAWL, DEFAULT_THEME, METEOR, THEMES, type ThemeDef, VIDEO } from '../game/config';
-import { type ChunkTables, chunkRegion, DISTRICT_RAMP, type HomeWorld } from '../game/world/chunks';
+import { type ChunkTables, chunkRegion, DISTRICT_RAMP, type HomeWorld, type StampTables } from '../game/world/chunks';
 import type { CollisionWorld } from '../game/world/collision';
 import {
   DECK,
@@ -19,7 +19,7 @@ import { CapturePad } from './CapturePad';
 import { ClockTower } from './ClockTower';
 import { GEO, MAT } from './Materials';
 import { mobWarmup } from './models/MobModel';
-import { coverAccents, makeCover, makeDeck, makeRamp, makeReactor } from './models/StructureKit';
+import { coverAccents, makeCover, makeDeck, makeRamp, makeReactor, makeStamp } from './models/StructureKit';
 import { makeFloorTexture } from './Textures';
 
 /** Where the corner accent lights sit. */
@@ -430,6 +430,7 @@ export class Arena {
     this.registerCollision = !this.collisionRegistered;
     this.ensureFloorAssets();
     this.cover();
+    this.stampInto(this.home.stamps, this.worldGroup, coverAccents(this.theme), 0, this.solids);
     this.reactor();
     this.platforms();
     this.ramps();
@@ -503,6 +504,7 @@ export class Arena {
         this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
         solids.push(asset.solid);
       }
+      this.stampInto(tables.stamps, group, accents, region, solids);
     }
 
     const district = tables.district;
@@ -629,6 +631,29 @@ export class Arena {
     for (let i = 0; i < this.cornerLamps.length; i++) {
       const corner = corners[i];
       if (corner) this.cornerLamps[i]?.position.set(corner[0], 7, corner[1]);
+    }
+  }
+
+  /**
+   * Build and register a chunk's (or the home arena's) structure stamps: one
+   * recipe per stamp, one collider per rolled box. The mesh is centred on the
+   * stamp; the boxes are world-space and go straight to the registry.
+   */
+  private stampInto(
+    stamps: StampTables[] | undefined,
+    group: THREE.Group,
+    accents: readonly number[],
+    region: number,
+    solids: THREE.Object3D[],
+  ): void {
+    for (const [i, stamp] of (stamps ?? []).entries()) {
+      const asset = makeStamp(stamp, this.theme, accents[i % accents.length] ?? this.theme.cyan);
+      asset.group.position.set(stamp.at.x, 0, stamp.at.z);
+      group.add(asset.group);
+      for (const [x, z, w, h, d] of stamp.boxes) {
+        this.blockAt(asset.solid, x, z, w / 2, d / 2, h, region);
+      }
+      solids.push(asset.solid);
     }
   }
 
