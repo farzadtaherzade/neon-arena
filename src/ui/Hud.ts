@@ -17,7 +17,7 @@ export interface HudModel {
   /** What full integrity is this run — the PLATING perk raises it. */
   maxHp: number;
   score: number;
-  wave: number;
+  threat: number;
   hostiles: number;
   state: string;
   vignetteT: number;
@@ -83,7 +83,7 @@ export class Hud {
   private ammoPips = $('ammoPips');
   private reloadHint = $('reloadHint');
   private scoreVal = $('scoreVal');
-  private waveVal = $('waveVal');
+  private threatVal = $('threatVal');
   private enemyVal = $('enemyVal');
   private creditVal = $('creditVal');
   private reloadBar = $('reloadBar');
@@ -268,7 +268,7 @@ export class Hud {
   }
 
   update(model: HudModel, settings: CrosshairSettings): void {
-    const { hp, score, wave, hostiles } = model;
+    const { hp, score, threat, hostiles } = model;
 
     if (this.last.hp !== hp) {
       this.last.hp = hp;
@@ -307,9 +307,9 @@ export class Hud {
       this.scoreVal.textContent = String(score);
     }
 
-    if (this.last.wave !== wave) {
-      this.last.wave = wave;
-      this.waveVal.textContent = String(wave || '–');
+    if (this.last.threat !== threat) {
+      this.last.threat = threat;
+      this.threatVal.textContent = String(threat || '–');
     }
 
     if (this.last.hostiles !== hostiles) {

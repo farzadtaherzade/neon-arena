@@ -202,7 +202,7 @@ export class Enemy {
     return this.stats.scale;
   }
 
-  /** Apply per-wave scaling. Called by the wave director at spawn time. */
+  /** Apply per-tier scaling. Called by Game at spawn time from the director's request. */
   scaleUp(hpBonus: number, speedScale: number, dmgBonus: number): void {
     this.stats.maxHp += hpBonus;
     this.stats.hp += hpBonus;

@@ -285,3 +285,15 @@ chunk. What survives is every invariant, not the fixed tables:
 - Home meshes/colliders stay on the region-0 boot path (`Arena.rebuildHome`
   re-registers on a new seed); the streamed (0,0) table contributes only its
   floor plane, and `MapScreen` reads the rolled tables live.
+
+## Update — 2026-11-08: waves out, pressure director in
+
+The wave director this doc describes (composition by wave number, intermissions,
+spawn-ring pacing) is replaced by the pressure director in `game/director.ts`:
+threat tiers driven by time-under-pressure plus a crawl-distance floor, packs
+that enter through district gate mouths (the tables now record them) with
+directional arcs as fallback, adaptive lulls with calm beats, and warden beats
+on `BOSS.EVERY` tier multiples. Spawn bias, distance scaling and every
+per-kind unlock number survive with `threat` as the argument; the Colossus is
+untouched. The pack ring is player-relative — the old ring sat on the origin,
+which the infinite crawl quietly outgrew.

@@ -714,15 +714,16 @@ export class Arena {
   }
 
   /**
-   * Write the clock face: the wave, the countdown to the next one and what is
-   * still alive. Nothing is redrawn until the readout changes.
+   * Write the clock face: the threat tier, the calm countdown while a lull
+   * holds, and what is still alive. Nothing is redrawn until the readout
+   * changes.
    */
-  setClock(wave: number, intermission: number, hostiles: number): void {
+  setClock(threat: number, lull: number, hostiles: number): void {
     if (!this.clock) return;
-    if (intermission > 0) {
-      this.clock.setReadout('NEXT', `${Math.ceil(intermission)}s`, `WAVE ${wave + 1}`);
+    if (lull > 0) {
+      this.clock.setReadout('CALM', `${Math.ceil(lull)}s`, `TIER ${threat + 1} COMING`);
     } else {
-      this.clock.setReadout('WAVE', String(wave), `HOSTILES ${hostiles}`);
+      this.clock.setReadout('THREAT', String(threat), `HOSTILES ${hostiles}`);
     }
   }
 

@@ -32,7 +32,7 @@ interface Stats {
   hp: number;
   ammo: number;
   kills: number;
-  wave: number;
+  threat: number;
   hostiles: number;
 }
 interface EnemyPos {

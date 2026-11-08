@@ -674,7 +674,7 @@ function geometries(kind: EnemyKind): MobGeos {
  * One-frame, invisible pre-upload of every kind's geometry.
  *
  * The E2E suite measures `renderer.info.memory.geometries` between kill batches.
- * Without this, the first tank of wave 3 would upload seven buffers mid-sample
+ * Without this, the first tank model would upload seven buffers mid-sample
  * and read as a leak. The meshes are translucent and `frustumCulled = false`,
  * so they cost a handful of invisible draws on the first frame only; `Arena`
  * removes the group immediately after rendering.

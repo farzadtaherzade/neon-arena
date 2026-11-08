@@ -12,6 +12,7 @@ const TOP_N = 5;
 
 export interface RunRecord {
   score: number;
+  /** The threat tier the run reached — stored under the historic 'wave' key. */
   wave: number;
 }
 

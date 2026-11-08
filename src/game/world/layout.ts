@@ -29,7 +29,7 @@ export const DECK_EDGE = 35;
 export const REACTOR_SIZE = { w: 9, h: 5.5, d: 9 } as const;
 
 /**
- * The clock tower: a tall landmark whose face shows the wave and the
+ * The clock tower: a tall landmark whose face shows the threat tier and the
  * countdown, so it has to be visible from the far side of the arena. It picks
  * one of the four corners per run, standing `TOWER_CORNER` out along both axes.
  */

@@ -16,6 +16,16 @@ displays).
   the climbing, and sappers and witches keep lobbing from range.
 
 ### Added
+- **The wave system is gone; a pressure director runs the crawl.** No wave
+  number, no rounds: threat rises with time-under-pressure and never falls
+  below a floor set by distance crawled, packs cost budget that regenerates
+  faster as the world heats up, and they enter through district gate mouths
+  when one is near — otherwise as one directional arc biased by your heading
+  or where the last hit came from. Adaptive lulls (more likely when you are
+  battered) end in a calm beat that heals, pays and resupplies; warden beats
+  fire every 5 threat tiers. All per-kind unlock pacing, the HP/damage/speed
+  curves, XP and credit payouts carry over with threat as the argument;
+  records and career now show TIER (stored shape untouched).
 - `tests/lightpanda-check.mjs` accepts a `CDP_URL` override, so the probe can
   drive a Lightpanda running inside WSL from Windows (whose localhost forward
   is not mirrored to the VM in NAT mode).

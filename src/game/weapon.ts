@@ -20,7 +20,7 @@ export interface WeaponHooks {
  */
 export class Weapon {
   ammo: number;
-  /** Rounds left outside the magazine. Mobs drop these; the wave resupply tops them up. */
+  /** Rounds left outside the magazine. Mobs drop these; the calm resupply tops them up. */
   reserve: number;
   reloading = false;
   /** Right-mouse ADS. Set from outside so the view and shot cone stay in sync. */

@@ -30,6 +30,8 @@ export interface DistrictTables {
   ramp: { x: number; z: number; upX: number; upZ: number };
   /** The compound ring: tall slabs with two gaps as gates. */
   compound: (readonly [number, number, number, number, number])[];
+  /** The two gate mouths — the skipped ring slots, world coordinates. */
+  gates: { x: number; z: number }[];
 }
 
 /** One gatehouse deck and the single ramp that reaches it. */
@@ -443,12 +445,17 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
     // (the ramp must stay reachable), plus one more seeded gap.
     const outAngle = Math.atan2(-upZ, -ux);
     const skipA = rng.int(0, 5);
+    const gates: { x: number; z: number }[] = [];
     for (let slot = 0; slot < 6; slot++) {
       const a = (slot / 6) * Math.PI * 2 + rng.range(-0.12, 0.12);
       let d = Math.abs(a - outAngle);
       while (d > Math.PI) d = Math.abs(d - Math.PI * 2);
-      if (d < 0.96) continue; // the gate the ramp walks through
-      if (slot === skipA) continue; // the second, seeded gate
+      if (d < 0.96 || slot === skipA) {
+        // A gate mouth: pressure packs enter here, so record it.
+        gates.push({ x: dx + Math.cos(a) * 12, z: dz + Math.sin(a) * 12 });
+        if (d < 0.96) continue; // the gate the ramp walks through
+        continue; // the second, seeded gate
+      }
       const r = rng.range(11, 13);
       const w = rng.range(4, 5.5);
       const h = rng.range(4, 4.6);
@@ -477,6 +484,7 @@ export function buildChunk(cx: number, cz: number, seed: number): ChunkTables {
       deck: { x: dx, z: dz },
       ramp: { x: rampX, z: rampZ, upX: ux, upZ },
       compound,
+      gates,
     };
     return tables;
   }
