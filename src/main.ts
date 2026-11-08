@@ -59,8 +59,8 @@ function exposeTestApi(game: Game) {
       ammo: game.weapon.ammo,
       score: game.score,
       kills: game.kills,
-      wave: game.wave,
-      hostiles: game.waves.hostileCount(game.aliveCount),
+      threat: Math.floor(game.director.threat),
+      hostiles: game.director.hostileCount(game.aliveCount),
     }),
 
     hurt: (d: number) => game.damagePlayer(d),
@@ -185,8 +185,8 @@ function exposeTestApi(game: Game) {
     /** Plant a bomb at a world position without waiting for a sapper to walk there. */
     spawnBomb: (x: number, z: number) => game.spawnBomb(x, z),
 
-    /** Jump straight to a wave, to exercise the sapper without a long run. */
-    forceWave: (n: number) => game.forceWave(n),
+    /** Jump straight to a threat tier, to exercise a mob tier without a long run. */
+    forceThreat: (n: number) => game.forceThreat(n),
 
     /** Player progression: level, XP banked, and what the next level needs. */
     xpStats: () => ({ level: game.meter.level, xp: game.meter.xp, need: game.meter.need }),

@@ -8,6 +8,7 @@ import { TowerAlarm } from '../game/alarm';
 import { Bomb, type BombVariant } from '../game/bomb';
 import { CapturePoints, type Deck } from '../game/capture';
 import {
+  DIRECTOR,
   ALARM,
   AMMO,
   BOMB,
@@ -37,7 +38,6 @@ import {
   STATE,
   THEMES,
   TOUCH,
-  WAVES,
   WEAPON,
   WEAPON_ORDER,
   WEAPONS,
@@ -52,7 +52,7 @@ import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
 import { Perks } from '../game/perks';
 import { Player } from '../game/player';
-import { crawlDist, distScale, dmgBonus, WaveDirector } from '../game/waves';
+import { crawlDist, distScale, dmgBonus, PressureDirector } from '../game/director';
 import { Weapon } from '../game/weapon';
 import {
   buildChunk,
@@ -109,7 +109,6 @@ export class Game {
   hp = START_HP;
   score = 0;
   kills = 0;
-  wave = 0;
   elapsed = 0;
 
   /** Decay timers for the hitmarker, damage vignette and screen shake. */
@@ -118,7 +117,7 @@ export class Game {
   // Public so the headless E2E suite can drive and inspect the simulation
   // through `window.__NEON`; everything else in this class stays private.
   readonly player = new Player();
-  readonly waves = new WaveDirector();
+  readonly director = new PressureDirector();
   readonly arena: Arena;
   /** The rotating high-ground objective; assigned once the arena exists. */
   readonly capture: CapturePoints;
@@ -137,8 +136,6 @@ export class Game {
   /** The random sky event: a meteor shower that drops rocks around the player. */
   readonly shower = new MeteorShower();
   aliveCount = 0;
-  /** Prevents a replayed cleared update from repeating wave banners. */
-  private waveClearPending = false;
 
   private rng = new Rng(0xc0ffee);
   private collision = new CollisionWorld();
@@ -396,7 +393,7 @@ export class Game {
     hp: 0,
     maxHp: START_HP,
     score: 0,
-    wave: 0,
+    threat: 0,
     hostiles: 0,
     state: '',
     vignetteT: 0,
@@ -575,11 +572,22 @@ export class Game {
       if (!this.test && !this.settings.values.touch.shootModeChosen) this.touch.showFirePrompt(true);
     }
 
-    this.waves.testing = test;
-    this.waves.rng = this.rng;
+    this.director.testing = test;
+    this.director.rng = this.rng;
     // A dense maze means the spawn ring lands in walls; let the director reject
     // those instead of materialising a tank inside a bunker.
-    this.waves.blocked = (x, z) => this.collision.blockedAt(x, z, 1.2);
+    this.director.blocked = (x, z) => this.collision.blockedAt(x, z, 1.2);
+    // District gate mouths near the player — packs enter through the world's
+    // own doors when one is close, else the director falls back to arcs.
+    this.director.gates = () => {
+      const out: { x: number; z: number }[] = [];
+      for (const t of this.loadedChunks.values()) {
+        const d = t.district;
+        if (!d) continue;
+        for (const g of d.gates) out.push(g);
+      }
+      return out;
+    };
 
     this.world = {
       playerPos: this.player.position,
@@ -790,7 +798,9 @@ export class Game {
     this.reset();
     this.profile.data.stats.runs++;
     this.runStart = this.elapsed;
-    this.beginWave(1);
+    this.hud.showBanner('DEPLOY', 'PRESSURE RISING');
+    this.sfx.wave();
+    this.resupply();
     this.hud.setVisible(true);
     this.state = STATE.PLAYING;
 
@@ -802,7 +812,7 @@ export class Game {
   }
 
   private reset(): void {
-    this.waves.reset();
+    this.director.reset();
     this.fx.clear();
     for (const w of Object.values(this.weapons)) w.reset();
     this.player.reset();
@@ -831,7 +841,6 @@ export class Game {
     this.hp = START_HP;
     this.score = 0;
     this.kills = 0;
-    this.wave = 0;
     this.feedback.hitT = 0;
     this.feedback.vignetteT = 0;
     this.feedback.shakeT = 0;
@@ -844,19 +853,32 @@ export class Game {
   private gameOver(): void {
     const st = this.profile.data.stats;
     st.secondsPlayed += Math.max(0, this.elapsed - this.runStart);
-    st.bestWave = Math.max(st.bestWave, this.wave);
+    st.bestWave = Math.max(st.bestWave, Math.floor(this.director.threat));
     this.profile.save();
     this.state = STATE.GAMEOVER;
     this.input.firing = false;
     this.hud.setVisible(false);
     this.input.release();
-    this.hud.setFinalStats({ score: this.score, wave: this.wave, kills: this.kills });
+    this.hud.setFinalStats({ score: this.score, wave: Math.floor(this.director.threat), kills: this.kills });
     if (!this.test) this.hud.showScreen(SCREEN.GAMEOVER);
     this.sfx.kill();
     this.music.stop();
   }
 
   damagePlayer(amount: number): void {
+    // The director biases pack arcs toward where the last hurt came from —
+    // the nearest standing hostile is the honest proxy for the source.
+    let nearest: { x: number; z: number } | null = null;
+    let nd = Infinity;
+    for (const h of this.hostiles) {
+      if (h.enemy.state !== 'alive') continue;
+      const d = Math.hypot(h.enemy.pos.x - this.player.position.x, h.enemy.pos.z - this.player.position.z);
+      if (d < nd) {
+        nd = d;
+        nearest = { x: h.enemy.pos.x, z: h.enemy.pos.z };
+      }
+    }
+    this.director.lastHit = nearest;
     if (this.state !== STATE.PLAYING) return;
     this.hp -= amount;
     this.feedback.vignetteT = 1;
@@ -889,16 +911,6 @@ export class Game {
       this.state = STATE.PLAYING;
       if (!this.test) this.hud.showScreen(SCREEN.NONE);
     }
-  }
-
-  private beginWave(n: number): void {
-    this.wave = n;
-    this.waveClearPending = false;
-    this.waves.start(n);
-    // A resupply at the start of every wave, on top of what the mobs drop.
-    this.resupply();
-    this.hud.showBanner(`WAVE ${n}`, n === 1 ? 'GET READY' : 'HOSTILES INCOMING');
-    this.sfx.wave();
   }
 
   // ----------------------------------------------------------------- shooting
@@ -1123,7 +1135,6 @@ export class Game {
     }
     this.hostiles.length = 0;
     this.aliveCount = 0;
-    this.waveClearPending = false;
   }
 
   // --------------------------------------------------------------------- bombs
@@ -1433,6 +1444,7 @@ export class Game {
       // capture. The START_HP cap below keeps the pool from overhealing.
       this.healLeft += CAPTURE.HEAL;
       this.profile.addCredits(Math.round(CREDITS.CAPTURE * DIFFICULTIES[this.difficulty].credits));
+      this.director.nudge();
       this.hud.showBanner('DECK SECURED', `REPAIRING ${CAPTURE.HEAL} INTEGRITY`);
       this.sfx.xpCollect();
     }
@@ -1449,7 +1461,7 @@ export class Game {
     const k = distScale(crawlDist(deck.x, deck.z));
     const a = this.rng.next() * Math.PI * 2;
     const boss = new Enemy('colossus', deck.x + Math.cos(a) * 9, deck.z + Math.sin(a) * 9, this.rng);
-    boss.scaleUp(ENEMY_TYPES.colossus.hp * (k - 1), 1, dmgBonus(this.waves.wave));
+    boss.scaleUp(ENEMY_TYPES.colossus.hp * (k - 1), 1, dmgBonus(this.director.threat));
     const view = new EnemyView(boss);
     view.addTo(this.arena.scene);
     this.pick.add(view.body, view.head);
@@ -1562,8 +1574,8 @@ export class Game {
     return this.bombs.map((b) => b.fuse);
   }
 
-  forceWave(n: number): void {
-    this.beginWave(n);
+  forceThreat(n: number): void {
+    this.director.forceThreat(n);
   }
 
   /** Headless hook: start a meteor shower now instead of waiting for the dice. */
@@ -1643,7 +1655,7 @@ export class Game {
       if (!firing && this.autoFireWants()) firing = true;
       this.weapon.update(dt, this.elapsed, firing);
       this.knife.update(dt);
-      this.updateWaves(dt);
+      this.updateDirector(dt);
       this.updateBombs(dt);
       this.updatePoison(dt);
       this.updateXps(dt);
@@ -1662,18 +1674,21 @@ export class Game {
     this.decayFeedback(dt);
   }
 
-  private updateWaves(dt: number): void {
-    const waveBefore = this.waves.wave;
-    const result = this.waves.update(dt, this.player.position, this.aliveCount);
+  private updateDirector(dt: number): void {
+    // The director reads the player's state: battered players get calms more
+    // often, and every step re-points the last-hit direction at the nearest mob.
+    this.director.lowHp = this.hp < START_HP * 0.35;
+    const result = this.director.update(dt, this.player.position, this.aliveCount);
     for (const req of result.spawned) {
       const enemy = new Enemy(req.kind, req.x, req.z, this.rng);
-      // The crawl's curve: mobs scale with the wave, and again with how far
-      // from the spawn plaza the fight is happening.
+      // The crawl's curve: mobs scale with the threat tier, and again with how
+      // far from the spawn plaza the fight is happening.
       const k = distScale(crawlDist(req.x, req.z));
+      const tier = Math.floor(this.director.threat);
       enemy.scaleUp(
-        (this.waves.wave - 1) * WAVES.HP_PER_WAVE[req.kind] * k,
+        (tier - 1) * DIRECTOR.HP_PER_TIER[req.kind] * k,
         req.speedScale,
-        dmgBonus(this.waves.wave) * k,
+        dmgBonus(tier) * k,
       );
       const diff = DIFFICULTIES[this.difficulty];
       enemy.applyDifficulty(diff.hp, diff.speed, diff.dmg);
@@ -1694,7 +1709,7 @@ export class Game {
     this.hash.rebuild(scratch);
 
     const world = this.world;
-    world.hostileCount = this.waves.hostileCount(this.aliveCount);
+    world.hostileCount = this.director.hostileCount(this.aliveCount);
     // The witch heals across the whole herd, beyond what the hash's 9 cells see.
     world.foes = scratch;
 
@@ -1712,23 +1727,13 @@ export class Game {
     for (const h of this.hostiles) if (h.enemy.state === 'alive') alive++;
     this.aliveCount = alive;
 
-    if (result.cleared && !this.waveClearPending) {
-      this.hp = Math.min(START_HP, this.hp + WAVES.WAVE_HEAL);
-      this.profile.addCredits(Math.round(CREDITS.WAVE * DIFFICULTIES[this.difficulty].credits));
-      this.hud.showBanner(`WAVE ${this.wave} CLEARED`, `+${WAVES.WAVE_HEAL} INTEGRITY RESTORED`);
-      this.sfx.wave();
-      this.waveClearPending = true;
-    }
-
-    // WaveDirector advances after the intermission; mirror that here instead of
-    // relying on Game.wave, which otherwise stays stale and makes every later
-    // wave look (and announce) like "wave 1 complete" forever.
-    if (this.waves.wave > waveBefore) {
-      this.wave = this.waves.wave;
+    // The calm beat: a lull just ended — the run breathes, the caller pays.
+    if (result.beat === 'calm') {
+      this.hp = Math.min(START_HP, this.hp + DIRECTOR.CALM_HEAL);
+      this.profile.addCredits(Math.round(CREDITS.CALM * DIFFICULTIES[this.difficulty].credits));
       this.resupply();
-      this.hud.showBanner(`WAVE ${this.wave}`, this.wave === 1 ? 'GET READY' : 'HOSTILES INCOMING');
+      this.hud.showBanner('CALM', '+' + DIRECTOR.CALM_HEAL + ' INTEGRITY RESTORED');
       this.sfx.wave();
-      this.waveClearPending = false;
     }
   }
 
@@ -1786,7 +1791,7 @@ export class Game {
 
     this.arena.camera.getWorldQuaternion(this.camQuat);
     this.arena.update(this.elapsed);
-    this.arena.setClock(this.wave, this.waves.intermission, this.aliveCount);
+    this.arena.setClock(Math.floor(this.director.threat), this.director.lull, this.aliveCount);
     for (const h of this.hostiles) h.view.sync(this.camQuat);
 
     // Bombs blink, and the closest live one drives the HUD warning.
@@ -1847,8 +1852,8 @@ export class Game {
     m.hp = this.hp;
     m.maxHp = this.maxHp;
     m.score = this.score;
-    m.wave = this.wave;
-    m.hostiles = this.waves.hostileCount(this.aliveCount);
+    m.threat = Math.floor(this.director.threat);
+    m.hostiles = this.director.hostileCount(this.aliveCount);
     m.state = this.state;
     m.vignetteT = this.feedback.vignetteT;
     m.ammo = weapon.ammo;

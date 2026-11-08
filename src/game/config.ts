@@ -654,7 +654,7 @@ export const CREDITS = {
     colossus: 250,
   },
   HEADSHOT: 5,
-  WAVE: 50,
+  CALM: 50,
   CAPTURE: 40,
 } as const;
 
@@ -735,9 +735,9 @@ export const BOSS = {
  * the fuse back up, so kiting it works but takes room.
  */
 export const CREEPER = {
-  START_WAVE: 3,
-  /** One more creeper joins the wave every this many waves past `START_WAVE`. */
-  EVERY_WAVES: 4,
+  START_TIER: 3,
+  /** One more creeper joins packs every this many tiers past `START_TIER`. */
+  EVERY_TIERS: 4,
   TRIGGER_DIST: 3.5,
   /** Farther than this the fuse recovers instead of counting down. */
   CANCEL_DIST: 6,
@@ -757,8 +757,8 @@ export const CREEPER = {
  * (`POISON_DPS` for `POISON_T`, refreshed not stacked) and never hurts mobs.
  */
 export const WITCH = {
-  START_WAVE: 6,
-  EVERY_WAVES: 5,
+  START_TIER: 6,
+  EVERY_TIERS: 5,
   /** Hard cap per wave — two healers already warp a fight. */
   MAX_WITCHES: 2,
   KEEP_DIST: 14,
@@ -785,8 +785,8 @@ export const WITCH = {
  * `LAND_MIN..LAND_MAX` around the player at the player's feet height.
  */
 export const BLINKER = {
-  START_WAVE: 7,
-  EVERY_WAVES: 4,
+  START_TIER: 7,
+  EVERY_TIERS: 4,
   /** Seconds between blinks. */
   BLINK_T: 5,
   /** It never bothers blinking from closer than this. */
@@ -1063,19 +1063,44 @@ export const TANK = {
   WINDUP: 0.5,
 } as const;
 
-export const WAVES = {
-  GRUNTS_BASE: 3,
-  RUNNERS_FROM: 2,
-  TANK_FROM: 3,
-  MAX_TANKS: 4,
+/**
+ * The pressure director — the wave system's replacement. No wave number, no
+ * rounds: `threat` rises with time-under-pressure (`TIER_T` seconds per tier)
+ * and never falls below a floor set by distance crawled (`DIST_TIER_GAIN` per
+ * chunk), packs of mobs cost budget that regenerates faster the higher the
+ * threat, and adaptive lulls let the run breathe when the player is battered.
+ * The old wave tuning keeps its meaning: per-kind unlocks read "tier" instead
+ * of "wave", `BOSS.EVERY` paces warden beats, and the HP/damage/speed curves
+ * are the same formulas with `threat` as the argument.
+ */
+export const DIRECTOR = {
+  /** Seconds of live pressure per threat tier. */
+  TIER_T: 35,
+  /** Budget pre-filled at run start, so the first pack lands within seconds. */
+  START_BUDGET: 3,
+  /** Budget per second under pressure, plus `RATE_GAIN` per threat tier. */
+  BUDGET_RATE: 0.2,
+  RATE_GAIN: 0.05,
+  PACK_MIN: 2,
+  PACK_MAX: 5,
+  /** Seconds between members of one pack. */
+  STAGGER: 0.35,
+  /** Chance a calm window opens after a pack dies, plus the low-HP bonus. */
+  LULL_BASE: 0.35,
+  LULL_LOW_HP: 0.45,
+  /** Seconds of spawn-silence during a lull. */
+  LULL_T: 10,
+  /** Integrity restored when a calm beat lands — the old wave-clear heal. */
+  CALM_HEAL: 25,
+  /** Threat floor gained per chunk of crawl distance from the spawn plaza. */
+  DIST_TIER_GAIN: 0.5,
+  /** Threat added per secured deck — pushing the objective heats the world. */
+  CAPTURE_NUDGE: 0.5,
+
   SPEED_GAIN: 0.04,
   SPEED_MAX_SCALE: 1.4,
-  FIRST_DELAY: 0.5,
-  STAGGER: 0.35,
-  INTERMISSION: 3,
-  WAVE_HEAL: 25,
 
-  HP_PER_WAVE: {
+  HP_PER_TIER: {
     grunt: 10,
     runner: 5,
     tank: 25,
@@ -1086,17 +1111,18 @@ export const WAVES = {
     blinker: 10,
     colossus: 0,
   },
-  DMG_PER_2_WAVES: 2,
+  DMG_PER_2_TIERS: 2,
 
   /**
-   * The directional crawl. Spawns bias toward where the player is pushing —
-   * `SPAWN_BIAS` of the ring angles land within `SPAWN_BIAS_ARC` of the crawl
-   * heading, the rest stay uniform so you are never fully safe behind you.
-   * `DIST_GAIN` is the per-chunk HP/damage multiplier away from the spawn
-   * plaza, capped at `DIST_SCALE_MAX`.
+   * The directional crawl. Pack arcs bias toward where the player is pushing —
+   * `SPAWN_BIAS` of the arc angles land within `SPAWN_BIAS_ARC` of the crawl
+   * heading — or toward the last damage direction (`HIT_BIAS` of packs) — the
+   * fight comes from where the hurt came from. `DIST_GAIN` is the per-chunk
+   * HP/damage multiplier away from the spawn plaza, capped at `DIST_SCALE_MAX`.
    */
   SPAWN_BIAS: 0.7,
   SPAWN_BIAS_ARC: 1.05,
+  HIT_BIAS: 0.3,
   DIST_GAIN: 0.15,
   DIST_SCALE_MAX: 3,
 } as const;
@@ -1132,9 +1158,9 @@ export const CAPTURE = {
  * `HUNT_AT` does it switch to a fast, direct pursuit.
  */
 export const SAPPER = {
-  START_WAVE: 5,
-  /** One more sapper joins the wave every this many waves past `START_WAVE`. */
-  EVERY_WAVES: 5,
+  START_TIER: 5,
+  /** One more sapper joins packs every this many tiers past `START_TIER`. */
+  EVERY_TIERS: 5,
   /** Fewer hostiles than this left alive (or queued) flips it to hunt mode. */
   HUNT_AT: 5,
   /** Seconds between bomb plants while lurking. */

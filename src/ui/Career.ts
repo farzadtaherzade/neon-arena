@@ -45,7 +45,7 @@ export class Career {
             score.textContent = String(run.score);
             const wave = document.createElement('span');
             wave.className = 'cwave';
-            wave.textContent = `WAVE ${run.wave}`;
+            wave.textContent = `TIER ${run.wave}`;
             row.append(rank, score, wave);
             return row;
           })
@@ -61,7 +61,7 @@ export class Career {
       ['TOTAL KILLS', String(totalKills)],
       ...ENEMY_KINDS.map((kind): [string, string] => [KIND_NAMES[kind], String(stats.kills[kind] ?? 0)]),
       ['ACCURACY', `${accuracy}%`],
-      ['BEST WAVE', stats.bestWave > 0 ? String(stats.bestWave) : '—'],
+      ['BEST TIER', stats.bestWave > 0 ? String(stats.bestWave) : '—'],
       ['TIME IN ARENA', `${minutes} MIN`],
     ];
     this.lines.replaceChildren(

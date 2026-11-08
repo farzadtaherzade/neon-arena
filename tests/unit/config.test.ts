@@ -21,6 +21,7 @@ import {
   FEEDBACK,
   FIXED_STEP,
   FX,
+  DIRECTOR,
   HOME,
   KNIFE,
   MAX_DT,
@@ -39,7 +40,6 @@ import {
   type ThemeDef,
   TOUCH,
   VIDEO,
-  WAVES,
   WEAPON,
   WEAPON_ORDER,
   WEAPONS,
@@ -204,13 +204,21 @@ describe('config', () => {
     expect(STAMPS.WILDS_ONE_IN).toBeGreaterThanOrEqual(1);
   });
 
-  it('keeps the wave curve bounded', () => {
-    expect(WAVES.MAX_TANKS).toBeGreaterThan(0);
-    expect(WAVES.SPEED_GAIN).toBeGreaterThan(0);
-    expect(WAVES.SPEED_MAX_SCALE).toBeGreaterThan(1);
-    expect(WAVES.INTERMISSION).toBeGreaterThan(0);
-    expect(WAVES.STAGGER).toBeGreaterThan(0);
-    for (const hp of Object.values(WAVES.HP_PER_WAVE)) expect(hp).toBeGreaterThanOrEqual(0);
+  it('keeps the director curve bounded', () => {
+    expect(DIRECTOR.TIER_T).toBeGreaterThan(0);
+    expect(DIRECTOR.BUDGET_RATE).toBeGreaterThan(0);
+    expect(DIRECTOR.RATE_GAIN).toBeGreaterThanOrEqual(0);
+    expect(DIRECTOR.PACK_MIN).toBeGreaterThan(0);
+    expect(DIRECTOR.PACK_MAX).toBeGreaterThanOrEqual(DIRECTOR.PACK_MIN);
+    expect(DIRECTOR.STAGGER).toBeGreaterThan(0);
+    expect(DIRECTOR.LULL_BASE).toBeGreaterThan(0);
+    expect(DIRECTOR.LULL_BASE + DIRECTOR.LULL_LOW_HP).toBeLessThan(1);
+    expect(DIRECTOR.LULL_T).toBeGreaterThan(0);
+    expect(DIRECTOR.DIST_TIER_GAIN).toBeGreaterThan(0);
+    expect(DIRECTOR.CAPTURE_NUDGE).toBeGreaterThan(0);
+    expect(DIRECTOR.SPEED_GAIN).toBeGreaterThan(0);
+    expect(DIRECTOR.SPEED_MAX_SCALE).toBeGreaterThan(1);
+    for (const hp of Object.values(DIRECTOR.HP_PER_TIER)) expect(hp).toBeGreaterThanOrEqual(0);
   });
 
   it('keeps fx pools and feedback sane', () => {
@@ -225,7 +233,7 @@ describe('config', () => {
   });
 
   it('keeps the sapper and bomb tuning sane', () => {
-    expect(SAPPER.START_WAVE).toBeGreaterThan(1);
+    expect(SAPPER.START_TIER).toBeGreaterThan(1);
     expect(SAPPER.PLANT_T).toBeGreaterThan(0);
     expect(SAPPER.HUNT_AT).toBeGreaterThan(0);
     expect(SAPPER.KEEP_DIST).toBeGreaterThan(SAPPER.THROW_DIST);
@@ -264,7 +272,7 @@ describe('config', () => {
   });
 
   it('keeps the creeper, witch and blinker tuning sane', () => {
-    expect(CREEPER.START_WAVE).toBeGreaterThan(1);
+    expect(CREEPER.START_TIER).toBeGreaterThan(1);
     // Backing off must be a real escape: the cancel ring sits outside the trigger.
     expect(CREEPER.CANCEL_DIST).toBeGreaterThan(CREEPER.TRIGGER_DIST);
     expect(CREEPER.FUSE).toBeGreaterThan(CREEPER.TELL);
@@ -273,7 +281,7 @@ describe('config', () => {
     expect(CREEPER.BLAST_RADIUS).toBeGreaterThan(BOMB.RADIUS);
     expect(CREEPER.BLAST_FUSE).toBeLessThan(BOMB.FUSE);
 
-    expect(WITCH.START_WAVE).toBeGreaterThan(CREEPER.START_WAVE);
+    expect(WITCH.START_TIER).toBeGreaterThan(CREEPER.START_TIER);
     expect(WITCH.MAX_WITCHES).toBeGreaterThanOrEqual(1);
     expect(WITCH.POTION_RADIUS).toBeLessThan(BOMB.RADIUS);
     expect(WITCH.POTION_FUSE).toBeLessThan(BOMB.FUSE);
@@ -305,11 +313,11 @@ describe('config', () => {
     expect(ENEMY_TYPES.colossus.dmg * COLOSSUS.SLAM_MULT).toBeLessThan(START_HP);
 
     // The crawl curve: distance helps the mobs, the bias never covers the ring.
-    expect(WAVES.DIST_GAIN).toBeGreaterThan(0);
-    expect(WAVES.DIST_SCALE_MAX).toBeGreaterThan(1);
-    expect(WAVES.SPAWN_BIAS).toBeGreaterThan(0);
-    expect(WAVES.SPAWN_BIAS).toBeLessThan(1);
-    expect(WAVES.SPAWN_BIAS_ARC).toBeLessThan(Math.PI / 2);
+    expect(DIRECTOR.DIST_GAIN).toBeGreaterThan(0);
+    expect(DIRECTOR.DIST_SCALE_MAX).toBeGreaterThan(1);
+    expect(DIRECTOR.SPAWN_BIAS).toBeGreaterThan(0);
+    expect(DIRECTOR.SPAWN_BIAS).toBeLessThan(1);
+    expect(DIRECTOR.SPAWN_BIAS_ARC).toBeLessThan(Math.PI / 2);
   });
 
   it('gives every enemy kind at least two cosmetic looks', () => {
@@ -597,11 +605,11 @@ describe('config', () => {
     for (const value of Object.values(CREDITS.KILL)) expect(value).toBeGreaterThan(0);
     expect(CREDITS.KILL.tank).toBeGreaterThan(CREDITS.KILL.grunt);
     expect(CREDITS.HEADSHOT).toBeGreaterThan(0);
-    expect(CREDITS.WAVE).toBeGreaterThan(0);
+    expect(CREDITS.CALM).toBeGreaterThan(0);
     expect(CREDITS.CAPTURE).toBeGreaterThan(0);
     // A wave's worth of kills plus the wave bonus must reach the cheapest skin
     // in a reasonable number of waves, or the shop is dead on arrival.
-    const waveWorth = CREDITS.KILL.grunt * 3 + CREDITS.WAVE;
+    const waveWorth = CREDITS.KILL.grunt * 3 + CREDITS.CALM;
     expect(waveWorth * 10).toBeGreaterThan(300);
   });
 });
