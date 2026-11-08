@@ -119,7 +119,7 @@
       <div class="go">CLICK TO RETRY</div>
     </div>
 
-    <div class="screen panel" id="settingsScreen">
+    <div class="screen" id="settingsScreen">
       <div class="sbox">
         <h1>SETTINGS</h1>
         <div id="settingsTabs">
@@ -173,8 +173,19 @@
 
     <div class="screen" id="mapScreen">
       <div class="mapbox">
-        <h1>ARENA MAP</h1>
+        <div class="map-head">
+          <h1>ARENA MAP</h1>
+          <span id="mapCoords" class="map-coords"></span>
+        </div>
         <canvas id="mapCanvas" width="720" height="720"></canvas>
+        <div class="map-legend">
+          <span class="lg-item"><i class="lg-swatch lg-you"></i>YOU</span>
+          <span class="lg-item"><i class="lg-swatch lg-deck"></i>DECK</span>
+          <span class="lg-item"><i class="lg-swatch lg-reactor"></i>REACTOR</span>
+          <span class="lg-item"><i class="lg-swatch lg-tower"></i>TOWER</span>
+          <span class="lg-item"><i class="lg-swatch lg-hostile"></i>HOSTILE</span>
+          <span class="lg-item"><i class="lg-swatch lg-bomb"></i>BOMB</span>
+        </div>
         <div class="shint">M OR TAB CLOSES THE MAP — THE RUN IS PAUSED WHILE IT IS OPEN</div>
       </div>
     </div>
