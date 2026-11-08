@@ -334,15 +334,33 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   await page.evaluate(() => window.__NEON.hurt(-20000));
 
   // --- GPU resources converge instead of growing forever ---------------------
+  // The streaming window bakes chunks one per frame, and a stamp's merged
+  // geometry lands mid-window — sampling while a build is in flight reads as
+  // a leak. Drain the build queue before the first sample.
+  await page.waitForFunction(
+    () => (window.__NEON.chunks() as { pending: number }).pending === 0,
+    undefined,
+    { timeout: 60_000 },
+  );
   const warm = await killEnemies(page, 4, 120_000);
   await warmUp(page);
   const first = await renderInfo(page);
 
   const mid = await killEnemies(page, warm + 8, 180_000);
+  await page.waitForFunction(
+    () => (window.__NEON.chunks() as { pending: number }).pending === 0,
+    undefined,
+    { timeout: 60_000 },
+  );
   await warmUp(page);
   const second = await renderInfo(page);
 
   const end = await killEnemies(page, mid + 8, 180_000);
+  await page.waitForFunction(
+    () => (window.__NEON.chunks() as { pending: number }).pending === 0,
+    undefined,
+    { timeout: 60_000 },
+  );
   await warmUp(page);
   const third = await renderInfo(page);
 
