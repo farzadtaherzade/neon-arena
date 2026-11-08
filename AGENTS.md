@@ -121,7 +121,8 @@ tables and re-asserted for generated districts in `tests/unit/chunks.test.ts`.
 - `PLATFORM_H` is **2.4**. That number is load-bearing: it is above
   `WORLD.STEP_HEIGHT` (0.55) and above the jump apex
   (`JUMP_V² / 2·GRAVITY` ≈ 1.39). A deck is therefore *unreachable* by walking
-  into it or jumping at it — the ramp is the only way up, for the player.
+  into it or jumping at it — the ramp is the only way up, for the player and
+  for the mobs that climb it after them.
 - Decks are `7 × 7` on the mid-edges at `±35`, so each outer face lands at 38.5
   and leaves a 2.5-unit lane between deck and wall. That lane is a deliberate
   maze route, so keep `wall clamp − outer face > 2·PLAYER_R`; close it and the
@@ -183,13 +184,14 @@ Mobs have no pathfinder. `Enemy.route()` is the whole of it:
 - Otherwise pick `nearestRamp()` **by ramp top**, not by mouth — the top tells
   you which platform the player is actually on, so an enemy on the far side of
   the arena does not besiege the wrong ramp.
-- Then aim at that ramp's **mouth only** (its low edge pushed `RAMP_OFFSET`
-  downhill). Mobs never take the slope: a deck is melee-safe by design, and the
-  sappers are the answer to it. Remove the `mouth` assignment and they climb
-  again, which silently deletes the capture mechanic's entire risk.
-- `ENEMY.ATTACK_RISE` gates melee by height, so a mob at the foot of a platform
-  cannot claw at someone standing on it — and, symmetrically, nothing hits
-  through a deck from above.
+- Take that ramp: aim at its **mouth** (the low edge pushed `RAMP_OFFSET`
+  downhill) while still away from it, then at the **top** once at the toe or on
+  the slope — `followGround()` rides the grade and the chase resumes at deck
+  level. The warden passes `climbs: false` and lays siege to the mouth instead:
+  its rockets are what reach the deck.
+- `ENEMY.ATTACK_RISE` gates melee by height, so a mob cannot claw across a
+  height gap it has not closed — and, symmetrically, nothing hits through a
+  deck from above.
 
 `Enemy.followGround()` runs *after* `world.collide()`, using `pos.y` as the
 `feetY` for the step context. Enemies can ride a slope if they are ever on one
@@ -393,10 +395,11 @@ Mirrored ramps are one geometry rotated `PI` about Y, not a second code path.
 - `ENEMY.CLIMB_RISE < ENEMY.ATTACK_RISE < PLATFORM_H`.
 
 `tests/unit/enemy.test.ts` proves the behaviour end to end: a grunt spawned on
-the floor **besieges the NW ramp mouth** without ever leaving the ground, a
-sapper lobs onto the deck instead of dropping at its feet, and an enemy that
-walks off a deck falls back to the floor. `tests/unit/capture.test.ts` covers
-rotation, the drain, the cooldown and the floor-beneath-the-deck case.
+the floor **takes the NW ramp and draws blood on the deck**, the **warden
+besieges the ramp mouth without ever leaving the ground** (its rockets do the
+climbing), a sapper lobs onto the deck instead of dropping at its feet, and an
+enemy that walks off a deck falls back to the floor. `tests/unit/capture.test.ts`
+covers rotation, the drain, the cooldown and the floor-beneath-the-deck case.
 
 ### If you move a deck or add cover
 

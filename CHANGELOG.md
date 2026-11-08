@@ -5,6 +5,21 @@ All notable changes to NEON ARENA. The format follows
 match `package.json` (which is also what the build injects and the menu
 displays).
 
+## [2.3.0] — 2026-11-08
+
+### Changed
+- **Mobs take the ramp.** When the player holds a deck, melee mobs (grunt,
+  runner, tank, blinker, creeper, the Colossus, a hunting sapper) route to its
+  ramp mouth, then climb the slope and resume the chase at deck level — high
+  ground is a fight on a chokepoint now, not a melee-safe camp. The warden
+  still refuses to close: it besieges the mouth and lets its rocket volleys do
+  the climbing, and sappers and witches keep lobbing from range.
+
+### Added
+- `tests/lightpanda-check.mjs` accepts a `CDP_URL` override, so the probe can
+  drive a Lightpanda running inside WSL from Windows (whose localhost forward
+  is not mirrored to the VM in NAT mode).
+
 ## [2.2.0] — 2026-11-07
 
 ### Added

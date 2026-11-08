@@ -140,11 +140,12 @@ describe('config', () => {
 
   it('keeps vertical navigation coherent with the arena', () => {
     // A platform is a wall to a walker and to a jumper, so its ramp is the only
-    // way up — for the player. Mobs never climb; they besiege the mouth.
+    // way up — for the player, and for the mobs that climb it after them.
     expect(ENEMY.STEP).toBeLessThan(PLATFORM_H);
     expect(WORLD.STEP_HEIGHT).toBeLessThan(PLATFORM_H);
     expect((WORLD.JUMP_V * WORLD.JUMP_V) / (2 * WORLD.GRAVITY)).toBeLessThan(PLATFORM_H);
-    // Melee cannot reach across a deck, and giving up the chase happens first.
+    // Melee cannot reach across a deck until the slope is climbed, and routing
+    // to the ramp happens before that.
     expect(ENEMY.ATTACK_RISE).toBeLessThan(PLATFORM_H);
     expect(ENEMY.CLIMB_RISE).toBeLessThan(ENEMY.ATTACK_RISE);
     expect(ENEMY.RAMP_OFFSET).toBeGreaterThan(0);

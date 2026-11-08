@@ -10,6 +10,10 @@
  *   npm run dev              # or npm run preview for the production build
  *   node tests/lightpanda-check.mjs [url]
  *
+ * The CDP endpoint defaults to 127.0.0.1:9222 and can be overridden with
+ * `CDP_URL` — e.g. when lightpanda runs inside WSL and its localhost forward
+ * is not mirrored to Windows (`CDP_URL=http://<wsl-ip>:9222`).
+ *
  * It asserts the page loads without console errors and the menu screen is
  * visible, then reports whether the WebGL game booted (`window.__NEON`
  * present). Lightpanda's WebGL support is early — a game that renders in
@@ -19,7 +23,7 @@ import { chromium } from 'playwright';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
 const errors = [];
-const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+const browser = await chromium.connectOverCDP(process.env.CDP_URL ?? 'http://127.0.0.1:9222');
 const ctx = browser.contexts()[0] ?? (await browser.newContext());
 const page = await ctx.newPage();
 page.on('console', (m) => {

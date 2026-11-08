@@ -873,16 +873,16 @@ export const ENEMY = {
   KNOCKBACK: 0.18,
 
   /**
-   * Vertical navigation. Mobs follow the floor and fall off ledges, but they
-   * never take a ramp — a deck is melee-safe, and artillery is the answer to it.
-   * `STEP` lets them ride a slope if they are ever on one, `CLIMB_RISE` is how
-   * far above them the player must be before they give up the chase and besiege
-   * the ramp mouth, and `ATTACK_RISE` stops them clawing at someone on a deck.
+   * Vertical navigation. Mobs follow the floor, fall off ledges, and climb a
+   * deck by its ramp: `CLIMB_RISE` is how far above them the player must be
+   * before they route to that deck's ramp (mouth first, then up the slope),
+   * `STEP` lets them ride the grade, and `ATTACK_RISE` stops them clawing
+   * across a height gap they have not closed yet.
    */
   STEP: 0.55,
   CLIMB_RISE: 0.5,
   ATTACK_RISE: 1.1,
-  /** How far outside a ramp's mouth a besieging mob gathers. */
+  /** How far outside a ramp's mouth a mob lines up before climbing. */
   RAMP_OFFSET: 0.9,
 
   SPAWN_ATTEMPTS: 24,
@@ -1105,9 +1105,9 @@ export const WAVES = {
  * Deck capture: the rotating high-ground objective.
  *
  * One corner platform per wave carries a live pad. Holding it for `HOLD_T`
- * seconds banks a heal-over-time, then that deck cools down. Mobs deliberately
- * never climb (see `ENEMY`), but sappers lob bombs onto the deck, so holding it
- * is a fight against artillery rather than a safe camp.
+ * seconds banks a heal-over-time, then that deck cools down. Mobs climb the
+ * ramp to reach you (see `ENEMY`) and sappers lob bombs onto the deck, so
+ * holding it is a fight on a narrow chokepoint, not a safe camp.
  */
 export const CAPTURE = {
   /** Seconds of continuous presence needed to secure the deck. */

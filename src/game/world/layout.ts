@@ -15,7 +15,7 @@ import type { Rng } from '../../core/rng';
 /**
  * Height of a gatehouse deck — and therefore of the ramp that reaches it.
  * Above `WORLD.STEP_HEIGHT` and above the jump apex, so the ramp is the only
- * way up for the player. Mobs never climb; they besiege the ramp mouth.
+ * way up — for the player and for the mobs that climb it after you.
  */
 export const PLATFORM_H = 2.4;
 

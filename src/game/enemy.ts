@@ -618,10 +618,12 @@ export class Enemy {
       return;
     }
 
-    // A player on a deck is out of slam reach: besiege the ramp like the rest,
-    // and keep the volley clock running — the rockets reach the deck.
+    // A player on a deck is out of slam reach: it refuses to close, so it lays
+    // siege to the ramp mouth — the point the player has to come back down
+    // past — and keeps the volley clock running. The rockets reach the deck;
+    // the warden does not.
     if (world.playerY - this.pos.y > ENEMY.ATTACK_RISE) {
-      this.pursue(dt, world, this.stats.speed);
+      this.pursue(dt, world, this.stats.speed, false);
       this.tickVolley(dt, world);
       return;
     }
@@ -684,11 +686,12 @@ export class Enemy {
 
   /**
    * Steer at the player — or, when they are up on a platform we cannot reach in
-   * a straight line, at the mouth of the ramp that leads there and then up it.
-   * Without this a mob just grinds against the platform wall forever.
+   * a straight line, at the ramp that leads there: mouth first, then up it
+   * (`climbs: false` keeps a mob sieging the mouth instead — the warden). Without
+   * this a mob just grinds against the platform wall forever.
    */
-  private pursue(dt: number, world: EnemyWorld, speed: number): void {
-    this.route(world);
+  private pursue(dt: number, world: EnemyWorld, speed: number, climbs = true): void {
+    this.route(world, climbs);
     const dx = this.navX - this.pos.x;
     const dz = this.navZ - this.pos.z;
     const d = Math.hypot(dx, dz);
@@ -701,12 +704,13 @@ export class Enemy {
   }
 
   /**
-   * Pick the next steering target. High ground is melee-safe by design: mobs
-   * never take the ramp. When the player is up on a deck they gather at that
-   * deck's ramp mouth — the point the player has to come back down past — and
-   * the sappers are what flush them off it.
+   * Pick the next steering target. When the player is up on a deck, mobs take
+   * its ramp: they line up at the mouth first — the point the ramp meets the
+   * floor — then push up the slope to the top. `followGround` rides the grade
+   * and the chase resumes at deck level. The warden is the exception: it lays
+   * siege to the mouth and lets its rockets do the climbing.
    */
-  private route(world: EnemyWorld): void {
+  private route(world: EnemyWorld, climbs: boolean): void {
     const px = world.playerPos.x;
     const pz = world.playerPos.z;
     this.navX = px;
@@ -718,9 +722,32 @@ export class Enemy {
     const ramp = this.nearestRamp(world.ramps, px, pz);
     if (!ramp) return;
 
-    // Lay siege to the bottom of the slope, never climb it.
-    this.navX = rampMouthX(ramp);
-    this.navZ = rampMouthZ(ramp);
+    const mx = rampMouthX(ramp);
+    const mz = rampMouthZ(ramp);
+    if (!climbs) {
+      // Lay siege to the bottom of the slope, never climb it.
+      this.navX = mx;
+      this.navZ = mz;
+      return;
+    }
+
+    // At the toe — or already on the slope — head for the top.
+    const r = ENEMY.RAMP_OFFSET + ENEMY.COLLIDE_RADIUS * this.scale;
+    const dxm = this.pos.x - mx;
+    const dzm = this.pos.z - mz;
+    const atToe = dxm * dxm + dzm * dzm <= r * r;
+    const onSlope =
+      this.pos.x >= ramp.minX &&
+      this.pos.x <= ramp.maxX &&
+      this.pos.z >= ramp.minZ &&
+      this.pos.z <= ramp.maxZ;
+    if (atToe || onSlope) {
+      this.navX = rampTopX(ramp);
+      this.navZ = rampTopZ(ramp);
+    } else {
+      this.navX = mx;
+      this.navZ = mz;
+    }
   }
 
   /** The ramp whose top is nearest the player — i.e. the one onto their deck. */

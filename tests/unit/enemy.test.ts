@@ -3,6 +3,7 @@ import { Rng } from '../../src/core/rng';
 import type { BombVariant } from '../../src/game/bomb';
 import {
   BLINKER,
+  BOSS,
   COLOSSUS,
   CREEPER,
   ENEMY,
@@ -153,29 +154,54 @@ describe('Enemy', () => {
     expect(world.hurt).toBe(0);
   });
 
-  it('besieges the ramp mouth instead of climbing to a player on the deck', () => {
+  it('climbs the deck ramp and draws blood on a player up there', () => {
     // Player on the north deck, grunt on the floor south of it. The deck and
     // its ramp come from the rolled home tables (decks[0] is always N).
     const north = HOME.tables.decks[0];
     if (!north) throw new Error('north deck missing');
-    const { deck, ramp } = north;
+    const { deck } = north;
     const world = arenaWorld({ x: deck.x, z: deck.z });
     world.playerY = PLATFORM_H;
     const e = spawn('grunt', deck.x, deck.z + 21);
 
     let peak = 0;
-    for (let i = 0; i < 60 * 14; i++) {
+    for (let i = 0; i < 60 * 20; i++) {
       e.update(1 / 60, world);
       peak = Math.max(peak, e.pos.y);
     }
 
-    // High ground is melee-safe: it never leaves the floor...
+    // It takes the slope — lines up at the mouth, then rides it to the deck...
+    expect(peak).toBeGreaterThanOrEqual(PLATFORM_H - 0.1);
+    expect(e.pos.y).toBeGreaterThanOrEqual(PLATFORM_H - 0.1);
+    // ...closes to melee once at deck level...
+    const dist = Math.hypot(world.playerPos.x - e.pos.x, world.playerPos.z - e.pos.z);
+    expect(dist).toBeLessThan(3);
+    // ...and the swing lands.
+    expect(world.hurt).toBeGreaterThan(0);
+  });
+
+  it('the warden besieges a deck without climbing — the rockets do the climbing', () => {
+    const north = HOME.tables.decks[0];
+    if (!north) throw new Error('north deck missing');
+    const { deck, ramp } = north;
+    const world = arenaWorld({ x: deck.x, z: deck.z });
+    world.playerY = PLATFORM_H;
+    const boss = spawn('warden', deck.x, deck.z + 21);
+
+    let peak = 0;
+    for (let i = 0; i < 60 * 8; i++) {
+      boss.update(1 / 60, world);
+      peak = Math.max(peak, boss.pos.y);
+    }
+
+    // It refuses to close: it parks at the bottom of the slope, never on it.
     expect(peak).toBeLessThan(0.2);
-    expect(e.pos.y).toBeLessThan(0.2);
-    expect(world.hurt).toBe(0);
-    // ...and it parks at the bottom of the slope, not against the deck wall.
+    expect(boss.pos.y).toBeLessThan(0.2);
     const mouthZ = ramp.z - ramp.upZ * ENEMY.RAMP_OFFSET; // the toe pushed downhill
-    expect(Math.hypot(e.pos.x - deck.x, e.pos.z - mouthZ)).toBeLessThan(4);
+    expect(Math.hypot(boss.pos.x - deck.x, boss.pos.z - mouthZ)).toBeLessThan(5);
+    // ...while the volley clock keeps running on schedule.
+    expect(world.bombs).toHaveLength(BOSS.VOLLEY_ROCKETS);
+    for (const bomb of world.bombs) expect(bomb.variant).toBe('rocket');
   });
 
   it('falls back to the floor when it walks off a platform', () => {

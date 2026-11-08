@@ -1,7 +1,7 @@
 {
   "name": "neon-arena",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.3.0",
   "type": "module",
   "allowScripts": {
     "@opencode/cli": true,
@@ -20,6 +20,8 @@
     "release": "npm version && git push --follow-tags"
   },
   "dependencies": {
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
