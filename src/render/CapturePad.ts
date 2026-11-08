@@ -8,7 +8,7 @@ import { MAT } from './Materials';
  * readable from across the maze, and the beacon that doubles as the alarm.
  *
  * The beacon is the map's wayfinding language — amber on the deck you can take
- * this wave, dim cyan on the other three, and red when hostiles mass nearby.
+ * the live pad, dim cyan on the others, and red when hostiles mass nearby.
  *
  * Deliberately not additive for the pad: the deck top is an unlit cyan slab, and
  * stacking additive cyan on it blew the view out to white. The beacon column is

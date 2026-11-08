@@ -1,15 +1,5 @@
 import { Rng } from '../core/rng';
-import {
-  BLINKER,
-  BOSS,
-  CRAWL,
-  CREEPER,
-  DIRECTOR,
-  ENEMY,
-  SAPPER,
-  WITCH,
-  type EnemyKind,
-} from './config';
+import { BLINKER, BOSS, CRAWL, CREEPER, DIRECTOR, ENEMY, type EnemyKind, SAPPER, WITCH } from './config';
 import type { Vec2 } from './world/collision';
 
 export interface SpawnRequest {
@@ -47,7 +37,14 @@ const PACK_KINDS: readonly {
   { kind: 'tank', weight: 0.25, cost: 3, from: 3, every: 6, cap: 2 },
   { kind: 'creeper', weight: 0.3, cost: 1.5, from: CREEPER.START_TIER, every: CREEPER.EVERY_TIERS, cap: 3 },
   { kind: 'sapper', weight: 0.3, cost: 2, from: SAPPER.START_TIER, every: SAPPER.EVERY_TIERS, cap: 2 },
-  { kind: 'witch', weight: 0.2, cost: 2.5, from: WITCH.START_TIER, every: WITCH.EVERY_TIERS, cap: WITCH.MAX_WITCHES },
+  {
+    kind: 'witch',
+    weight: 0.2,
+    cost: 2.5,
+    from: WITCH.START_TIER,
+    every: WITCH.EVERY_TIERS,
+    cap: WITCH.MAX_WITCHES,
+  },
   { kind: 'blinker', weight: 0.2, cost: 2, from: BLINKER.START_TIER, every: BLINKER.EVERY_TIERS, cap: 2 },
 ];
 
@@ -273,7 +270,7 @@ export class PressureDirector {
     const tier = Math.floor(this.threat);
     const size = Math.min(DIRECTOR.PACK_MAX, DIRECTOR.PACK_MIN + Math.floor(tier / 4));
     this.pendingGate = this.packOrigin(playerPos);
-    const counts = new Map<EnemyKind, number>()
+    const counts = new Map<EnemyKind, number>();
     const members: EnemyKind[] = [];
     const count = warden ? Math.ceil(size / 2) : size;
     for (let i = 0; i < count; i++) {

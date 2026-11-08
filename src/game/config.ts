@@ -74,7 +74,7 @@ export interface WeaponDef {
   readonly mag: number;
   readonly reserveStart: number;
   readonly reserveMax: number;
-  /** Rounds the wave resupply hands out. */
+  /** Rounds the calm-beat resupply hands out. */
   readonly waveAmmo: number;
   readonly reloadT: number;
   readonly fireT: number;
@@ -697,7 +697,7 @@ export const ENEMY_TYPES = {
    */
   blinker: { hp: 80, speed: 3.0, scale: 1.05, dmg: 18, score: 250, body: 0x1c2030 },
   /**
-   * The COLOSSUS: the deck-district guardian. It never walks a wave — the
+   * The COLOSSUS: the deck-district guardian. It never joins a pack — the
    * capture layer summons it when you start taking a wild district, and the
    * hold cannot bank while it lives. Slow, front-armoured, and it charges.
    */
@@ -983,7 +983,7 @@ export const ALARM = {
 export const AMMO = {
   /**
    * Rounds dropped by a mob of each kind when it dies. They feed whichever gun
-   * is in hand — the wave resupply tops the others up.
+   * is in hand — the calm resupply tops the others up.
    */
   DROP: {
     grunt: 4,

@@ -15,7 +15,7 @@ interface Stats {
   ammo: number;
   score: number;
   kills: number;
-  wave: number;
+  threat: number;
   hostiles: number;
 }
 interface EnemyPos {
@@ -206,10 +206,10 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
   expect(colliders.obstacles).toBe(42);
   expect(colliders.ramps).toBe(4);
-  await page.waitForTimeout(2500); // let the first wave spawn
+  await page.waitForTimeout(2500); // let the first pack enter
   const boot = await stats(page);
   expect(boot.state).toBe('playing');
-  expect(boot.wave).toBe(1);
+  expect(boot.threat).toBeGreaterThanOrEqual(0);
   expect(boot.hp).toBe(100);
   expect(boot.ammo).toBe(12);
   expect(boot.hostiles).toBeGreaterThan(0);
@@ -666,7 +666,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   expect(calm.tint).toBe(0);
 
   // --- the creeper walks in from wave 3 and blows up in your face -------------
-  await page.evaluate(() => window.__NEON.forceWave(3));
+  await page.evaluate(() => window.__NEON.forceThreat(3));
   await page.waitForFunction(
     () => (window.__NEON.enemyPos() as EnemyPos[]).some((e) => e.kind === 'creeper'),
     undefined,
@@ -711,7 +711,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   });
 
   // --- the witch joins from wave 6 and falls to stones like any mob -----------
-  await page.evaluate(() => window.__NEON.forceWave(6));
+  await page.evaluate(() => window.__NEON.forceThreat(6));
   await page.waitForFunction(
     () => (window.__NEON.enemyPos() as EnemyPos[]).some((e) => e.kind === 'witch'),
     undefined,
@@ -766,7 +766,7 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   });
 
   // --- the sapper joins from wave 5 ------------------------------------------
-  await page.evaluate(() => window.__NEON.forceWave(5));
+  await page.evaluate(() => window.__NEON.forceThreat(5));
   await page.waitForFunction(
     () => {
       const g = window.__NEON;
@@ -784,7 +784,9 @@ test('boots, plays and cleans up after itself', async ({ page }) => {
   );
   await page.evaluate(() => window.__NEON.teleportEnemies(24));
 
-  // --- the warden walks in on the boss wave, with a top-screen bar -----------
+  // --- the warden beat: force tier 10 (a BOSS.EVERY multiple) and the boss
+  // pack queues on the spot, with the top-screen bar -------------------------
+  await page.evaluate(() => window.__NEON.forceThreat(10));
   await page.waitForFunction(
     () => {
       const g = window.__NEON;

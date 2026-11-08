@@ -8,7 +8,6 @@ import { TowerAlarm } from '../game/alarm';
 import { Bomb, type BombVariant } from '../game/bomb';
 import { CapturePoints, type Deck } from '../game/capture';
 import {
-  DIRECTOR,
   ALARM,
   AMMO,
   BOMB,
@@ -23,6 +22,7 @@ import {
   DEFAULT_THEME,
   DIFFICULTIES,
   DIFFICULTY_IDS,
+  DIRECTOR,
   type DifficultyId,
   ENEMY,
   ENEMY_TYPES,
@@ -46,13 +46,13 @@ import {
   WORLD,
   XP_LEVEL,
 } from '../game/config';
+import { crawlDist, distScale, dmgBonus, PressureDirector } from '../game/director';
 import { SpatialHash } from '../game/enemies';
 import { Enemy, type EnemyWorld } from '../game/enemy';
 import { Knife } from '../game/knife';
 import { type Meteor, MeteorShower } from '../game/meteor';
 import { Perks } from '../game/perks';
 import { Player } from '../game/player';
-import { crawlDist, distScale, dmgBonus, PressureDirector } from '../game/director';
 import { Weapon } from '../game/weapon';
 import {
   buildChunk,
@@ -1049,7 +1049,7 @@ export class Game {
     if (next) this.swapWeapon(next);
   }
 
-  /** The wave resupply: every owned gun gets its own share. */
+  /** The calm-beat resupply: every owned gun gets its own share. */
   private resupply(): void {
     for (const id of WEAPON_ORDER) {
       if (id === 'rifle' || this.profile.ownsWeapon(id)) this.weapons[id].addAmmo(WEAPONS[id].waveAmmo);
@@ -1685,11 +1685,7 @@ export class Game {
       // far from the spawn plaza the fight is happening.
       const k = distScale(crawlDist(req.x, req.z));
       const tier = Math.floor(this.director.threat);
-      enemy.scaleUp(
-        (tier - 1) * DIRECTOR.HP_PER_TIER[req.kind] * k,
-        req.speedScale,
-        dmgBonus(tier) * k,
-      );
+      enemy.scaleUp((tier - 1) * DIRECTOR.HP_PER_TIER[req.kind] * k, req.speedScale, dmgBonus(tier) * k);
       const diff = DIFFICULTIES[this.difficulty];
       enemy.applyDifficulty(diff.hp, diff.speed, diff.dmg);
       const view = new EnemyView(enemy);

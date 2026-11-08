@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { Rng } from '../../src/core/rng';
 import { BOSS, CRAWL, DIRECTOR, ENEMY } from '../../src/game/config';
 import {
   crawlDist,
-  dmgBonus,
   distScale,
+  dmgBonus,
   PressureDirector,
-  speedScale,
   type SpawnRequest,
+  speedScale,
 } from '../../src/game/director';
-import { Rng } from '../../src/core/rng';
 import type { Vec2 } from '../../src/game/world/collision';
 
 /** A director with the seed pinned and no geometry in the way. */
@@ -29,9 +29,7 @@ function run(
   const all: SpawnRequest[] = [];
   const steps = Math.ceil(seconds / 0.1);
   for (let i = 0; i < steps; i++) {
-    const at: Vec2 = opts.walk
-      ? { x: ORIGIN.x, z: ORIGIN.z - i * opts.walk }
-      : (opts.at ?? ORIGIN);
+    const at: Vec2 = opts.walk ? { x: ORIGIN.x, z: ORIGIN.z - i * opts.walk } : (opts.at ?? ORIGIN);
     all.push(...d.update(0.1, at, opts.alive ?? 0).spawned);
   }
   return all;
